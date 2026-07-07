@@ -58,6 +58,38 @@ const levelOf = (c, S) => [...S.levels].sort((a, b) => b.min - a.min).find((l) =
 const nextLevel = (c, S) => [...S.levels].sort((a, b) => a.min - b.min).find((l) => l.min > c);
 const canUse = (c, S) => c >= S.minUse;
 
+/* 성장 점수: 낙찰 5 · 입찰 1 · 임장 0.5 · 당첨 0.2 · 참가 0.1 */
+const GROWTH_RULES = [
+  { k: "auctions", label: "낙찰", icon: "🏆", pts: 5 },
+  { k: "bids", label: "입찰", icon: "📝", pts: 1 },
+  { k: "visits", label: "임장 인증", icon: "🚶", pts: 0.5 },
+  { k: "wins", label: "이벤트 당첨", icon: "🏅", pts: 0.2 },
+  { k: "parts", label: "이벤트 참가", icon: "✋", pts: 0.1 },
+];
+const growthScore = (m) =>
+  (m.auctions || 0) * 5 + (m.bids || 0) * 1 + (m.visits || 0) * 0.5 + (m.wins || 0) * 0.2 + (m.parts || 0) * 0.1;
+const fmtScore = (n) => (Math.round(n * 10) / 10).toLocaleString("ko-KR", { minimumFractionDigits: 1 });
+
+/* 현재 분기·주차 자동 계산 */
+const periodLabel = () => {
+  const d = new Date();
+  const q = Math.floor(d.getMonth() / 3) + 1;
+  const w = Math.ceil(d.getDate() / 7);
+  return `${q}분기 · ${d.getMonth() + 1}월 ${w}주차`;
+};
+
+/* 시트에서 Date 객체로 넘어온 날짜를 MM-DD로 정리 */
+const shortDate = (s) => {
+  const str = String(s || "");
+  if (/^\d{2}-\d{2}$/.test(str)) return str;
+  const d = new Date(str);
+  if (!isNaN(d.getTime())) return `${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  return str.slice(0, 10);
+};
+
+const NOTION_ONEPICK_URL = "https://handy-neon-1fc.notion.site/7-38f301b03fdc802fb2acf4f192a89bb0";
+
+
 const EVENT_TYPES = [
   { k: "낙찰가", label: "낙찰가 맞추기", icon: "🎯" },
   { k: "퀴즈", label: "부동산 퀴즈", icon: "🧠" },
@@ -73,22 +105,22 @@ const nid = () => ++_id;
 
 /* 시드 — realName + phone4 는 공개 페이지 입장 인증에 사용 */
 const SEED_MEMBERS = [
-  { id: 1, name: "채인홍/9275", realName: "채인홍", phone4: "9275", joined: "06-29", founder: true, credits: 11000, parts: 5, wins: 2, auctions: 0, bids: 0, invites: 1, code: "MATE-인홍-5W7A" },
-  { id: 2, name: "고수현/1618", realName: "고수현", phone4: "1618", joined: "06-29", founder: true, credits: 10000, parts: 4, wins: 0, auctions: 1, bids: 2, invites: 2, code: "MATE-수현-3F7K" },
-  { id: 3, name: "박신주/8911", realName: "박신주", phone4: "8911", joined: "06-29", founder: true, credits: 8000, parts: 4, wins: 1, auctions: 0, bids: 2, invites: 1, code: "MATE-신주-1Q9D" },
-  { id: 4, name: "김윤민/3302", realName: "김윤민", phone4: "3302", joined: "06-29", founder: true, credits: 5000, parts: 3, wins: 0, auctions: 1, bids: 1, invites: 1, code: "MATE-윤민-8K2P" },
-  { id: 5, name: "김민정/7714", realName: "김민정", phone4: "7714", joined: "06-29", founder: true, credits: 5000, parts: 3, wins: 0, auctions: 0, bids: 0, invites: 1, code: "MATE-민정-2Z4R" },
-  { id: 6, name: "이경아/0712", realName: "이경아", phone4: "0712", joined: "07-03", founder: false, credits: 3000, parts: 2, wins: 1, auctions: 0, bids: 0, invites: 0, code: "MATE-경아-1U8V" },
-  { id: 7, name: "이아름/0175", realName: "이아름", phone4: "0175", joined: "07-01", founder: false, credits: 3000, parts: 2, wins: 1, auctions: 0, bids: 0, invites: 0, code: "MATE-아름-8G1J" },
-  { id: 8, name: "조현이/5521", realName: "조현이", phone4: "5521", joined: "06-29", founder: true, credits: 0, parts: 3, wins: 0, auctions: 0, bids: 0, invites: 0, code: "MATE-현이-9V1M" },
-  { id: 9, name: "이동원/2304", realName: "이동원", phone4: "2304", joined: "06-30", founder: true, credits: 0, parts: 3, wins: 0, auctions: 0, bids: 0, invites: 0, code: "MATE-동원-6B3T" },
-  { id: 10, name: "신정아/9515", realName: "신정아", phone4: "9515", joined: "06-30", founder: true, credits: 0, parts: 2, wins: 0, auctions: 0, bids: 0, invites: 0, code: "MATE-정아-4H8S" },
-  { id: 11, name: "JOY/1004", realName: "JOY", phone4: "1004", joined: "06-29", founder: true, credits: 0, parts: 2, wins: 0, auctions: 0, bids: 0, invites: 0, code: "MATE-JOY-7N2K" },
-  { id: 12, name: "최지우/0778", realName: "최지우", phone4: "0778", joined: "06-30", founder: true, credits: 0, parts: 2, wins: 0, auctions: 0, bids: 0, invites: 0, code: "MATE-지우-3D6F" },
-  { id: 13, name: "윤미심/7221", realName: "윤미심", phone4: "7221", joined: "06-30", founder: true, credits: 0, parts: 1, wins: 0, auctions: 0, bids: 0, invites: 0, code: "MATE-미심-5L9C" },
-  { id: 14, name: "이유리/6849", realName: "이유리", phone4: "6849", joined: "06-30", founder: true, credits: 0, parts: 1, wins: 0, auctions: 0, bids: 0, invites: 0, code: "MATE-유리-2X7W" },
-  { id: 15, name: "이강근/8890", realName: "이강근", phone4: "8890", joined: "07-01", founder: false, credits: 0, parts: 1, wins: 0, auctions: 0, bids: 0, invites: 0, code: "MATE-강근-6R4E" },
-  { id: 16, name: "이동혁/7083", realName: "이동혁", phone4: "7083", joined: "07-01", founder: false, credits: 0, parts: 1, wins: 0, auctions: 0, bids: 1, invites: 0, code: "MATE-동혁-9P2Y" },
+  { id: 1, name: "채인홍/9275", realName: "채인홍", phone4: "9275", joined: "06-29", founder: true, credits: 11000, parts: 5, wins: 2, auctions: 0, bids: 0, invites: 1, visits: 0, staff: false, code: "MATE-인홍-5W7A" },
+  { id: 2, name: "고수현/1618", realName: "고수현", phone4: "1618", joined: "06-29", founder: true, credits: 10000, parts: 4, wins: 0, auctions: 1, bids: 2, invites: 2, visits: 0, staff: false, code: "MATE-수현-3F7K" },
+  { id: 3, name: "박신주/8911", realName: "박신주", phone4: "8911", joined: "06-29", founder: true, credits: 8000, parts: 4, wins: 1, auctions: 0, bids: 2, invites: 1, visits: 0, staff: false, code: "MATE-신주-1Q9D" },
+  { id: 4, name: "김윤민/3302", realName: "김윤민", phone4: "3302", joined: "06-29", founder: true, credits: 5000, parts: 3, wins: 0, auctions: 1, bids: 1, invites: 1, visits: 0, staff: false, code: "MATE-윤민-8K2P" },
+  { id: 5, name: "김민정/7714", realName: "김민정", phone4: "7714", joined: "06-29", founder: true, credits: 5000, parts: 3, wins: 0, auctions: 0, bids: 0, invites: 1, visits: 0, staff: false, code: "MATE-민정-2Z4R" },
+  { id: 6, name: "이경아/0712", realName: "이경아", phone4: "0712", joined: "07-03", founder: false, credits: 3000, parts: 2, wins: 1, auctions: 0, bids: 0, invites: 0, visits: 0, staff: false, code: "MATE-경아-1U8V" },
+  { id: 7, name: "이아름/0175", realName: "이아름", phone4: "0175", joined: "07-01", founder: false, credits: 3000, parts: 2, wins: 1, auctions: 0, bids: 0, invites: 0, visits: 0, staff: false, code: "MATE-아름-8G1J" },
+  { id: 8, name: "조현이/5521", realName: "조현이", phone4: "5521", joined: "06-29", founder: true, credits: 0, parts: 3, wins: 0, auctions: 0, bids: 0, invites: 0, visits: 0, staff: false, code: "MATE-현이-9V1M" },
+  { id: 9, name: "이동원/2304", realName: "이동원", phone4: "2304", joined: "06-30", founder: true, credits: 0, parts: 3, wins: 0, auctions: 0, bids: 0, invites: 0, visits: 0, staff: false, code: "MATE-동원-6B3T" },
+  { id: 10, name: "신정아/9515", realName: "신정아", phone4: "9515", joined: "06-30", founder: true, credits: 0, parts: 2, wins: 0, auctions: 0, bids: 0, invites: 0, visits: 0, staff: false, code: "MATE-정아-4H8S" },
+  { id: 11, name: "JOY/1004", realName: "JOY", phone4: "1004", joined: "06-29", founder: true, credits: 0, parts: 2, wins: 0, auctions: 0, bids: 0, invites: 0, visits: 0, staff: false, code: "MATE-JOY-7N2K" },
+  { id: 12, name: "최지우/0778", realName: "최지우", phone4: "0778", joined: "06-30", founder: true, credits: 0, parts: 2, wins: 0, auctions: 0, bids: 0, invites: 0, visits: 0, staff: false, code: "MATE-지우-3D6F" },
+  { id: 13, name: "윤미심/7221", realName: "윤미심", phone4: "7221", joined: "06-30", founder: true, credits: 0, parts: 1, wins: 0, auctions: 0, bids: 0, invites: 0, visits: 0, staff: false, code: "MATE-미심-5L9C" },
+  { id: 14, name: "이유리/6849", realName: "이유리", phone4: "6849", joined: "06-30", founder: true, credits: 0, parts: 1, wins: 0, auctions: 0, bids: 0, invites: 0, visits: 0, staff: false, code: "MATE-유리-2X7W" },
+  { id: 15, name: "이강근/8890", realName: "이강근", phone4: "8890", joined: "07-01", founder: false, credits: 0, parts: 1, wins: 0, auctions: 0, bids: 0, invites: 0, visits: 0, staff: false, code: "MATE-강근-6R4E" },
+  { id: 16, name: "이동혁/7083", realName: "이동혁", phone4: "7083", joined: "07-01", founder: false, credits: 0, parts: 1, wins: 0, auctions: 0, bids: 1, invites: 0, visits: 0, staff: false, code: "MATE-동혁-9P2Y" },
 ];
 
 const SEED_LEDGER = [
@@ -215,7 +247,7 @@ function Leaderboard({ members, settings }) {
 
   return (
     <div>
-      <SectionTitle eyebrow="3분기 · 7월 1주차" title="그로인 크레딧 리더보드" right={<Pill tone="line">매주 월요일 단톡방 공유</Pill>} />
+      <SectionTitle eyebrow={periodLabel()} title="그로인 크레딧 리더보드" right={<Pill tone="line">매주 월요일 단톡방 공유</Pill>} />
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 12, marginBottom: 16 }}>
         {top3.map((m, i) => (
           <Card key={m.id} pad={18} style={{ position: "relative", overflow: "hidden",
@@ -243,6 +275,7 @@ function Leaderboard({ members, settings }) {
               <div style={{ fontSize: 18 }}>{lv.icon}</div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontWeight: 700, fontSize: 14.5, letterSpacing: "-0.01em" }}>{m.name}
+                  {m.staff && <span style={{ marginLeft: 6, fontSize: 10.5, fontWeight: 800, color: T.gold }}>⭐ 운영진</span>}
                   {m.founder && <span style={{ marginLeft: 6, fontSize: 10.5, fontWeight: 800, color: T.peri }}>창립멤버</span>}
                 </div>
                 <div style={{ height: 5, background: "#EDF1F0", borderRadius: 99, marginTop: 6, maxWidth: 220 }}>
@@ -272,7 +305,7 @@ function Leaderboard({ members, settings }) {
 }
 
 /* ── 멤버 관리 ── */
-function Members({ members, ledger, onAdjust, onAddMember, settings }) {
+function Members({ members, ledger, onAdjust, onAddMember, onBumpStat, settings }) {
   const [q, setQ] = useState("");
   const [sel, setSel] = useState(null);
   const [amt, setAmt] = useState("");
@@ -314,7 +347,7 @@ function Members({ members, ledger, onAdjust, onAddMember, settings }) {
                 {levelOf(m.credits, settings).icon} {m.name}
                 {m.founder && <Pill tone="soft" style={{ fontSize: 10.5, padding: "1px 7px" }}>창립</Pill>}
               </div>
-              <div style={{ fontSize: 12.5, color: T.sub }}>{m.joined}</div>
+              <div style={{ fontSize: 12.5, color: T.sub }}>{shortDate(m.joined)}</div>
               <div style={{ fontSize: 13, fontWeight: 700, color: m.parts ? T.ink : T.sub }}>{m.parts}회</div>
               <div style={{ fontSize: 13, fontWeight: 700, color: m.invites ? T.ink : T.sub }}>{m.invites}명</div>
               <div style={{ textAlign: "right", display: "flex", gap: 6, justifyContent: "flex-end", alignItems: "center" }}>
@@ -334,6 +367,19 @@ function Members({ members, ledger, onAdjust, onAddMember, settings }) {
             <div style={{ fontSize: 11.5, color: T.sub, marginBottom: 10 }}>
               공개 페이지 입장 정보: <b style={{ color: T.ink }}>{selMember.realName}</b> + <b style={{ color: T.ink }}>{selMember.phone4}</b>
             </div>
+            <div style={{ margin: "4px 0 10px", padding: "10px 12px", background: "#FAFCFB", borderRadius: 12, border: `1px solid ${T.line}` }}>
+              <div style={{ fontSize: 12, fontWeight: 800, color: T.sub, marginBottom: 8 }}>실전 기록 (성장 랭킹 반영)</div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {[["auctions", "🏆 낙찰", selMember.auctions], ["bids", "📝 입찰", selMember.bids], ["visits", "🚶 임장", selMember.visits || 0]].map(([f, label, cnt]) => (
+                  <button key={f} onClick={() => onBumpStat(selMember.id, f)}
+                    style={{ cursor: "pointer", borderRadius: 999, padding: "6px 12px", fontWeight: 700, fontSize: 12, fontFamily: "inherit",
+                      background: "#fff", color: T.ink, border: `1.5px solid ${T.line}` }}>
+                    {label} <b style={{ color: T.coral }}>{cnt}</b> +1
+                  </button>
+                ))}
+              </div>
+              <div style={{ fontSize: 11, color: T.sub, marginTop: 6 }}>잘못 눌렀다면 구글 시트 멤버 탭에서 숫자를 직접 수정하세요.</div>
+            </div>
             <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
               <Pill>{selMember.credits.toLocaleString()} 크레딧</Pill>
               <UseBadge credits={selMember.credits} settings={settings} />
@@ -350,7 +396,7 @@ function Members({ members, ledger, onAdjust, onAddMember, settings }) {
             {selLedger.length === 0 && <div style={{ fontSize: 12.5, color: T.sub }}>아직 기록이 없어요.</div>}
             {selLedger.slice().reverse().map((l) => (
               <div key={l.id} style={{ display: "flex", justifyContent: "space-between", gap: 8, padding: "8px 0", borderBottom: `1px solid ${T.line}`, fontSize: 12.5 }}>
-                <div style={{ minWidth: 0 }}><span style={{ color: T.sub }}>{l.date}</span> · {l.reason}</div>
+                <div style={{ minWidth: 0 }}><span style={{ color: T.sub }}>{shortDate(l.date)}</span> · {l.reason}</div>
                 <b style={{ color: l.amount >= 0 ? T.mint : T.coral, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>{l.amount >= 0 ? "+" : ""}{l.amount.toLocaleString()}</b>
               </div>
             ))}
@@ -387,7 +433,7 @@ function Events({ members, log, onLogEvent, settings }) {
 
   const winners = Object.entries(winAmt).map(([id, amount]) => ({ m: Number(id), amount: Number(amount) || 0 }));
   const total = winners.reduce((s, w) => s + w.amount, 0);
-  const canSubmit = title.trim() && parts.length > 0 && winners.every((w) => w.amount > 0);
+  const canSubmit = title.trim() && parts.length > 0 && winners.every((w) => w.amount >= 0); // 0 지급 허용 (기록만)
   const submit = () => {
     onLogEvent({ type, title: title.trim(), note: note.trim(), participants: parts, winners });
     setTitle(""); setNote(""); setParts([]); setWinAmt({}); setFilter("");
@@ -447,7 +493,7 @@ function Events({ members, log, onLogEvent, settings }) {
 
           {parts.length > 0 && (
             <>
-              <div style={{ fontWeight: 800, fontSize: 13, margin: "14px 0 8px" }}>당첨자 지정 <span style={{ fontSize: 11.5, color: T.sub, fontWeight: 600 }}>· 참가만 한 사람은 그대로 두세요</span></div>
+              <div style={{ fontWeight: 800, fontSize: 13, margin: "14px 0 8px" }}>당첨자 지정 <span style={{ fontSize: 11.5, color: T.sub, fontWeight: 600 }}>· 크레딧 0으로 두면 당첨 기록만 남습니다</span></div>
               {parts.map((id) => {
                 const m = members.find((x) => x.id === id);
                 const won = winAmt[id] != null;
@@ -494,7 +540,7 @@ function Events({ members, log, onLogEvent, settings }) {
               <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                 <span style={{ fontSize: 18 }}>{meta.icon}</span>
                 <div style={{ fontWeight: 800, fontSize: 14.5, letterSpacing: "-0.01em" }}>{e.title}</div>
-                <Pill tone="line" style={{ fontSize: 11 }}>{e.date}</Pill>
+                <Pill tone="line" style={{ fontSize: 11 }}>{shortDate(e.date)}</Pill>
                 <Pill tone="soft" style={{ fontSize: 11 }}>{meta.label}</Pill>
                 <Pill tone="mute" style={{ fontSize: 11 }}>참가 {e.participants.length}명</Pill>
               </div>
@@ -773,7 +819,7 @@ function Insights({ insights, onAdd, onDelete }) {
             <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
               <Pill tone="soft" style={{ fontSize: 11.5 }}>{i.cat}</Pill>
               <div style={{ fontWeight: 800, fontSize: 14.5, letterSpacing: "-0.01em", flex: 1 }}>{i.title}</div>
-              <Pill tone="line" style={{ fontSize: 11 }}>{i.date}</Pill>
+              <Pill tone="line" style={{ fontSize: 11 }}>{shortDate(i.date)}</Pill>
               <button onClick={() => onDelete(i.id)}
                 style={{ border: "none", background: "transparent", color: T.sub, cursor: "pointer", fontSize: 15, padding: "2px 6px" }}
                 title="삭제">×</button>
@@ -788,31 +834,36 @@ function Insights({ insights, onAdd, onDelete }) {
 
 /* ── 공개 조회 페이지 (탭 대시보드) ── */
 function PublicPage({ members, ledger, log, insights, settings, viewer, onLogin, onLogout }) {
-  const [ptab, setPtab] = useState("home"); // home | ranking | insights | guide
+  const [ptab, setPtab] = useState("home");
 
   if (!viewer) return <Gate onLogin={onLogin} />;
 
   const ranked = [...members].sort((a, b) => b.credits - a.credits);
+  const growthRanked = [...members].map((m) => ({ ...m, gs: growthScore(m) })).sort((a, b) => b.gs - a.gs);
   const meMember = members.find((m) => m.id === viewer);
   const myRank = ranked.findIndex((m) => m.id === meMember.id) + 1;
+  const myGrowthRank = growthRanked.findIndex((m) => m.id === meMember.id) + 1;
+  const myGS = growthScore(meMember);
   const myLedger = ledger.filter((l) => l.m === meMember.id).slice().reverse().slice(0, 5);
   const myLevel = levelOf(meMember.credits, settings);
   const myNext = nextLevel(meMember.credits, settings);
 
   const PTABS = [
     ["home", "홈", "🏠"],
-    ["ranking", "내 크레딧", "🏅"],
+    ["ranking", "크레딧", "🏅"],
+    ["growth", "성장 랭킹", "📈"],
+    ["onepick", "원픽 지도", "🗺"],
     ["insights", "인사이트", "💡"],
-    ["guide", "크레딧 안내", "📋"],
+    ["guide", "안내", "📋"],
   ];
 
   const TabBar = () => (
     <div style={{ display: "flex", gap: 4, background: "#fff", borderRadius: 14, padding: 4, border: `1px solid ${T.line}`,
-      boxShadow: "0 4px 16px rgba(28,35,51,.06)", marginBottom: 16, position: "sticky", top: 6, zIndex: 20 }}>
+      boxShadow: "0 4px 16px rgba(28,35,51,.06)", marginBottom: 16, position: "sticky", top: 6, zIndex: 20, overflowX: "auto" }}>
       {PTABS.map(([k, label, icon]) => (
         <button key={k} onClick={() => setPtab(k)}
-          style={{ flex: 1, border: "none", cursor: "pointer", padding: "10px 6px", borderRadius: 12,
-            fontWeight: 800, fontSize: 13, letterSpacing: "-0.01em", fontFamily: "inherit", whiteSpace: "nowrap",
+          style={{ flex: "1 0 auto", border: "none", cursor: "pointer", padding: "10px 10px", borderRadius: 12,
+            fontWeight: 800, fontSize: 12.5, letterSpacing: "-0.01em", fontFamily: "inherit", whiteSpace: "nowrap",
             background: ptab === k ? T.grad : "transparent", color: ptab === k ? "#fff" : T.sub, transition: "all .15s ease" }}>
           {icon} {label}
         </button>
@@ -820,35 +871,89 @@ function PublicPage({ members, ledger, log, insights, settings, viewer, onLogin,
     </div>
   );
 
-  /* ── 홈 대시보드 ── */
+  const StaffBadge = ({ m }) => m.staff ? <Pill tone="gold" style={{ fontSize: 10.5, padding: "1px 8px" }}>⭐ 운영진</Pill> : null;
+
+  /* 랭킹 행 (공용) */
+  const RankRow = ({ m, i, value, valueLabel, highlight }) => {
+    const lv = levelOf(m.credits, settings);
+    return (
+      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 16px", borderTop: i === 0 ? "none" : `1px solid ${T.line}`,
+        background: highlight ? T.gradSoft : "transparent" }}>
+        <div style={{ width: 22, textAlign: "center", fontWeight: 800, color: i < 3 ? T.coral : T.sub, fontVariantNumeric: "tabular-nums", fontSize: 13 }}>{i + 1}</div>
+        <div style={{ fontSize: 17 }}>{lv.icon}</div>
+        <div style={{ flex: 1, fontWeight: 700, fontSize: 14, letterSpacing: "-0.01em", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{m.name}</span>
+          <StaffBadge m={m} />
+          {meMember.id === m.id && <span style={{ fontSize: 11, color: T.peri, fontWeight: 800 }}>나</span>}
+        </div>
+        <Pill tone="soft" style={{ minWidth: 78, justifyContent: "center", fontSize: 12.5 }}>{value}{valueLabel}</Pill>
+      </div>
+    );
+  };
+
+  /* 시상대 (홈) — 텍스트 넘침 수정: minHeight + 말줄임 */
+  const Podium = ({ list, valueOf }) => (
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1.15fr 1fr", gap: 8, alignItems: "end", marginBottom: 20 }}>
+      {[list[1], list[0], list[2]].filter(Boolean).map((m, idx) => {
+        const rank = idx === 1 ? 1 : idx === 0 ? 2 : 3;
+        const minH = [104, 122, 96][idx];
+        return (
+          <div key={m.id} style={{ background: idx === 1 ? T.grad : "#fff", color: idx === 1 ? "#fff" : T.ink,
+            borderRadius: 16, padding: "12px 8px", minHeight: minH,
+            boxShadow: "0 6px 20px rgba(28,35,51,.08)", textAlign: "center", border: idx === 1 ? "none" : `1px solid ${T.line}`,
+            display: "flex", flexDirection: "column", justifyContent: "space-between", gap: 6, minWidth: 0 }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 22 }}>{rank === 1 ? "🥇" : rank === 2 ? "🥈" : "🥉"}</div>
+              <div style={{ fontWeight: 800, fontSize: 12.5, letterSpacing: "-0.02em", marginTop: 3, lineHeight: 1.25,
+                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {m.realName}{m.staff ? " ⭐" : ""}
+              </div>
+            </div>
+            <div style={{ fontWeight: 800, fontSize: 12.5, fontVariantNumeric: "tabular-nums",
+              color: idx === 1 ? "#fff" : T.coral, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {valueOf(m)}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+
+  /* ── 홈 ── */
   const HomeTab = () => (
     <div>
-      {/* 이번 주 TOP 3 */}
       <div onClick={() => setPtab("ranking")} style={{ cursor: "pointer" }}>
-        <SectionTitle title="이번 주 크레딧 랭킹" right={<Pill tone="line">전체 보기 →</Pill>} />
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1.15fr 1fr", gap: 8, alignItems: "end", marginBottom: 20 }}>
-          {[ranked[1], ranked[0], ranked[2]].filter(Boolean).map((m, idx) => {
-            const rank = idx === 1 ? 1 : idx === 0 ? 2 : 3;
-            const heights = [90, 108, 78];
-            return (
-              <div key={m.id} style={{ background: idx === 1 ? T.grad : "#fff", color: idx === 1 ? "#fff" : T.ink,
-                borderRadius: 16, padding: "14px 10px", height: heights[idx],
-                boxShadow: "0 6px 20px rgba(28,35,51,.08)", textAlign: "center", border: idx === 1 ? "none" : `1px solid ${T.line}`,
-                display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
-                <div>
-                  <div style={{ fontSize: 24 }}>{rank === 1 ? "🥇" : rank === 2 ? "🥈" : "🥉"}</div>
-                  <div style={{ fontWeight: 800, fontSize: 13, letterSpacing: "-0.02em", marginTop: 4, lineHeight: 1.2 }}>{m.realName}</div>
-                </div>
-                <div style={{ fontWeight: 800, fontSize: 13, fontVariantNumeric: "tabular-nums", color: idx === 1 ? "#fff" : T.coral }}>
-                  {m.credits.toLocaleString()}
-                </div>
-              </div>
-            );
-          })}
-        </div>
+        <SectionTitle title="이번 주 크레딧 랭킹" right={<Pill tone="line">TOP 10 보기 →</Pill>} />
+        <Podium list={ranked} valueOf={(m) => m.credits.toLocaleString()} />
       </div>
 
-      {/* 인사이트 미리보기 */}
+      <div onClick={() => setPtab("growth")} style={{ cursor: "pointer" }}>
+        <SectionTitle title="성장 랭킹" right={<Pill tone="line">TOP 10 보기 →</Pill>} />
+        <Card pad={14} style={{ marginBottom: 20 }}>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            {growthRanked.slice(0, 3).map((m, i) => (
+              <Pill key={m.id} tone={i === 0 ? "grad" : "soft"} style={{ fontSize: 12.5 }}>
+                {i === 0 ? "🥇" : i === 1 ? "🥈" : "🥉"} {m.realName} · {fmtScore(m.gs)}점
+              </Pill>
+            ))}
+            <span style={{ fontSize: 12, color: T.sub }}>낙찰·입찰·임장·이벤트 활동 점수</span>
+          </div>
+        </Card>
+      </div>
+
+      <div onClick={() => setPtab("onepick")} style={{ cursor: "pointer" }}>
+        <SectionTitle title="원픽 경매 지도" right={<Pill tone="line">보러 가기 →</Pill>} />
+        <Card pad={16} style={{ marginBottom: 20, background: T.gradSoft, border: "none" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{ fontSize: 32 }}>🗺</div>
+            <div>
+              <div style={{ fontWeight: 800, fontSize: 14.5, letterSpacing: "-0.01em" }}>이번 주 해피테크 추천 물건</div>
+              <div style={{ fontSize: 12.5, color: T.sub, marginTop: 2 }}>엄선한 경매 물건을 지도에서 한눈에 확인하세요</div>
+            </div>
+          </div>
+        </Card>
+      </div>
+
       <div onClick={() => setPtab("insights")} style={{ cursor: "pointer" }}>
         <SectionTitle title="인사이트 아카이브" right={<Pill tone="line">전체 {insights.length}건 →</Pill>} />
         <div style={{ display: "grid", gap: 10, marginBottom: 20 }}>
@@ -857,7 +962,7 @@ function PublicPage({ members, ledger, log, insights, settings, viewer, onLogin,
               <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                 <Pill tone="soft" style={{ fontSize: 11.5 }}>{i.cat}</Pill>
                 <div style={{ fontWeight: 800, fontSize: 14, letterSpacing: "-0.01em", flex: 1 }}>{i.title}</div>
-                <Pill tone="line" style={{ fontSize: 11 }}>{i.date}</Pill>
+                <Pill tone="line" style={{ fontSize: 11 }}>{shortDate(i.date)}</Pill>
               </div>
               <div style={{ fontSize: 13, color: T.ink, lineHeight: 1.7, marginTop: 8,
                 display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{i.body}</div>
@@ -867,7 +972,6 @@ function PublicPage({ members, ledger, log, insights, settings, viewer, onLogin,
         </div>
       </div>
 
-      {/* 크레딧 안내 미리보기 */}
       <div onClick={() => setPtab("guide")} style={{ cursor: "pointer" }}>
         <SectionTitle title="크레딧 안내" right={<Pill tone="line">자세히 →</Pill>} />
         <Card pad={16} style={{ background: T.gradSoft, border: "none" }}>
@@ -888,64 +992,162 @@ function PublicPage({ members, ledger, log, insights, settings, viewer, onLogin,
     </div>
   );
 
-  /* ── 내 크레딧 + 전체 랭킹 ── */
-  const RankingTab = () => (
-    <div>
-      <Card pad={16} style={{ marginBottom: 16 }}>
-        <div style={{ padding: 14, background: T.gradSoft, borderRadius: 14 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 8 }}>
-            <div>
-              <div style={{ fontSize: 26 }}>{myLevel.icon}</div>
-              <div style={{ fontWeight: 800, fontSize: 18, letterSpacing: "-0.02em", marginTop: 2 }}>{meMember.name}</div>
-              <div style={{ fontSize: 12.5, color: T.sub, marginTop: 2 }}>{myLevel.name} · 전체 {myRank}위 · 참가 {meMember.parts}회</div>
+  /* ── 내 크레딧 + 크레딧 랭킹 TOP 10 ── */
+  const RankingTab = () => {
+    const top10 = ranked.slice(0, 10);
+    const inTop10 = myRank <= 10;
+    return (
+      <div>
+        <Card pad={16} style={{ marginBottom: 16 }}>
+          <div style={{ padding: 14, background: T.gradSoft, borderRadius: 14 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 8 }}>
+              <div>
+                <div style={{ fontSize: 26 }}>{myLevel.icon}</div>
+                <div style={{ fontWeight: 800, fontSize: 18, letterSpacing: "-0.02em", marginTop: 2, display: "flex", alignItems: "center", gap: 6 }}>
+                  {meMember.name} <StaffBadge m={meMember} />
+                </div>
+                <div style={{ fontSize: 12.5, color: T.sub, marginTop: 2 }}>{myLevel.name} · 크레딧 {myRank}위 · 성장 {myGrowthRank}위</div>
+              </div>
+              <div style={{ textAlign: "right" }}>
+                <div style={{ fontWeight: 800, fontSize: 26, letterSpacing: "-0.02em", color: T.coral, fontVariantNumeric: "tabular-nums" }}>{meMember.credits.toLocaleString()}</div>
+                <div style={{ fontSize: 11, color: T.sub, fontWeight: 700 }}>크레딧</div>
+                <div style={{ marginTop: 4 }}><UseBadge credits={meMember.credits} settings={settings} /></div>
+              </div>
             </div>
-            <div style={{ textAlign: "right" }}>
-              <div style={{ fontWeight: 800, fontSize: 26, letterSpacing: "-0.02em", color: T.coral, fontVariantNumeric: "tabular-nums" }}>{meMember.credits.toLocaleString()}</div>
-              <div style={{ fontSize: 11, color: T.sub, fontWeight: 700 }}>크레딧</div>
-              <div style={{ marginTop: 4 }}><UseBadge credits={meMember.credits} settings={settings} /></div>
+
+            {myNext && (
+              <div style={{ marginTop: 12 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: T.sub, fontWeight: 700, marginBottom: 4 }}>
+                  <span>{myLevel.icon} {myLevel.name}</span>
+                  <span>{myNext.icon} {myNext.name}까지 {(myNext.min - meMember.credits).toLocaleString()}</span>
+                </div>
+                <div style={{ height: 6, background: "#fff", borderRadius: 99, overflow: "hidden" }}>
+                  <div style={{ height: 6, width: `${Math.max(4, ((meMember.credits - myLevel.min) / (myNext.min - myLevel.min)) * 100)}%`, background: T.grad, borderRadius: 99 }} />
+                </div>
+              </div>
+            )}
+
+            {/* 내 활동 카운터 (성장 랭킹 채점 요소) */}
+            <div style={{ marginTop: 14 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                <div style={{ fontSize: 12, fontWeight: 800, color: T.sub }}>내 활동 기록</div>
+                <Pill tone="coral" style={{ fontSize: 11.5 }}>성장 점수 {fmtScore(myGS)}점 · {myGrowthRank}위</Pill>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 6 }}>
+                {GROWTH_RULES.map((r) => (
+                  <div key={r.k} style={{ background: "#fff", borderRadius: 10, padding: "8px 4px", textAlign: "center", border: `1px solid ${T.line}` }}>
+                    <div style={{ fontSize: 16 }}>{r.icon}</div>
+                    <div style={{ fontWeight: 800, fontSize: 15, fontVariantNumeric: "tabular-nums", marginTop: 2 }}>{meMember[r.k] || 0}</div>
+                    <div style={{ fontSize: 10, color: T.sub, fontWeight: 700 }}>{r.label}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ marginTop: 14 }}>
+              <div style={{ fontSize: 12, fontWeight: 800, color: T.sub, marginBottom: 6 }}>최근 활동</div>
+              {myLedger.length === 0 && <div style={{ fontSize: 12.5, color: T.sub }}>아직 활동 기록이 없어요. 오늘 이벤트부터 함께해요!</div>}
+              {myLedger.map((l) => (
+                <div key={l.id} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", fontSize: 12.5, borderBottom: `1px solid rgba(0,0,0,.05)` }}>
+                  <div><span style={{ color: T.sub }}>{shortDate(l.date)}</span> · {l.reason}</div>
+                  <b style={{ color: l.amount >= 0 ? T.mint : T.coral, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>{l.amount >= 0 ? "+" : ""}{l.amount.toLocaleString()}</b>
+                </div>
+              ))}
             </div>
           </div>
-          {myNext && (
-            <div style={{ marginTop: 12 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: T.sub, fontWeight: 700, marginBottom: 4 }}>
-                <span>{myLevel.icon} {myLevel.name}</span>
-                <span>{myNext.icon} {myNext.name}까지 {(myNext.min - meMember.credits).toLocaleString()}</span>
+        </Card>
+
+        <SectionTitle title="크레딧 랭킹 TOP 10" right={<Pill tone="line">전체 {members.length}명</Pill>} />
+        <Card pad={0}>
+          {top10.map((m, i) => <RankRow key={m.id} m={m} i={i} value={m.credits.toLocaleString()} valueLabel="" highlight={meMember.id === m.id} />)}
+          {!inTop10 && (
+            <>
+              <div style={{ padding: "6px 16px", fontSize: 11, color: T.sub, textAlign: "center", borderTop: `1px dashed ${T.line}` }}>⋯</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 16px", background: T.gradSoft, borderTop: `1px solid ${T.line}` }}>
+                <div style={{ width: 22, textAlign: "center", fontWeight: 800, color: T.sub, fontSize: 13 }}>{myRank}</div>
+                <div style={{ fontSize: 17 }}>{myLevel.icon}</div>
+                <div style={{ flex: 1, fontWeight: 700, fontSize: 14 }}>{meMember.name} <span style={{ fontSize: 11, color: T.peri, fontWeight: 800 }}>나</span></div>
+                <Pill tone="soft" style={{ minWidth: 78, justifyContent: "center", fontSize: 12.5 }}>{meMember.credits.toLocaleString()}</Pill>
               </div>
-              <div style={{ height: 6, background: "#fff", borderRadius: 99, overflow: "hidden" }}>
-                <div style={{ height: 6, width: `${Math.max(4, ((meMember.credits - myLevel.min) / (myNext.min - myLevel.min)) * 100)}%`, background: T.grad, borderRadius: 99 }} />
-              </div>
-            </div>
+            </>
           )}
-          <div style={{ marginTop: 14 }}>
-            <div style={{ fontSize: 12, fontWeight: 800, color: T.sub, marginBottom: 6 }}>최근 활동</div>
-            {myLedger.length === 0 && <div style={{ fontSize: 12.5, color: T.sub }}>아직 활동 기록이 없어요. 오늘 이벤트부터 함께해요!</div>}
-            {myLedger.map((l) => (
-              <div key={l.id} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", fontSize: 12.5, borderBottom: `1px solid rgba(0,0,0,.05)` }}>
-                <div><span style={{ color: T.sub }}>{l.date}</span> · {l.reason}</div>
-                <b style={{ color: l.amount >= 0 ? T.mint : T.coral, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>{l.amount >= 0 ? "+" : ""}{l.amount.toLocaleString()}</b>
+        </Card>
+      </div>
+    );
+  };
+
+  /* ── 성장 랭킹 TOP 10 ── */
+  const GrowthTab = () => {
+    const top10 = growthRanked.slice(0, 10);
+    const inTop10 = myGrowthRank <= 10;
+    return (
+      <div>
+        <SectionTitle eyebrow={periodLabel()} title="성장 랭킹" right={<Pill tone="coral">노력이 곧 순위!</Pill>} />
+
+        <Card pad={0} style={{ overflow: "hidden", marginBottom: 14 }}>
+          <div style={{ background: T.grad, padding: "16px 20px", color: "#fff" }}>
+            <div style={{ fontSize: 15, fontWeight: 800, letterSpacing: "-0.02em" }}>멤버십 안에서 얼마나 성장했나요?</div>
+            <div style={{ fontSize: 12.5, opacity: 0.9, marginTop: 3, lineHeight: 1.5 }}>크레딧과 별개로, 실전 활동과 참여도를 점수로 환산한 랭킹입니다.</div>
+          </div>
+          <div style={{ padding: "14px 18px" }}>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {GROWTH_RULES.map((r) => (
+                <Pill key={r.k} tone="line" style={{ fontSize: 12 }}>{r.icon} {r.label} <b style={{ color: T.coral, marginLeft: 3 }}>{r.pts}점</b></Pill>
+              ))}
+            </div>
+          </div>
+        </Card>
+
+        <Card pad={0}>
+          {top10.map((m, i) => <RankRow key={m.id} m={m} i={i} value={fmtScore(m.gs)} valueLabel="점" highlight={meMember.id === m.id} />)}
+          {!inTop10 && (
+            <>
+              <div style={{ padding: "6px 16px", fontSize: 11, color: T.sub, textAlign: "center", borderTop: `1px dashed ${T.line}` }}>⋯</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 16px", background: T.gradSoft, borderTop: `1px solid ${T.line}` }}>
+                <div style={{ width: 22, textAlign: "center", fontWeight: 800, color: T.sub, fontSize: 13 }}>{myGrowthRank}</div>
+                <div style={{ fontSize: 17 }}>{myLevel.icon}</div>
+                <div style={{ flex: 1, fontWeight: 700, fontSize: 14 }}>{meMember.name} <span style={{ fontSize: 11, color: T.peri, fontWeight: 800 }}>나</span></div>
+                <Pill tone="soft" style={{ minWidth: 78, justifyContent: "center", fontSize: 12.5 }}>{fmtScore(myGS)}점</Pill>
               </div>
-            ))}
+            </>
+          )}
+        </Card>
+
+        <div style={{ fontSize: 12, color: T.sub, marginTop: 10, lineHeight: 1.6, textAlign: "center" }}>
+          낙찰·입찰·임장 기록은 인증 후 운영진이 반영합니다.<br/>단톡방에서 해피테크에게 인증해주세요!
+        </div>
+      </div>
+    );
+  };
+
+  /* ── 원픽 경매 지도 ── */
+  const OnePickTab = () => (
+    <div>
+      <SectionTitle eyebrow="매주 업데이트" title="원픽 경매 지도" right={<Pill tone="coral">멤버 전용</Pill>} />
+      <Card pad={0} style={{ overflow: "hidden", marginBottom: 12 }}>
+        <div style={{ background: T.grad, padding: "16px 20px", color: "#fff" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{ fontSize: 32 }}>🗺</div>
+            <div>
+              <div style={{ fontSize: 16, fontWeight: 800, letterSpacing: "-0.02em" }}>해피테크가 엄선한 이번 주 추천 물건</div>
+              <div style={{ fontSize: 12.5, opacity: 0.9, marginTop: 2, lineHeight: 1.5 }}>권리 분석을 마친 물건만 지도에 올립니다. 위치·감정가·입찰 포인트를 확인하세요.</div>
+            </div>
           </div>
         </div>
+        <div style={{ padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <div style={{ fontSize: 12.5, color: T.sub }}>지도가 안 보이면 새 탭에서 열어주세요 →</div>
+          <a href={NOTION_ONEPICK_URL} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "none" }}>
+            <Btn small>새 탭에서 크게 보기 ↗</Btn>
+          </a>
+        </div>
       </Card>
-
-      <SectionTitle title="전체 랭킹" right={<Pill tone="line">{members.length}명</Pill>} />
-      <Card pad={0}>
-        {ranked.map((m, i) => {
-          const lv = levelOf(m.credits, settings);
-          return (
-            <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 16px", borderTop: i === 0 ? "none" : `1px solid ${T.line}`,
-              background: meMember.id === m.id ? T.gradSoft : "transparent" }}>
-              <div style={{ width: 22, textAlign: "center", fontWeight: 800, color: i < 3 ? T.coral : T.sub, fontVariantNumeric: "tabular-nums", fontSize: 13 }}>{i + 1}</div>
-              <div style={{ fontSize: 17 }}>{lv.icon}</div>
-              <div style={{ flex: 1, fontWeight: 700, fontSize: 14, letterSpacing: "-0.01em", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {m.name}{meMember.id === m.id && <span style={{ marginLeft: 6, fontSize: 11, color: T.peri, fontWeight: 800 }}>나</span>}
-              </div>
-              <UseBadge credits={m.credits} settings={settings} />
-              <Pill tone="soft" style={{ minWidth: 78, justifyContent: "center", fontSize: 12.5 }}>{m.credits.toLocaleString()}</Pill>
-            </div>
-          );
-        })}
+      <Card pad={0} style={{ overflow: "hidden" }}>
+        <iframe
+          src={NOTION_ONEPICK_URL}
+          style={{ width: "100%", height: "72vh", border: "none", display: "block" }}
+          title="원픽 경매 지도"
+          loading="lazy"
+        />
       </Card>
     </div>
   );
@@ -975,7 +1177,7 @@ function PublicPage({ members, ledger, log, insights, settings, viewer, onLogin,
               <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                 <Pill tone="soft" style={{ fontSize: 11.5 }}>{i.cat}</Pill>
                 <div style={{ fontWeight: 800, fontSize: 14.5, letterSpacing: "-0.01em", flex: 1 }}>{i.title}</div>
-                <Pill tone="line" style={{ fontSize: 11 }}>{i.date}</Pill>
+                <Pill tone="line" style={{ fontSize: 11 }}>{shortDate(i.date)}</Pill>
               </div>
               <div style={{ fontSize: 13, color: T.ink, lineHeight: 1.7, marginTop: 8 }}>{i.body}</div>
             </Card>
@@ -1012,7 +1214,6 @@ function PublicPage({ members, ledger, log, insights, settings, viewer, onLogin,
 
       <div style={{ fontWeight: 800, fontSize: 16, letterSpacing: "-0.02em", margin: "4px 2px 12px" }}>크레딧을 얻는 방법</div>
 
-      {/* 방법 1: 그로인 메이트 */}
       <Card pad={0} style={{ overflow: "hidden", marginBottom: 12 }}>
         <div style={{ background: T.gradSoft, padding: "16px 18px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -1040,7 +1241,6 @@ function PublicPage({ members, ledger, log, insights, settings, viewer, onLogin,
         </div>
       </Card>
 
-      {/* 방법 2: 활동 보상 */}
       <Card pad={0} style={{ overflow: "hidden", marginBottom: 12 }}>
         <div style={{ background: T.gradSoft, padding: "16px 18px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -1055,7 +1255,6 @@ function PublicPage({ members, ledger, log, insights, settings, viewer, onLogin,
           <div style={{ fontSize: 13, color: T.ink, lineHeight: 1.7, marginBottom: 14 }}>
             카톡방에서 진행되는 퀴즈, 낙찰가 맞추기, 톡강, 임장 인증 등 다양한 이벤트에 참여하고, 당첨되면 크레딧을 받을 수 있어요.
           </div>
-
           <div style={{ fontWeight: 800, fontSize: 13.5, letterSpacing: "-0.01em", marginBottom: 10 }}>분기 시상식 (3개월마다)</div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 14 }}>
             {[
@@ -1071,7 +1270,6 @@ function PublicPage({ members, ledger, log, insights, settings, viewer, onLogin,
               </div>
             ))}
           </div>
-
           <div style={{ fontWeight: 800, fontSize: 13.5, letterSpacing: "-0.01em", marginBottom: 10 }}>수시 이벤트</div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
             {EVENT_TYPES.map((e) => (
@@ -1080,7 +1278,7 @@ function PublicPage({ members, ledger, log, insights, settings, viewer, onLogin,
           </div>
           <div style={{ fontSize: 12.5, color: T.sub, marginTop: 10, lineHeight: 1.6 }}>
             이벤트 당첨 크레딧은 운영진이 카톡방 게임 결과를 보고 지급합니다.<br/>
-            꾸준히 참여하면 개근왕 시상 후보에도 가까워져요!
+            꾸준히 참여하면 성장 랭킹과 개근왕 시상에도 가까워져요!
           </div>
         </div>
       </Card>
@@ -1110,9 +1308,11 @@ function PublicPage({ members, ledger, log, insights, settings, viewer, onLogin,
               나가기
             </button>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10, flexWrap: "wrap" }}>
-            <Pill style={{ background: "rgba(255,255,255,.2)" }}>{myLevel.icon} {myLevel.name} · {myRank}위</Pill>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+            <Pill style={{ background: "rgba(255,255,255,.2)" }}>{myLevel.icon} {myLevel.name}</Pill>
+            <Pill style={{ background: "rgba(255,255,255,.2)" }}>크레딧 {myRank}위 · 성장 {myGrowthRank}위</Pill>
             <Pill style={{ background: "rgba(255,255,255,.2)" }}>{meMember.credits.toLocaleString()} 크레딧</Pill>
+            {meMember.staff && <Pill tone="gold">⭐ 운영진</Pill>}
             {canUse(meMember.credits, settings) && <Pill tone="coral">사용가능</Pill>}
           </div>
         </div>
@@ -1122,6 +1322,8 @@ function PublicPage({ members, ledger, log, insights, settings, viewer, onLogin,
         <TabBar />
         {ptab === "home" && <HomeTab />}
         {ptab === "ranking" && <RankingTab />}
+        {ptab === "growth" && <GrowthTab />}
+        {ptab === "onepick" && <OnePickTab />}
         {ptab === "insights" && <InsightsTab />}
         {ptab === "guide" && <GuideTab />}
 
@@ -1279,7 +1481,7 @@ function App() {
       if (live) newM = await api("addMember", { adminKey, realName, phone4 });
       else {
         const id = nid();
-        newM = { id, name: `${realName}/${phone4}`, realName, phone4, joined: today, founder: false, credits: 0, parts: 0, wins: 0, auctions: 0, bids: 0, invites: 0, code: `MATE-${realName.slice(-2)}-${phone4.slice(0, 2)}` };
+        newM = { id, name: `${realName}/${phone4}`, realName, phone4, joined: today, founder: false, credits: 0, parts: 0, wins: 0, auctions: 0, bids: 0, invites: 0, visits: 0, staff: false, code: `MATE-${realName.slice(-2)}-${phone4.slice(0, 2)}` };
       }
       setMembers((M) => [...M, newM]);
       say(`${realName}님 등록 완료 · 이제 입장 가능`);
@@ -1290,17 +1492,27 @@ function App() {
     try {
       let saved = { ...ev, id: nid(), date: today };
       if (live) saved = await api("logEvent", { adminKey, event: ev });
-      addCreditsLocal(saved.winners.map((w) => ({ m: w.m, amount: w.amount })));
+      addCreditsLocal(saved.winners.filter((w) => w.amount > 0).map((w) => ({ m: w.m, amount: w.amount })));
       const winSet = new Set(saved.winners.map((w) => w.m));
+      const isVisit = saved.type === "임장";
       setMembers((M) => M.map((m) => {
-        let np = m.parts, nw = m.wins;
-        if (saved.participants.includes(m.id)) np += 1;
+        let np = m.parts, nv = m.visits || 0, nw = m.wins;
+        if (saved.participants.includes(m.id)) { if (isVisit) nv += 1; else np += 1; }
         if (winSet.has(m.id)) nw += 1;
-        return (np !== m.parts || nw !== m.wins) ? { ...m, parts: np, wins: nw } : m;
+        return (np !== m.parts || nv !== (m.visits || 0) || nw !== m.wins) ? { ...m, parts: np, visits: nv, wins: nw } : m;
       }));
-      setLedger((L) => [...L, ...saved.winners.map((w) => ({ id: nid(), m: w.m, date: saved.date, type: saved.type, reason: `${saved.title} 당첨`, amount: w.amount }))]);
+      setLedger((L) => [...L, ...saved.winners.filter((w) => w.amount > 0).map((w) => ({ id: nid(), m: w.m, date: saved.date, type: saved.type, reason: `${saved.title} 당첨`, amount: w.amount }))]);
       setEventLog((E) => [saved, ...E]);
       say(`「${saved.title}」 참가 ${saved.participants.length}명 · 당첨 ${saved.winners.length}명 기록 완료`);
+    } catch (e) { fail(e); }
+  };
+
+  const onBumpStat = async (memberId, field) => {
+    try {
+      if (live) await api("bumpStat", { adminKey, memberId, field, delta: 1 });
+      setMembers((M) => M.map((m) => m.id === memberId ? { ...m, [field]: (m[field] || 0) + 1 } : m));
+      const labels = { auctions: "낙찰", bids: "입찰", visits: "임장" };
+      say(`${labels[field]} 기록 +1 완료`);
     } catch (e) { fail(e); }
   };
 
@@ -1412,7 +1624,7 @@ function App() {
             </div>
 
             {tab === "board" && <Leaderboard members={members} settings={settings} />}
-            {tab === "members" && <Members members={members} ledger={ledger} onAdjust={onAdjust} onAddMember={onAddMember} settings={settings} />}
+            {tab === "members" && <Members members={members} ledger={ledger} onAdjust={onAdjust} onAddMember={onAddMember} onBumpStat={onBumpStat} settings={settings} />}
             {tab === "events" && <Events members={members} log={eventLog} onLogEvent={onLogEvent} settings={settings} />}
             {tab === "mate" && <Mate members={members} onApprove={onApprove} settings={settings} />}
             {tab === "insights" && <Insights insights={insights} onAdd={onAddInsight} onDelete={onDeleteInsight} />}
