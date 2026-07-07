@@ -524,7 +524,7 @@ function Mate({ members, onApprove, settings }) {
   const [inviterId, setInviterId] = useState("");
   const [newbie, setNewbie] = useState("");
   const inviters = [...members].filter((m) => m.invites > 0).sort((a, b) => b.invites - a.invites);
-  const BASE_PRICE = 29000;
+  const BASE_PRICE = 39000;
   const paidPrice = Math.max(0, BASE_PRICE - settings.mateCoupon);
 
   return (
