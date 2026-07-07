@@ -46,9 +46,13 @@ const DEFAULT_SETTINGS = {
   mateReward: 5000,
   mateCoupon: 5000,
   minUse: 5000,
+  lv2Pts: 3,   // 등급 자동 업그레이드 기준 (활동 점수)
+  lv3Pts: 8,
+  lv4Pts: 15,
+  lv5Pts: 30,
 };
 
-/* 등급: 크레딧과 무관, 운영진이 수동 부여 (세부 기준 확정 전까지) */
+/* 등급: 활동 점수가 기준을 넘으면 자동 업그레이드 (기준은 관리자 설정에서 조정) */
 const LEVELS = [
   { lv: 1, icon: "🌱", name: "Lv.1" },
   { lv: 2, icon: "🌿", name: "Lv.2" },
@@ -57,8 +61,30 @@ const LEVELS = [
   { lv: 5, icon: "👑", name: "Lv.5" },
 ];
 
-const levelOf = (m) => LEVELS[Math.min(Math.max(Number(m && m.level) || 1, 1), 5) - 1];
+/* 자동 등급 기준 — App 렌더 시 settings 값으로 갱신됨 */
+let LEVEL_PTS = [DEFAULT_SETTINGS.lv2Pts, DEFAULT_SETTINGS.lv3Pts, DEFAULT_SETTINGS.lv4Pts, DEFAULT_SETTINGS.lv5Pts];
+const autoLevelOf = (m) => {
+  const gs = growthScore(m);
+  let lv = 1;
+  if (gs >= LEVEL_PTS[0]) lv = 2;
+  if (gs >= LEVEL_PTS[1]) lv = 3;
+  if (gs >= LEVEL_PTS[2]) lv = 4;
+  if (gs >= LEVEL_PTS[3]) lv = 5;
+  return lv;
+};
+/* 표시 등급 = 수동 지정 등급과 자동 등급 중 높은 쪽 (자동으로 내려가지 않음) */
+const effLevelNum = (m) => Math.max(Math.min(Math.max(Number(m && m.level) || 1, 1), 5), autoLevelOf(m));
+const levelOf = (m) => LEVELS[effLevelNum(m) - 1];
 const canUse = (c, S) => c >= S.minUse;
+
+/* 배지 — 조건 달성 시 자동 획득 */
+const BADGES = [
+  { k: "effort", icon: "🎓", name: "노력왕", desc: "그로인 랭킹 10위권 내 유지", earned: (m, ctx) => ctx.rank > 0 && ctx.rank <= 10 && ctx.gs > 0, status: (m, ctx) => ctx.gs > 0 ? `현재 ${ctx.rank}위` : "활동 전" },
+  { k: "quiz", icon: "📚", name: "퀴즈 마스터", desc: "퀴즈·이벤트 당첨 10회 이상", earned: (m) => (m.wins || 0) >= 10, status: (m) => `${m.wins || 0}/10` },
+  { k: "visit", icon: "👟", name: "임장 마스터", desc: "임장 인증 5회 이상", earned: (m) => (m.visits || 0) >= 5, status: (m) => `${m.visits || 0}/5` },
+  { k: "action", icon: "🏠", name: "실천왕", desc: "낙찰 1회 또는 입찰 3회 이상", earned: (m) => (m.auctions || 0) >= 1 || (m.bids || 0) >= 3, status: (m) => (m.auctions || 0) >= 1 ? "낙찰 달성" : `입찰 ${m.bids || 0}/3` },
+  { k: "mate", icon: "🤝", name: "그로인 메이트", desc: "메이트 1명 이상 초대", earned: (m) => (m.invites || 0) >= 1, status: (m) => `${m.invites || 0}/1` },
+];
 
 /* 성장 점수: 낙찰 5 · 입찰 1 · 임장 0.5 · 당첨 0.2 · 참가 0.1 */
 const GROWTH_RULES = [
@@ -107,22 +133,22 @@ const nid = () => ++_id;
 
 /* 시드 — realName + phone4 는 공개 페이지 입장 인증에 사용 */
 const SEED_MEMBERS = [
-  { id: 1, name: "채인홍/9275", realName: "채인홍", phone4: "9275", joined: "06-29", founder: true, credits: 11000, parts: 5, wins: 2, auctions: 0, bids: 0, invites: 1, visits: 0, staff: false, level: 1, code: "MATE-인홍-5W7A" },
-  { id: 2, name: "고수현/1618", realName: "고수현", phone4: "1618", joined: "06-29", founder: true, credits: 10000, parts: 4, wins: 0, auctions: 1, bids: 2, invites: 2, visits: 0, staff: false, level: 1, code: "MATE-수현-3F7K" },
-  { id: 3, name: "박신주/8911", realName: "박신주", phone4: "8911", joined: "06-29", founder: true, credits: 8000, parts: 4, wins: 1, auctions: 0, bids: 2, invites: 1, visits: 0, staff: false, level: 1, code: "MATE-신주-1Q9D" },
-  { id: 4, name: "김윤민/3302", realName: "김윤민", phone4: "3302", joined: "06-29", founder: true, credits: 5000, parts: 3, wins: 0, auctions: 1, bids: 1, invites: 1, visits: 0, staff: false, level: 1, code: "MATE-윤민-8K2P" },
-  { id: 5, name: "김민정/7714", realName: "김민정", phone4: "7714", joined: "06-29", founder: true, credits: 5000, parts: 3, wins: 0, auctions: 0, bids: 0, invites: 1, visits: 0, staff: false, level: 1, code: "MATE-민정-2Z4R" },
-  { id: 6, name: "이경아/0712", realName: "이경아", phone4: "0712", joined: "07-03", founder: false, credits: 3000, parts: 2, wins: 1, auctions: 0, bids: 0, invites: 0, visits: 0, staff: false, level: 1, code: "MATE-경아-1U8V" },
-  { id: 7, name: "이아름/0175", realName: "이아름", phone4: "0175", joined: "07-01", founder: false, credits: 3000, parts: 2, wins: 1, auctions: 0, bids: 0, invites: 0, visits: 0, staff: false, level: 1, code: "MATE-아름-8G1J" },
-  { id: 8, name: "조현이/5521", realName: "조현이", phone4: "5521", joined: "06-29", founder: true, credits: 0, parts: 3, wins: 0, auctions: 0, bids: 0, invites: 0, visits: 0, staff: false, level: 1, code: "MATE-현이-9V1M" },
-  { id: 9, name: "이동원/2304", realName: "이동원", phone4: "2304", joined: "06-30", founder: true, credits: 0, parts: 3, wins: 0, auctions: 0, bids: 0, invites: 0, visits: 0, staff: false, level: 1, code: "MATE-동원-6B3T" },
-  { id: 10, name: "신정아/9515", realName: "신정아", phone4: "9515", joined: "06-30", founder: true, credits: 0, parts: 2, wins: 0, auctions: 0, bids: 0, invites: 0, visits: 0, staff: false, level: 1, code: "MATE-정아-4H8S" },
-  { id: 11, name: "JOY/1004", realName: "JOY", phone4: "1004", joined: "06-29", founder: true, credits: 0, parts: 2, wins: 0, auctions: 0, bids: 0, invites: 0, visits: 0, staff: false, level: 1, code: "MATE-JOY-7N2K" },
-  { id: 12, name: "최지우/0778", realName: "최지우", phone4: "0778", joined: "06-30", founder: true, credits: 0, parts: 2, wins: 0, auctions: 0, bids: 0, invites: 0, visits: 0, staff: false, level: 1, code: "MATE-지우-3D6F" },
-  { id: 13, name: "윤미심/7221", realName: "윤미심", phone4: "7221", joined: "06-30", founder: true, credits: 0, parts: 1, wins: 0, auctions: 0, bids: 0, invites: 0, visits: 0, staff: false, level: 1, code: "MATE-미심-5L9C" },
-  { id: 14, name: "이유리/6849", realName: "이유리", phone4: "6849", joined: "06-30", founder: true, credits: 0, parts: 1, wins: 0, auctions: 0, bids: 0, invites: 0, visits: 0, staff: false, level: 1, code: "MATE-유리-2X7W" },
-  { id: 15, name: "이강근/8890", realName: "이강근", phone4: "8890", joined: "07-01", founder: false, credits: 0, parts: 1, wins: 0, auctions: 0, bids: 0, invites: 0, visits: 0, staff: false, level: 1, code: "MATE-강근-6R4E" },
-  { id: 16, name: "이동혁/7083", realName: "이동혁", phone4: "7083", joined: "07-01", founder: false, credits: 0, parts: 1, wins: 0, auctions: 0, bids: 1, invites: 0, visits: 0, staff: false, level: 1, code: "MATE-동혁-9P2Y" },
+  { id: 1, name: "채인홍/9275", realName: "채인홍", phone4: "9275", joined: "06-29", founder: true, credits: 11000, parts: 5, wins: 2, auctions: 0, bids: 0, invites: 1, visits: 0, staff: false, level: 1 },
+  { id: 2, name: "고수현/1618", realName: "고수현", phone4: "1618", joined: "06-29", founder: true, credits: 10000, parts: 4, wins: 0, auctions: 1, bids: 2, invites: 2, visits: 0, staff: false, level: 1 },
+  { id: 3, name: "박신주/8911", realName: "박신주", phone4: "8911", joined: "06-29", founder: true, credits: 8000, parts: 4, wins: 1, auctions: 0, bids: 2, invites: 1, visits: 0, staff: false, level: 1 },
+  { id: 4, name: "김윤민/3302", realName: "김윤민", phone4: "3302", joined: "06-29", founder: true, credits: 5000, parts: 3, wins: 0, auctions: 1, bids: 1, invites: 1, visits: 0, staff: false, level: 1 },
+  { id: 5, name: "김민정/7714", realName: "김민정", phone4: "7714", joined: "06-29", founder: true, credits: 5000, parts: 3, wins: 0, auctions: 0, bids: 0, invites: 1, visits: 0, staff: false, level: 1 },
+  { id: 6, name: "이경아/0712", realName: "이경아", phone4: "0712", joined: "07-03", founder: false, credits: 3000, parts: 2, wins: 1, auctions: 0, bids: 0, invites: 0, visits: 0, staff: false, level: 1 },
+  { id: 7, name: "이아름/0175", realName: "이아름", phone4: "0175", joined: "07-01", founder: false, credits: 3000, parts: 2, wins: 1, auctions: 0, bids: 0, invites: 0, visits: 0, staff: false, level: 1 },
+  { id: 8, name: "조현이/5521", realName: "조현이", phone4: "5521", joined: "06-29", founder: true, credits: 0, parts: 3, wins: 0, auctions: 0, bids: 0, invites: 0, visits: 0, staff: false, level: 1 },
+  { id: 9, name: "이동원/2304", realName: "이동원", phone4: "2304", joined: "06-30", founder: true, credits: 0, parts: 3, wins: 0, auctions: 0, bids: 0, invites: 0, visits: 0, staff: false, level: 1 },
+  { id: 10, name: "신정아/9515", realName: "신정아", phone4: "9515", joined: "06-30", founder: true, credits: 0, parts: 2, wins: 0, auctions: 0, bids: 0, invites: 0, visits: 0, staff: false, level: 1 },
+  { id: 11, name: "JOY/1004", realName: "JOY", phone4: "1004", joined: "06-29", founder: true, credits: 0, parts: 2, wins: 0, auctions: 0, bids: 0, invites: 0, visits: 0, staff: false, level: 1 },
+  { id: 12, name: "최지우/0778", realName: "최지우", phone4: "0778", joined: "06-30", founder: true, credits: 0, parts: 2, wins: 0, auctions: 0, bids: 0, invites: 0, visits: 0, staff: false, level: 1 },
+  { id: 13, name: "윤미심/7221", realName: "윤미심", phone4: "7221", joined: "06-30", founder: true, credits: 0, parts: 1, wins: 0, auctions: 0, bids: 0, invites: 0, visits: 0, staff: false, level: 1 },
+  { id: 14, name: "이유리/6849", realName: "이유리", phone4: "6849", joined: "06-30", founder: true, credits: 0, parts: 1, wins: 0, auctions: 0, bids: 0, invites: 0, visits: 0, staff: false, level: 1 },
+  { id: 15, name: "이강근/8890", realName: "이강근", phone4: "8890", joined: "07-01", founder: false, credits: 0, parts: 1, wins: 0, auctions: 0, bids: 0, invites: 0, visits: 0, staff: false, level: 1 },
+  { id: 16, name: "이동혁/7083", realName: "이동혁", phone4: "7083", joined: "07-01", founder: false, credits: 0, parts: 1, wins: 0, auctions: 0, bids: 1, invites: 0, visits: 0, staff: false, level: 1 },
 ];
 
 const SEED_LEDGER = [
@@ -277,7 +303,7 @@ function Leaderboard({ members, settings }) {
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontWeight: 700, fontSize: 14.5, letterSpacing: "-0.01em" }}>{m.name}
                   {m.staff && <span style={{ marginLeft: 6, fontSize: 10.5, fontWeight: 800, color: T.gold }}>⭐ 운영진</span>}
-                  {m.founder && <span style={{ marginLeft: 6, fontSize: 10.5, fontWeight: 800, color: T.peri }}>창립멤버</span>}
+                  {m.founder && <span style={{ marginLeft: 6, fontSize: 9.5, fontWeight: 700, color: "#9C7B2E", letterSpacing: "0.12em" }}>✦ 창립</span>}
                 </div>
                 <div style={{ height: 5, background: "#EDF1F0", borderRadius: 99, marginTop: 6, maxWidth: 220 }}>
                   <div style={{ height: 5, width: `${Math.min(100, (m.credits / max) * 100)}%`, background: T.grad, borderRadius: 99 }} />
@@ -306,7 +332,7 @@ function Leaderboard({ members, settings }) {
 }
 
 /* ── 멤버 관리 ── */
-function Members({ members, ledger, onAdjust, onAddMember, onBumpStat, onSetLevel, settings }) {
+function Members({ members, ledger, onAdjust, onAddMember, onBumpStat, onSetLevel, settings, staffOnly }) {
   const [q, setQ] = useState("");
   const [sel, setSel] = useState(null);
   const [amt, setAmt] = useState("");
@@ -338,7 +364,7 @@ function Members({ members, ledger, onAdjust, onAddMember, onBumpStat, onSetLeve
       <div style={{ display: "grid", gridTemplateColumns: sel ? "1.4fr 1fr" : "1fr", gap: 14, alignItems: "start" }}>
         <Card pad={0} style={{ overflow: "hidden" }}>
           <div style={{ display: "grid", gridTemplateColumns: "2fr .9fr .9fr .9fr 1.1fr", padding: "10px 18px", fontSize: 11.5, fontWeight: 800, color: T.sub, letterSpacing: "0.06em", background: "#FAFCFB", borderBottom: `1px solid ${T.line}` }}>
-            <div>멤버</div><div>가입</div><div>참가</div><div>초대</div><div style={{ textAlign: "right" }}>크레딧</div>
+            <div>멤버</div><div>가입</div><div>참가</div><div>초대</div><div style={{ textAlign: "right" }}>{staffOnly ? "등급" : "크레딧"}</div>
           </div>
           {list.map((m) => (
             <div key={m.id} onClick={() => { setSel(m.id === sel ? null : m.id); setAmt(""); setReason(""); }}
@@ -346,14 +372,18 @@ function Members({ members, ledger, onAdjust, onAddMember, onBumpStat, onSetLeve
                 borderBottom: `1px solid ${T.line}`, cursor: "pointer", background: sel === m.id ? T.gradSoft : "transparent" }}>
               <div style={{ fontWeight: 700, fontSize: 14, letterSpacing: "-0.01em", display: "flex", gap: 6, alignItems: "center" }}>
                 {levelOf(m).icon} {m.name}
-                {m.founder && <Pill tone="soft" style={{ fontSize: 10.5, padding: "1px 7px" }}>창립</Pill>}
+                {m.founder && <span style={{ fontSize: 8.5, fontWeight: 700, padding: "1.5px 6px", borderRadius: 999, letterSpacing: "0.14em", background: "linear-gradient(120deg,#FCF7EA,#F8F0DC)", color: "#9C7B2E", border: "1px solid rgba(176,142,62,.32)", whiteSpace: "nowrap" }}>✦ 창립</span>}
               </div>
               <div style={{ fontSize: 12.5, color: T.sub }}>{shortDate(m.joined)}</div>
               <div style={{ fontSize: 13, fontWeight: 700, color: m.parts ? T.ink : T.sub }}>{m.parts}회</div>
               <div style={{ fontSize: 13, fontWeight: 700, color: m.invites ? T.ink : T.sub }}>{m.invites}명</div>
               <div style={{ textAlign: "right", display: "flex", gap: 6, justifyContent: "flex-end", alignItems: "center" }}>
-                <UseBadge credits={m.credits} settings={settings} />
-                <span style={{ fontWeight: 800, fontVariantNumeric: "tabular-nums" }}>{m.credits.toLocaleString()}</span>
+                {staffOnly
+                  ? <span style={{ fontWeight: 800 }}>{levelOf(m).icon} {levelOf(m).name}</span>
+                  : <>
+                      <UseBadge credits={m.credits} settings={settings} />
+                      <span style={{ fontWeight: 800, fontVariantNumeric: "tabular-nums" }}>{m.credits.toLocaleString()}</span>
+                    </>}
               </div>
             </div>
           ))}
@@ -368,6 +398,12 @@ function Members({ members, ledger, onAdjust, onAddMember, onBumpStat, onSetLeve
             <div style={{ fontSize: 11.5, color: T.sub, marginBottom: 10 }}>
               공개 페이지 입장 정보: <b style={{ color: T.ink }}>{selMember.realName}</b> + <b style={{ color: T.ink }}>{selMember.phone4}</b>
             </div>
+            {staffOnly && (
+              <div style={{ padding: "10px 12px", background: "#FAFCFB", borderRadius: 12, border: `1px solid ${T.line}`, fontSize: 12, color: T.sub, lineHeight: 1.6 }}>
+                ⭐ 운영진 모드에서는 멤버 등록과 입장 정보 확인만 가능해요.<br/>크레딧·등급·실전 기록 관리는 관리자에게 요청해주세요.
+              </div>
+            )}
+            {!staffOnly && <>
             <div style={{ margin: "4px 0 10px", padding: "10px 12px", background: "#FAFCFB", borderRadius: 12, border: `1px solid ${T.line}` }}>
               <div style={{ fontSize: 12, fontWeight: 800, color: T.sub, marginBottom: 8 }}>실전 기록 (그로인 랭킹 반영)</div>
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -382,7 +418,7 @@ function Members({ members, ledger, onAdjust, onAddMember, onBumpStat, onSetLeve
               <div style={{ fontSize: 11, color: T.sub, marginTop: 6 }}>잘못 눌렀다면 구글 시트 멤버 탭에서 숫자를 직접 수정하세요.</div>
             </div>
             <div style={{ margin: "0 0 10px", padding: "10px 12px", background: "#FAFCFB", borderRadius: 12, border: `1px solid ${T.line}` }}>
-              <div style={{ fontSize: 12, fontWeight: 800, color: T.sub, marginBottom: 8 }}>등급 지정 (수동)</div>
+              <div style={{ fontSize: 12, fontWeight: 800, color: T.sub, marginBottom: 8 }}>등급 지정 (수동) <span style={{ fontWeight: 600 }}>· 활동 점수 기준 달성 시 자동으로도 올라가요 (표시는 둘 중 높은 등급)</span></div>
               <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
                 {LEVELS.map((lv) => (
                   <button key={lv.lv} onClick={() => onSetLevel(selMember.id, lv.lv)}
@@ -415,6 +451,7 @@ function Members({ members, ledger, onAdjust, onAddMember, onBumpStat, onSetLeve
                 <b style={{ color: l.amount >= 0 ? T.mint : T.coral, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>{l.amount >= 0 ? "+" : ""}{l.amount.toLocaleString()}</b>
               </div>
             ))}
+            </>}
           </Card>
         )}
       </div>
@@ -448,9 +485,11 @@ function Events({ members, log, onLogEvent, settings }) {
 
   const winners = Object.entries(winAmt).map(([id, amount]) => ({ m: Number(id), amount: Number(amount) || 0 }));
   const total = winners.reduce((s, w) => s + w.amount, 0);
-  const canSubmit = title.trim() && parts.length > 0 && winners.every((w) => w.amount >= 0); // 0 지급 허용 (기록만)
+  const canSubmit = parts.length > 0; // 0 지급 허용 (기록만) · 제목 미입력 시 자동 생성
   const submit = () => {
-    onLogEvent({ type, title: title.trim(), note: note.trim(), participants: parts, winners });
+    const d = new Date();
+    const autoTitle = `${d.getMonth() + 1}/${d.getDate()} ${typeMeta.label}`;
+    onLogEvent({ type, title: title.trim() || autoTitle, note: note.trim(), participants: parts, winners });
     setTitle(""); setNote(""); setParts([]); setWinAmt({}); setFilter("");
   };
   const typeMeta = EVENT_TYPES.find((e) => e.k === type);
@@ -536,7 +575,8 @@ function Events({ members, log, onLogEvent, settings }) {
 
           <div style={{ marginTop: 14, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
             <div style={{ fontSize: 13, color: T.sub }}>
-              {parts.length > 0 && <>참가 {parts.length}명 · 당첨 {winners.length}명 · 총 지급 <b style={{ color: T.ink }}>{total.toLocaleString()}</b> 크레딧</>}
+              {parts.length === 0 && <>참가자를 선택하면 기록할 수 있어요 · 크레딧 0 지급도 가능합니다</>}
+              {parts.length > 0 && <>참가 {parts.length}명 · 당첨 {winners.length}명 · 총 지급 <b style={{ color: T.ink }}>{total.toLocaleString()}</b> 크레딧{!title.trim() && <span style={{ display: "block", fontSize: 11.5, marginTop: 2 }}>제목 미입력 시 「{new Date().getMonth() + 1}/{new Date().getDate()} {typeMeta.label}」로 자동 저장</span>}</>}
             </div>
             <Btn disabled={!canSubmit} onClick={submit}>이벤트 기록 · 크레딧 지급</Btn>
           </div>
@@ -617,7 +657,7 @@ function Mate({ members, onApprove, settings }) {
         <Card pad={18}>
           <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 4 }}>소개 승인 처리</div>
           <div style={{ fontSize: 12, color: T.sub, marginBottom: 12, lineHeight: 1.6 }}>
-            래피드 결제 내역에서 신규 결제 + 소개 코드를 확인한 뒤, 여기서 승인하면 소개자에게 크레딧이 지급됩니다.
+            래피드 결제 내역에서 신규 결제를 확인하고, 소개자가 톡방에 알린 내용과 대조한 뒤 여기서 승인하면 소개자에게 크레딧이 지급됩니다.
           </div>
           <div style={{ fontSize: 12, fontWeight: 800, color: T.sub, marginBottom: 4 }}>소개한 멤버</div>
           <select value={inviterId} onChange={(e) => setInviterId(e.target.value)}
@@ -732,12 +772,24 @@ function Settings({ settings, setSettings }) {
         </Card>
 
         <Card pad={18}>
-          <div style={{ fontWeight: 800, fontSize: 15, letterSpacing: "-0.01em", marginBottom: 4 }}>등급 안내</div>
-          <div style={{ fontSize: 12, color: T.sub, marginBottom: 14, lineHeight: 1.6 }}>등급은 크레딧과 무관하며, 멤버 관리 탭에서 운영진이 수동으로 지정합니다. 세부 기준을 확정하면 자동화할 수 있어요.</div>
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-            {LEVELS.map((lv) => (
-              <Pill key={lv.lv} tone="line" style={{ fontSize: 12.5 }}>{lv.icon} {lv.name}</Pill>
-            ))}
+          <div style={{ fontWeight: 800, fontSize: 15, letterSpacing: "-0.01em", marginBottom: 4 }}>등급 자동 업그레이드 기준</div>
+          <div style={{ fontSize: 12, color: T.sub, marginBottom: 14, lineHeight: 1.6 }}>
+            활동 점수(낙찰 5 · 입찰 1 · 임장 0.5 · 당첨 0.2 · 참가 0.1)가 아래 기준을 넘으면 등급이 자동으로 올라갑니다.
+            멤버 관리에서 수동으로 더 높은 등급을 지정하면 그 등급이 유지됩니다.
+          </div>
+          {[
+            ["lv2Pts", "🌿 Lv.2 달성 점수"],
+            ["lv3Pts", "🌳 Lv.3 달성 점수"],
+            ["lv4Pts", "⭐ Lv.4 달성 점수"],
+            ["lv5Pts", "👑 Lv.5 달성 점수"],
+          ].map(([k, label]) => (
+            <label key={k} style={{ display: "block", marginBottom: 10 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 700, color: T.sub, marginBottom: 4 }}>{label}</div>
+              <Input type="number" value={draft[k]} onChange={(e) => setDraft({ ...draft, [k]: Number(e.target.value) || 0 })} style={{ width: "100%" }} />
+            </label>
+          ))}
+          <div style={{ fontSize: 11, color: T.sub, lineHeight: 1.6 }}>
+            💡 3개월 시즌 · 매일 퀴즈+낙찰가 진행 기준: 개근만 하면 약 18점(참가 0.1×180회), 입찰·임장을 병행하면 Lv.4~5 도달 가능하도록 기본값을 잡았어요.
           </div>
         </Card>
       </div>
@@ -746,6 +798,7 @@ function Settings({ settings, setSettings }) {
         <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 8 }}>현재 규칙 요약</div>
         <div style={{ fontSize: 12.5, color: T.sub, lineHeight: 1.7 }}>
           1 크레딧 = 1원 · 최소 <b style={{ color: T.ink }}>{draft.minUse.toLocaleString()}</b> 크레딧부터 결제 시 사용 · 메이트 소개 성공 시 소개자에게 <b style={{ color: T.coral }}>+{draft.mateReward.toLocaleString()}</b>, 소개받은 사람에게 <b style={{ color: T.coral }}>{draft.mateCoupon.toLocaleString()}원 쿠폰</b>. 이벤트 크레딧은 관리자가 직접 지급.
+          <br/>등급 자동 업그레이드: 활동 점수 <b style={{ color: T.ink }}>Lv.2 {draft.lv2Pts}점 · Lv.3 {draft.lv3Pts}점 · Lv.4 {draft.lv4Pts}점 · Lv.5 {draft.lv5Pts}점</b> 달성 시.
         </div>
         <div style={{ display: "flex", gap: 8, marginTop: 14, justifyContent: "flex-end" }}>
           <Btn small tone="ghost" onClick={reset}>기본값으로 복원</Btn>
@@ -875,6 +928,20 @@ function PublicPage({ members, ledger, log, insights, settings, viewer, onLogin,
 
   const StaffBadge = ({ m }) => m.staff ? <Pill tone="gold" style={{ fontSize: 10.5, padding: "1px 8px" }}>⭐ 운영진</Pill> : null;
 
+  /* 창립멤버 배지 — 샴페인 골드 · 작고 고급스럽게 */
+  const FounderBadge = ({ m, onDark }) => m.founder ? (
+    <span title="창립멤버 · 그로인의 시작을 함께한 분" style={{
+      display: "inline-flex", alignItems: "center", gap: 3, flexShrink: 0, whiteSpace: "nowrap",
+      fontSize: 8.5, fontWeight: 700, padding: "1.5px 6px 1.5px 7px", borderRadius: 999,
+      letterSpacing: "0.16em", textIndent: "0.05em",
+      background: onDark ? "rgba(255,248,228,.16)" : "linear-gradient(120deg,#FCF7EA,#F8F0DC)",
+      color: onDark ? "#F7EACB" : "#9C7B2E",
+      border: onDark ? "1px solid rgba(247,234,203,.45)" : "1px solid rgba(176,142,62,.32)",
+      boxShadow: onDark ? "none" : "inset 0 1px 0 rgba(255,255,255,.85)" }}>
+      <span style={{ fontSize: 7.5, letterSpacing: 0 }}>✦</span>창립
+    </span>
+  ) : null;
+
   /* 랭킹 행 (공용) */
   const RankRow = ({ m, i, value, valueLabel, highlight }) => {
     const lv = levelOf(m);
@@ -885,6 +952,7 @@ function PublicPage({ members, ledger, log, insights, settings, viewer, onLogin,
         <div style={{ fontSize: 17 }}>{lv.icon}</div>
         <div style={{ flex: 1, fontWeight: 700, fontSize: 14, letterSpacing: "-0.01em", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 6 }}>
           <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{m.name}</span>
+          <FounderBadge m={m} />
           <StaffBadge m={m} />
           {meMember.id === m.id && <span style={{ fontSize: 11, color: T.peri, fontWeight: 800 }}>나</span>}
         </div>
@@ -908,7 +976,7 @@ function PublicPage({ members, ledger, log, insights, settings, viewer, onLogin,
               <div style={{ fontSize: 22 }}>{rank === 1 ? "🥇" : rank === 2 ? "🥈" : "🥉"}</div>
               <div style={{ fontWeight: 800, fontSize: 12.5, letterSpacing: "-0.02em", marginTop: 3, lineHeight: 1.25,
                 overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {m.realName}{m.staff ? " ⭐" : ""}
+                {m.realName}{m.founder ? <span style={{ fontSize: 9, color: idx === 1 ? "#F7EACB" : "#B08E3E", marginLeft: 3, verticalAlign: "1px" }}>✦</span> : null}{m.staff ? " ⭐" : ""}
               </div>
             </div>
             <div style={{ fontWeight: 800, fontSize: 12.5, fontVariantNumeric: "tabular-nums",
@@ -935,7 +1003,7 @@ function PublicPage({ members, ledger, log, insights, settings, viewer, onLogin,
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
             {growthRanked.slice(0, 3).map((m, i) => (
               <Pill key={m.id} tone={i === 0 ? "grad" : "soft"} style={{ fontSize: 12.5 }}>
-                {i === 0 ? "🥇" : i === 1 ? "🥈" : "🥉"} {m.realName}
+                {i === 0 ? "🥇" : i === 1 ? "🥈" : "🥉"} {m.realName}{m.founder ? <span style={{ fontSize: 9, color: i === 0 ? "#F7EACB" : "#B08E3E", marginLeft: 3, verticalAlign: "1px" }}>✦</span> : null}
               </Pill>
             ))}
             <span style={{ fontSize: 12, color: T.sub }}>낙찰 · 입찰 · 임장 · 이벤트 활동 종합</span>
@@ -1006,7 +1074,7 @@ function PublicPage({ members, ledger, log, insights, settings, viewer, onLogin,
               <div>
                 <div style={{ fontSize: 26 }}>{myLevel.icon}</div>
                 <div style={{ fontWeight: 800, fontSize: 18, letterSpacing: "-0.02em", marginTop: 2, display: "flex", alignItems: "center", gap: 6 }}>
-                  {meMember.name} <StaffBadge m={meMember} />
+                  {meMember.name} <FounderBadge m={meMember} /> <StaffBadge m={meMember} />
                 </div>
                 <div style={{ fontSize: 12.5, color: T.sub, marginTop: 2 }}>{myLevel.name} · 크레딧 {myRank}위 · 그로인 {myGrowthRank}위</div>
               </div>
@@ -1017,21 +1085,54 @@ function PublicPage({ members, ledger, log, insights, settings, viewer, onLogin,
               </div>
             </div>
 
-            {/* 내 활동 카운터 */}
+            {/* 내 활동 카운터 (컴팩트) */}
             <div style={{ marginTop: 14 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
                 <div style={{ fontSize: 12, fontWeight: 800, color: T.sub }}>내 활동 기록</div>
                 <Pill tone="coral" style={{ fontSize: 11.5 }}>그로인 랭킹 {myGrowthRank}위</Pill>
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 6 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 5 }}>
                 {GROWTH_RULES.map((r) => (
-                  <div key={r.k} style={{ background: "#fff", borderRadius: 10, padding: "8px 4px", textAlign: "center", border: `1px solid ${T.line}` }}>
-                    <div style={{ fontSize: 16 }}>{r.icon}</div>
-                    <div style={{ fontWeight: 800, fontSize: 15, fontVariantNumeric: "tabular-nums", marginTop: 2 }}>{meMember[r.k] || 0}</div>
-                    <div style={{ fontSize: 10, color: T.sub, fontWeight: 700 }}>{r.label}</div>
+                  <div key={r.k} style={{ background: "#fff", borderRadius: 9, padding: "5px 2px", textAlign: "center", border: `1px solid ${T.line}` }}>
+                    <div style={{ fontSize: 13, lineHeight: 1.2 }}>{r.icon} <b style={{ fontSize: 13.5, fontVariantNumeric: "tabular-nums" }}>{meMember[r.k] || 0}</b></div>
+                    <div style={{ fontSize: 9.5, color: T.sub, fontWeight: 700, marginTop: 1 }}>{r.label}</div>
                   </div>
                 ))}
               </div>
+            </div>
+
+            {/* 내 배지 */}
+            <div style={{ marginTop: 12 }}>
+              {(() => {
+                const ctx = { rank: myGrowthRank, gs: growthScore(meMember) };
+                const earnedCount = BADGES.filter((b) => b.earned(meMember, ctx)).length;
+                return (
+                  <>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                      <div style={{ fontSize: 12, fontWeight: 800, color: T.sub }}>내 배지</div>
+                      <Pill tone="line" style={{ fontSize: 11 }}>{earnedCount}/{BADGES.length} 획득</Pill>
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 5 }}>
+                      {BADGES.map((b) => {
+                        const on = b.earned(meMember, ctx);
+                        return (
+                          <div key={b.k} title={b.desc} style={{
+                            background: on ? T.gradSoft : "#fff", borderRadius: 9, padding: "6px 2px", textAlign: "center",
+                            border: on ? `1.5px solid rgba(111,123,224,.45)` : `1px solid ${T.line}`,
+                            opacity: on ? 1 : 0.55, filter: on ? "none" : "grayscale(1)" }}>
+                            <div style={{ fontSize: 17 }}>{b.icon}</div>
+                            <div style={{ fontSize: 9.5, fontWeight: 800, marginTop: 1, letterSpacing: "-0.02em" }}>{b.name}</div>
+                            <div style={{ fontSize: 9, color: on ? T.peri : T.sub, fontWeight: 700, marginTop: 1 }}>{on ? "✓ 달성" : b.status(meMember, ctx)}</div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div style={{ fontSize: 10, color: T.sub, marginTop: 5, lineHeight: 1.6 }}>
+                      🎓 랭킹 10위권 · 📚 당첨 10회 · 👟 임장 5회 · 🏠 낙찰 1회 or 입찰 3회 · 🤝 메이트 초대 1회
+                    </div>
+                  </>
+                );
+              })()}
             </div>
 
             <div style={{ marginTop: 14 }}>
@@ -1056,7 +1157,7 @@ function PublicPage({ members, ledger, log, insights, settings, viewer, onLogin,
               <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 16px", background: T.gradSoft, borderTop: `1px solid ${T.line}` }}>
                 <div style={{ width: 22, textAlign: "center", fontWeight: 800, color: T.sub, fontSize: 13 }}>{myRank}</div>
                 <div style={{ fontSize: 17 }}>{myLevel.icon}</div>
-                <div style={{ flex: 1, fontWeight: 700, fontSize: 14 }}>{meMember.name} <span style={{ fontSize: 11, color: T.peri, fontWeight: 800 }}>나</span></div>
+                <div style={{ flex: 1, fontWeight: 700, fontSize: 14, display: "flex", alignItems: "center", gap: 6 }}>{meMember.name} <FounderBadge m={meMember} /> <span style={{ fontSize: 11, color: T.peri, fontWeight: 800 }}>나</span></div>
                 <Pill tone="soft" style={{ minWidth: 78, justifyContent: "center", fontSize: 12.5 }}>{meMember.credits.toLocaleString()}</Pill>
               </div>
             </>
@@ -1091,6 +1192,7 @@ function PublicPage({ members, ledger, log, insights, settings, viewer, onLogin,
                 <div style={{ fontSize: 17 }}>{lv.icon}</div>
                 <div style={{ flex: 1, fontWeight: 700, fontSize: 14, letterSpacing: "-0.01em", minWidth: 0, display: "flex", alignItems: "center", gap: 6 }}>
                   <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.name}</span>
+                  <FounderBadge m={m} />
                   <StaffBadge m={m} />
                   {meMember.id === m.id && <span style={{ fontSize: 11, color: T.peri, fontWeight: 800 }}>나</span>}
                 </div>
@@ -1111,7 +1213,7 @@ function PublicPage({ members, ledger, log, insights, settings, viewer, onLogin,
               <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 16px", background: T.gradSoft, borderTop: `1px solid ${T.line}` }}>
                 <div style={{ width: 22, textAlign: "center", fontWeight: 800, color: T.sub, fontSize: 13 }}>{myGrowthRank}</div>
                 <div style={{ fontSize: 17 }}>{myLevel.icon}</div>
-                <div style={{ flex: 1, fontWeight: 700, fontSize: 14 }}>{meMember.name} <span style={{ fontSize: 11, color: T.peri, fontWeight: 800 }}>나</span></div>
+                <div style={{ flex: 1, fontWeight: 700, fontSize: 14, display: "flex", alignItems: "center", gap: 6 }}>{meMember.name} <FounderBadge m={meMember} /> <span style={{ fontSize: 11, color: T.peri, fontWeight: 800 }}>나</span></div>
                 <div style={{ display: "flex", gap: 4, fontSize: 12, fontWeight: 700, color: T.sub }}>
                   {(meMember.auctions||0) > 0 && <span>🏆{meMember.auctions}</span>}
                   {(meMember.bids||0) > 0 && <span>📝{meMember.bids}</span>}
@@ -1143,7 +1245,7 @@ function PublicPage({ members, ledger, log, insights, settings, viewer, onLogin,
           <div style={{ position: "absolute", bottom: -60, left: -40, width: 180, height: 180, background: "rgba(255,255,255,.07)", borderRadius: "50%" }} />
           <div style={{ position: "relative" }}>
             <div style={{ fontSize: 52 }}>🗺</div>
-            <div style={{ fontSize: 20, fontWeight: 800, letterSpacing: "-0.02em", marginTop: 10 }}>해피테크가 엄선한 이번 주 추천 물건</div>
+            <div style={{ fontSize: 20, fontWeight: 800, letterSpacing: "-0.02em", marginTop: 10 }}>해피테크가 엄선한 이번달 추천 물건</div>
             <div style={{ fontSize: 13.5, opacity: 0.92, marginTop: 6, lineHeight: 1.6 }}>
               권리 분석을 마친 물건만 지도에 올립니다.<br/>위치 · 감정가 · 입찰 포인트를 한눈에 확인하세요.
             </div>
@@ -1246,7 +1348,10 @@ function PublicPage({ members, ledger, log, insights, settings, viewer, onLogin,
               </div>
             ))}
           </div>
-          <div style={{ fontSize: 11.5, color: T.sub, marginTop: 8 }}>등급은 그로인 활동을 종합해 운영진이 부여합니다.</div>
+          <div style={{ fontSize: 11.5, color: T.sub, marginTop: 8 }}>등급은 그로인 활동으로 올릴 수 있습니다.</div>
+          <div style={{ fontSize: 11, color: T.sub, marginTop: 4 }}>
+            활동 점수 기준 · Lv.2 {Number(settings.lv2Pts) || 3}점 · Lv.3 {Number(settings.lv3Pts) || 8}점 · Lv.4 {Number(settings.lv4Pts) || 15}점 · Lv.5 {Number(settings.lv5Pts) || 30}점
+          </div>
         </div>
       </Card>
 
@@ -1346,6 +1451,7 @@ function PublicPage({ members, ledger, log, insights, settings, viewer, onLogin,
             <Pill style={{ background: "rgba(255,255,255,.2)" }}>{myLevel.icon} {myLevel.name}</Pill>
             <Pill style={{ background: "rgba(255,255,255,.2)" }}>크레딧 {myRank}위 · 그로인 {myGrowthRank}위</Pill>
             <Pill style={{ background: "rgba(255,255,255,.2)" }}>{meMember.credits.toLocaleString()} 크레딧</Pill>
+            {meMember.founder && <Pill style={{ background: "rgba(255,248,228,.18)", border: "1px solid rgba(247,234,203,.5)", color: "#F7EACB", fontSize: 11.5, letterSpacing: "0.08em" }}>✦ 창립멤버</Pill>}
             {meMember.staff && <Pill tone="gold">⭐ 운영진</Pill>}
             {canUse(meMember.credits, settings) && <Pill tone="coral">사용가능</Pill>}
           </div>
@@ -1445,7 +1551,8 @@ function App() {
   const [insights, setInsights] = useState(live ? [] : SEED_INSIGHTS);
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [viewer, setViewer] = useState(null);
-  const [adminKey, setAdminKey] = useState(null); // 관리자 PIN (인증 후 보관)
+  const [adminKey, setAdminKey] = useState(null); // 관리자/운영진 PIN (인증 후 보관)
+  const [adminRole, setAdminRole] = useState(null); // "admin" | "staff"
   const [pinPrompt, setPinPrompt] = useState(false);
   const [pinInput, setPinInput] = useState("");
   const [pinErr, setPinErr] = useState("");
@@ -1454,11 +1561,19 @@ function App() {
   const say = (msg) => { setToast(msg); setTimeout(() => setToast(null), 2800); };
   const today = new Date().toISOString().slice(5, 10);
 
+  /* 등급 자동 업그레이드 기준을 설정값과 동기화 */
+  LEVEL_PTS = [
+    Number(settings.lv2Pts) || DEFAULT_SETTINGS.lv2Pts,
+    Number(settings.lv3Pts) || DEFAULT_SETTINGS.lv3Pts,
+    Number(settings.lv4Pts) || DEFAULT_SETTINGS.lv4Pts,
+    Number(settings.lv5Pts) || DEFAULT_SETTINGS.lv5Pts,
+  ];
+
   async function refresh(key) {
     try {
       const d = await api("all", { adminKey: key || adminKey || undefined });
       setMembers(d.members); setLedger(d.ledger); setEventLog(d.events);
-      setInsights(d.insights); if (d.settings) setSettings(d.settings);
+      setInsights(d.insights); if (d.settings) setSettings({ ...DEFAULT_SETTINGS, ...d.settings });
       setPhase("ready");
     } catch (e) { setPhase("error"); }
   }
@@ -1479,15 +1594,17 @@ function App() {
 
   /* ── 관리자 진입 ── */
   const wantAdmin = () => {
-    if (!live) { setMode("admin"); return; } // 데모는 자유 입장
+    if (!live) { setAdminRole("admin"); setMode("admin"); return; } // 데모는 자유 입장
     if (adminKey) { setMode("admin"); return; }
     setPinPrompt(true); setPinInput(""); setPinErr("");
   };
   const tryPin = async () => {
     try {
-      await api("adminLogin", { pin: pinInput });
-      setAdminKey(pinInput); setPinPrompt(false); setMode("admin");
-      refresh(pinInput); // 관리자 키로 재조회 (전화번호 포함)
+      const r = await api("adminLogin", { pin: pinInput });
+      const role = (r && r.role) || "admin";
+      setAdminKey(pinInput); setAdminRole(role); setPinPrompt(false); setMode("admin");
+      setTab(role === "staff" ? "members" : "board");
+      refresh(pinInput); // 인증 키로 재조회 (전화번호 포함)
     } catch (e) { setPinErr(e.message); }
   };
 
@@ -1515,7 +1632,7 @@ function App() {
       if (live) newM = await api("addMember", { adminKey, realName, phone4 });
       else {
         const id = nid();
-        newM = { id, name: `${realName}/${phone4}`, realName, phone4, joined: today, founder: false, credits: 0, parts: 0, wins: 0, auctions: 0, bids: 0, invites: 0, visits: 0, staff: false, level: 1, code: `MATE-${realName.slice(-2)}-${phone4.slice(0, 2)}` };
+        newM = { id, name: `${realName}/${phone4}`, realName, phone4, joined: today, founder: false, credits: 0, parts: 0, wins: 0, auctions: 0, bids: 0, invites: 0, visits: 0, staff: false, level: 1 };
       }
       setMembers((M) => [...M, newM]);
       say(`${realName}님 등록 완료 · 이제 입장 가능`);
@@ -1591,10 +1708,13 @@ function App() {
 
   const total = members.reduce((s, m) => s + m.credits, 0);
   const usable = members.filter((m) => canUse(m.credits, settings)).length;
+  const isStaff = adminRole === "staff";
+  const STAFF_TABS = ["members", "insights"]; // 운영진 허용 탭 (크레딧 관련 제외)
   const TABS = [
     ["board", "리더보드"], ["members", "멤버 관리"], ["events", "데일리 이벤트"],
     ["mate", "그로인 메이트"], ["insights", "인사이트"], ["awards", "시상식"], ["settings", "설정"],
-  ];
+  ].filter(([k]) => !isStaff || STAFF_TABS.includes(k));
+  const effTab = TABS.some(([k]) => k === tab) ? tab : TABS[0][0];
   const shellFont = { fontFamily: `-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Pretendard","Noto Sans KR","Malgun Gothic",sans-serif`, WebkitFontSmoothing: "antialiased" };
 
   if (phase === "loading") return (
@@ -1638,14 +1758,18 @@ function App() {
             <div style={{ maxWidth: 980, margin: "0 auto" }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
                 <div>
-                  <div style={{ fontSize: 11.5, fontWeight: 800, letterSpacing: "0.16em", opacity: 0.9 }}>해피테크 · GROW IN · ADMIN</div>
+                  <div style={{ fontSize: 11.5, fontWeight: 800, letterSpacing: "0.16em", opacity: 0.9 }}>해피테크 · GROW IN · {isStaff ? "STAFF" : "ADMIN"}</div>
                   <div style={{ fontSize: 27, fontWeight: 800, letterSpacing: "-0.03em", marginTop: 2 }}>그로인 커뮤니티</div>
-                  <div style={{ fontSize: 13, opacity: 0.9, marginTop: 3 }}>1 크레딧 = 1원 · {settings.minUse.toLocaleString()} 크레딧부터 결제 시 사용 가능</div>
+                  <div style={{ fontSize: 13, opacity: 0.9, marginTop: 3 }}>{isStaff ? "운영진 모드 · 멤버 등록과 인사이트를 관리할 수 있어요" : `1 크레딧 = 1원 · ${settings.minUse.toLocaleString()} 크레딧부터 결제 시 사용 가능`}</div>
                 </div>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                   <Pill style={{ background: "rgba(255,255,255,.18)", fontSize: 12.5 }}>멤버 {members.length}명</Pill>
-                  <Pill style={{ background: "rgba(255,255,255,.18)", fontSize: 12.5 }}>사용가능 {usable}명</Pill>
-                  <Pill tone="coral" style={{ fontSize: 12.5 }}>누적 {total.toLocaleString()} 크레딧</Pill>
+                  {isStaff
+                    ? <Pill tone="gold" style={{ fontSize: 12.5 }}>⭐ 운영진</Pill>
+                    : <>
+                        <Pill style={{ background: "rgba(255,255,255,.18)", fontSize: 12.5 }}>사용가능 {usable}명</Pill>
+                        <Pill tone="coral" style={{ fontSize: 12.5 }}>누적 {total.toLocaleString()} 크레딧</Pill>
+                      </>}
                   {live && <button onClick={() => refresh()} title="시트에서 다시 불러오기"
                     style={{ border: "1px solid rgba(255,255,255,.4)", background: "transparent", color: "#fff", cursor: "pointer", borderRadius: 999, padding: "4px 12px", fontSize: 12, fontWeight: 700, fontFamily: "inherit" }}>↻ 동기화</button>}
                 </div>
@@ -1660,19 +1784,19 @@ function App() {
                 <button key={k} onClick={() => setTab(k)}
                   style={{ flex: "1 0 auto", border: "none", cursor: "pointer", padding: "10px 16px", borderRadius: 999,
                     fontWeight: 800, fontSize: 13.5, letterSpacing: "-0.01em", fontFamily: "inherit", whiteSpace: "nowrap",
-                    background: tab === k ? T.grad : "transparent", color: tab === k ? "#fff" : T.sub, transition: "all .15s ease" }}>
+                    background: effTab === k ? T.grad : "transparent", color: effTab === k ? "#fff" : T.sub, transition: "all .15s ease" }}>
                   {label}
                 </button>
               ))}
             </div>
 
-            {tab === "board" && <Leaderboard members={members} settings={settings} />}
-            {tab === "members" && <Members members={members} ledger={ledger} onAdjust={onAdjust} onAddMember={onAddMember} onBumpStat={onBumpStat} onSetLevel={onSetLevel} settings={settings} />}
-            {tab === "events" && <Events members={members} log={eventLog} onLogEvent={onLogEvent} settings={settings} />}
-            {tab === "mate" && <Mate members={members} onApprove={onApprove} settings={settings} />}
-            {tab === "insights" && <Insights insights={insights} onAdd={onAddInsight} onDelete={onDeleteInsight} />}
-            {tab === "awards" && <Awards members={members} settings={settings} />}
-            {tab === "settings" && <Settings settings={settings} setSettings={persistSettings} />}
+            {effTab === "board" && <Leaderboard members={members} settings={settings} />}
+            {effTab === "members" && <Members members={members} ledger={ledger} onAdjust={onAdjust} onAddMember={onAddMember} onBumpStat={onBumpStat} onSetLevel={onSetLevel} settings={settings} staffOnly={isStaff} />}
+            {effTab === "events" && <Events members={members} log={eventLog} onLogEvent={onLogEvent} settings={settings} />}
+            {effTab === "mate" && <Mate members={members} onApprove={onApprove} settings={settings} />}
+            {effTab === "insights" && <Insights insights={insights} onAdd={onAddInsight} onDelete={onDeleteInsight} />}
+            {effTab === "awards" && <Awards members={members} settings={settings} />}
+            {effTab === "settings" && <Settings settings={settings} setSettings={persistSettings} />}
           </div>
         </>
       )}
@@ -1681,8 +1805,8 @@ function App() {
       {pinPrompt && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(28,35,51,.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 20 }}>
           <div style={{ background: "#fff", borderRadius: 20, padding: 24, width: "100%", maxWidth: 320, boxShadow: "0 20px 50px rgba(28,35,51,.35)" }}>
-            <div style={{ fontWeight: 800, fontSize: 16, letterSpacing: "-0.02em" }}>🛠 관리자 인증</div>
-            <div style={{ fontSize: 12.5, color: T.sub, margin: "6px 0 14px" }}>관리자 PIN을 입력하세요.</div>
+            <div style={{ fontWeight: 800, fontSize: 16, letterSpacing: "-0.02em" }}>🛠 관리자 · 운영진 인증</div>
+            <div style={{ fontSize: 12.5, color: T.sub, margin: "6px 0 14px" }}>관리자 PIN 또는 운영진 PIN을 입력하세요.<br/><span style={{ fontSize: 11.5 }}>운영진 PIN으로는 멤버 등록·인사이트만 관리할 수 있어요.</span></div>
             <Input type="password" value={pinInput} inputMode="numeric"
               onChange={(e) => { setPinInput(e.target.value); setPinErr(""); }}
               onKeyDown={(e) => e.key === "Enter" && pinInput && tryPin()}
