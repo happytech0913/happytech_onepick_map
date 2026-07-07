@@ -1124,30 +1124,56 @@ function PublicPage({ members, ledger, log, insights, settings, viewer, onLogin,
   const OnePickTab = () => (
     <div>
       <SectionTitle eyebrow="매주 업데이트" title="원픽 경매 지도" right={<Pill tone="coral">멤버 전용</Pill>} />
-      <Card pad={0} style={{ overflow: "hidden", marginBottom: 12 }}>
-        <div style={{ background: T.grad, padding: "16px 20px", color: "#fff" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <div style={{ fontSize: 32 }}>🗺</div>
-            <div>
-              <div style={{ fontSize: 16, fontWeight: 800, letterSpacing: "-0.02em" }}>해피테크가 엄선한 이번 주 추천 물건</div>
-              <div style={{ fontSize: 12.5, opacity: 0.9, marginTop: 2, lineHeight: 1.5 }}>권리 분석을 마친 물건만 지도에 올립니다. 위치·감정가·입찰 포인트를 확인하세요.</div>
+
+      {/* 메인 카드 */}
+      <Card pad={0} style={{ overflow: "hidden", marginBottom: 14 }}>
+        <div style={{ background: T.grad, padding: "36px 24px", color: "#fff", textAlign: "center", position: "relative", overflow: "hidden" }}>
+          <div style={{ position: "absolute", top: -50, right: -50, width: 200, height: 200, background: "rgba(255,255,255,.1)", borderRadius: "50%" }} />
+          <div style={{ position: "absolute", bottom: -60, left: -40, width: 180, height: 180, background: "rgba(255,255,255,.07)", borderRadius: "50%" }} />
+          <div style={{ position: "relative" }}>
+            <div style={{ fontSize: 52 }}>🗺</div>
+            <div style={{ fontSize: 20, fontWeight: 800, letterSpacing: "-0.02em", marginTop: 10 }}>해피테크가 엄선한 이번 주 추천 물건</div>
+            <div style={{ fontSize: 13.5, opacity: 0.92, marginTop: 6, lineHeight: 1.6 }}>
+              권리 분석을 마친 물건만 지도에 올립니다.<br/>위치 · 감정가 · 입찰 포인트를 한눈에 확인하세요.
             </div>
+            <div style={{ marginTop: 20 }}>
+              <a href={NOTION_ONEPICK_URL} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "none" }}>
+                <button style={{ border: "none", cursor: "pointer", background: "#fff", color: T.ink,
+                  borderRadius: 999, padding: "14px 28px", fontWeight: 800, fontSize: 15.5, fontFamily: "inherit",
+                  letterSpacing: "-0.01em", boxShadow: "0 8px 24px rgba(28,35,51,.25)" }}>
+                  🚀 원픽 지도 열기
+                </button>
+              </a>
+            </div>
+            <div style={{ fontSize: 11.5, opacity: 0.85, marginTop: 12 }}>새 탭에서 열립니다 · 로그인 불필요</div>
           </div>
         </div>
-        <div style={{ padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          <div style={{ fontSize: 12.5, color: T.sub }}>지도가 안 보이면 새 탭에서 열어주세요 →</div>
-          <a href={NOTION_ONEPICK_URL} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "none" }}>
-            <Btn small>새 탭에서 크게 보기 ↗</Btn>
-          </a>
-        </div>
       </Card>
-      <Card pad={0} style={{ overflow: "hidden" }}>
-        <iframe
-          src={NOTION_ONEPICK_URL}
-          style={{ width: "100%", height: "72vh", border: "none", display: "block" }}
-          title="원픽 경매 지도"
-          loading="lazy"
-        />
+
+      {/* 이용 안내 */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 10, marginBottom: 14 }}>
+        {[
+          { icon: "📍", title: "위치 확인", desc: "지도에서 물건 위치와 주변 환경을 확인" },
+          { icon: "💰", title: "감정가 · 최저가", desc: "핵심 가격 정보를 카드로 정리" },
+          { icon: "📝", title: "입찰 포인트", desc: "해피테크의 분석 코멘트 수록" },
+        ].map((c) => (
+          <Card key={c.title} pad={16} style={{ textAlign: "center" }}>
+            <div style={{ fontSize: 26 }}>{c.icon}</div>
+            <div style={{ fontWeight: 800, fontSize: 13.5, marginTop: 6, letterSpacing: "-0.01em" }}>{c.title}</div>
+            <div style={{ fontSize: 12, color: T.sub, marginTop: 4, lineHeight: 1.5 }}>{c.desc}</div>
+          </Card>
+        ))}
+      </div>
+
+      <Card pad={16} style={{ background: T.gradSoft, border: "none" }}>
+        <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+          <div style={{ fontSize: 20 }}>💡</div>
+          <div style={{ fontSize: 12.5, color: T.ink, lineHeight: 1.7 }}>
+            <b>이렇게 활용하세요</b> — 지도에서 관심 물건을 고르고, 임장을 다녀온 뒤 단톡방에 인증하면
+            <b style={{ color: T.coral }}> 임장 인증 0.5점</b>이 성장 랭킹에 쌓입니다.
+            실제 입찰(1점)과 낙찰(5점)까지 이어지면 이번 분기 <b>그로인 마스터</b>에 도전할 수 있어요!
+          </div>
+        </div>
       </Card>
     </div>
   );
