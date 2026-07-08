@@ -120,6 +120,7 @@ const shortDate = (s) => {
 };
 
 const NOTION_ONEPICK_URL = "https://handy-neon-1fc.notion.site/7-38f301b03fdc802fb2acf4f192a89bb0";
+const ONEPICK_MAP_URL = "https://happytech0913.github.io/happytech_onepick_map/growin_onepickmap.html";
 
 
 const EVENT_TYPES = [
@@ -254,7 +255,7 @@ const Input = (props) => (
    비워두면 데모 모드(새로고침 시 초기화)로 작동합니다.
    ───────────────────────────────────────────── */
 const CONFIG = {
-  API_URL: "https://script.google.com/macros/s/AKfycbz_TQCrc0dxcaKSS9LCCB84C22Kzt2qYgwRRMSJxYLzmAw3oHWZIdtDA9t8owkCch2s/exec", // 예: "https://script.google.com/macros/s/AKfycb.../exec"
+  API_URL: "https://script.google.com/macros/s/AKfycbz_TQCrc0dxcaKSS9LCCB84C22Kzt2qYgwRRMSJxYLzmAw3oHWZIdtDA9t8owkCch2s/exec",
 };
 const LIVE = () => !!CONFIG.API_URL;
 
@@ -1250,47 +1251,63 @@ function PublicPage({ members, ledger, log, insights, settings, viewer, onLogin,
     <div>
       <SectionTitle eyebrow="매월 업데이트" title="원픽 경매 지도" right={<Pill tone="coral">멤버 전용</Pill>} />
 
-      {/* 메인 카드 */}
+      {/* 타이틀 히어로 */}
       <Card pad={0} style={{ overflow: "hidden", marginBottom: 14 }}>
-        <div style={{ background: T.grad, padding: "36px 24px", color: "#fff", textAlign: "center", position: "relative", overflow: "hidden" }}>
-          <div style={{ position: "absolute", top: -50, right: -50, width: 200, height: 200, background: "rgba(255,255,255,.1)", borderRadius: "50%" }} />
-          <div style={{ position: "absolute", bottom: -60, left: -40, width: 180, height: 180, background: "rgba(255,255,255,.07)", borderRadius: "50%" }} />
+        <div style={{ background: T.grad, padding: "24px 22px", color: "#fff", position: "relative", overflow: "hidden" }}>
+          <div style={{ position: "absolute", top: -50, right: -50, width: 180, height: 180, background: "rgba(255,255,255,.1)", borderRadius: "50%" }} />
           <div style={{ position: "relative" }}>
-            <div style={{ fontSize: 52 }}>🗺</div>
-            <div style={{ fontSize: 20, fontWeight: 800, letterSpacing: "-0.02em", marginTop: 10 }}>해피테크가 엄선한 이번달 추천 물건</div>
-            <div style={{ fontSize: 13.5, opacity: 0.92, marginTop: 6, lineHeight: 1.6 }}>
-              권리 분석을 마친 물건만 지도에 올립니다.<br/>위치 · 감정가 · 입찰 포인트를 한눈에 확인하세요.
-            </div>
-            <div style={{ marginTop: 20 }}>
-              <a href={NOTION_ONEPICK_URL} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "none" }}>
-                <button style={{ border: "none", cursor: "pointer", background: "#fff", color: T.ink,
-                  borderRadius: 999, padding: "14px 28px", fontWeight: 800, fontSize: 15.5, fontFamily: "inherit",
-                  letterSpacing: "-0.01em", boxShadow: "0 8px 24px rgba(28,35,51,.25)" }}>
-                  🚀 원픽 지도 열기
-                </button>
-              </a>
-            </div>
-            <div style={{ fontSize: 11.5, opacity: 0.85, marginTop: 12 }}>새 탭에서 열립니다</div>
+            <div style={{ fontSize: 11.5, fontWeight: 800, letterSpacing: "0.14em", opacity: 0.9 }}>해피테크</div>
+            <div style={{ fontSize: 19, fontWeight: 800, letterSpacing: "-0.02em", marginTop: 4 }}>🗓️ {new Date().getMonth() + 1}월 실거주 원픽!</div>
+            <div style={{ fontSize: 13.5, opacity: 0.92, marginTop: 4 }}>경매로 내 집 마련 추천 물건</div>
+          </div>
+        </div>
+        {/* 해피테크의 코멘트 */}
+        <div style={{ padding: "14px 18px", display: "flex", gap: 10, alignItems: "flex-start" }}>
+          <div style={{ fontSize: 18 }}>💡</div>
+          <div style={{ fontSize: 12.5, color: T.ink, lineHeight: 1.7 }}>
+            <b>해피테크의 코멘트</b> — 경매는 위험하고 어렵다는 편견, 이제 버리셔도 좋습니다.
+            오직 '안전한 내 집 마련'을 목표로, <b style={{ color: T.coral }}>권리분석상 100% 깨끗한 무결점 물건</b>만 선별해 추천해드립니다!
           </div>
         </div>
       </Card>
 
-      {/* 이용 안내 */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 10, marginBottom: 14 }}>
-        {[
-          { icon: "📍", title: "위치 확인", desc: "지도에서 물건 위치와 주변 환경을 확인" },
-          { icon: "💰", title: "감정가 · 최저가", desc: "핵심 가격 정보를 카드로 정리" },
-          { icon: "📝", title: "입찰 포인트", desc: "해피테크의 분석 코멘트 수록" },
-        ].map((c) => (
-          <Card key={c.title} pad={16} style={{ textAlign: "center" }}>
-            <div style={{ fontSize: 26 }}>{c.icon}</div>
-            <div style={{ fontWeight: 800, fontSize: 13.5, marginTop: 6, letterSpacing: "-0.01em" }}>{c.title}</div>
-            <div style={{ fontSize: 12, color: T.sub, marginTop: 4, lineHeight: 1.5 }}>{c.desc}</div>
-          </Card>
-        ))}
+      {/* 지도 임베드 */}
+      <Card pad={0} style={{ overflow: "hidden", marginBottom: 8 }}>
+        <iframe
+          src={ONEPICK_MAP_URL}
+          title="해피테크 원픽 경매 지도"
+          loading="lazy"
+          style={{ display: "block", width: "100%", height: "64vh", minHeight: 400, maxHeight: 680, border: "none" }}
+        />
+      </Card>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 14, padding: "0 2px" }}>
+        <div style={{ fontSize: 11.5, color: T.sub }}>👆 지도의 각 지역 물건들을 터치하면 볼 수 있습니다.</div>
+        <a href={ONEPICK_MAP_URL} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "none", flexShrink: 0 }}>
+          <Pill tone="line" style={{ fontSize: 11.5, cursor: "pointer" }}>⛶ 새 탭에서 크게 보기</Pill>
+        </a>
       </div>
 
-      <Card pad={16} style={{ background: T.gradSoft, border: "none" }}>
+      {/* 물건 선정 기준 */}
+      <Card pad={18} style={{ marginBottom: 14 }}>
+        <div style={{ fontWeight: 800, fontSize: 14.5, letterSpacing: "-0.01em" }}>🔍 해피테크의 실거주 원픽! 물건 선정 기준</div>
+        <div style={{ fontSize: 12, color: T.sub, marginTop: 4, marginBottom: 12 }}>권리상 안전한 물건만 소개합니다. 아래 체크리스트를 통해 선별합니다.</div>
+        {[
+          ["말소기준권리 파악 완료", "매각 후 모든 권리 깨끗하게 소멸!"],
+          ["임차인 분석 완료", "낙찰자가 추가로 인수할 보증금 ZERO"],
+          ["서류상 하자 없음", "등기부등본 및 매각물건명세서상 특이사항 없음"],
+        ].map(([t, d]) => (
+          <div key={t} style={{ display: "flex", gap: 9, alignItems: "flex-start", padding: "7px 0", borderBottom: `1px solid ${T.line}` }}>
+            <div style={{ fontSize: 13, flexShrink: 0 }}>✔️</div>
+            <div style={{ fontSize: 12.5, lineHeight: 1.55 }}><b>{t}</b> · <span style={{ color: T.sub }}>{d}</span></div>
+          </div>
+        ))}
+        <div style={{ marginTop: 12, padding: "10px 12px", background: T.gradSoft, borderRadius: 12, fontSize: 12.5, fontWeight: 700, lineHeight: 1.6 }}>
+          👉 임장 후 가격만 정해서 입찰하면 되는 깨끗한 물건!
+        </div>
+      </Card>
+
+      {/* 그로인 연계 팁 */}
+      <Card pad={16} style={{ background: T.gradSoft, border: "none", marginBottom: 14 }}>
         <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
           <div style={{ fontSize: 20 }}>💡</div>
           <div style={{ fontSize: 12.5, color: T.ink, lineHeight: 1.7 }}>
@@ -1300,6 +1317,12 @@ function PublicPage({ members, ledger, log, insights, settings, viewer, onLogin,
           </div>
         </div>
       </Card>
+
+      {/* 면책 · 저작권 */}
+      <div style={{ fontSize: 10.5, color: T.sub, lineHeight: 1.7, padding: "0 4px" }}>
+        ◉ 해당 자료는 참고용 자료이며, 본 자료를 이용한 투자에 대한 책임은 전적으로 본인에게 있습니다.<br/>
+        Copyright © 해피테크 All Rights Reserved. 본 화면의 무단 캡처, 이미지 도용 및 상업적 이용을 엄격히 금합니다.
+      </div>
     </div>
   );
 
