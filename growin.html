@@ -792,7 +792,7 @@ function Insights({ insights, onAdd, onDelete, onUpload }) {
                                 setUploading(false);
                                 if (url) setImg(url);
                             } })),
-                    React.createElement(Input, { value: yt, onChange: (e) => setYt(e.target.value), placeholder: "\uC720\uD29C\uBE0C \uB9C1\uD06C (\uC120\uD0DD)", style: { flex: "1 1 200px", background: "#fff" } })),
+                    React.createElement(Input, { value: yt, onChange: (e) => setYt(e.target.value), placeholder: "\uC601\uC0C1 \uB9C1\uD06C \u2014 \uC720\uD29C\uBE0C\u00B7Vimeo (\uC120\uD0DD)", style: { flex: "1 1 200px", background: "#fff" } })),
                 img && (React.createElement("div", { style: { marginTop: 10, display: "flex", alignItems: "flex-start", gap: 8 } },
                     React.createElement("img", { src: img, alt: "\uCCA8\uBD80 \uBBF8\uB9AC\uBCF4\uAE30", style: { maxWidth: 180, maxHeight: 120, borderRadius: 10, border: `1px solid ${T.line}`, display: "block" } }),
                     React.createElement("button", { onClick: () => setImg(""), title: "\uC0AC\uC9C4 \uC81C\uAC70",
@@ -842,15 +842,26 @@ function resizeImage(file, maxW = 1280) {
         reader.readAsDataURL(file);
     });
 }
-/* ── 유튜브 URL → 영상 ID ── */
-function ytId(url) {
-    const m = String(url || "").match(/(?:youtu\.be\/|v=|shorts\/|embed\/|live\/)([A-Za-z0-9_-]{11})/);
-    return m ? m[1] : "";
+/* ── 영상 링크 파싱: 유튜브 · Vimeo(유료 다시보기 포함) 지원 ── */
+function videoInfo(url) {
+    const u = String(url || "").trim();
+    if (!u)
+        return null;
+    const y = u.match(/(?:youtu\.be\/|v=|shorts\/|embed\/|live\/)([A-Za-z0-9_-]{11})/);
+    if (y)
+        return { type: "YouTube", src: `https://www.youtube.com/embed/${y[1]}?autoplay=1`, thumb: `https://i.ytimg.com/vi/${y[1]}/hqdefault.jpg` };
+    const v = u.match(/vimeo\.com\/(?:video\/)?(\d+)(?:\/([A-Za-z0-9]+))?/);
+    if (v) {
+        // 비공개(unlisted) 영상은 URL 뒤의 해시(h)가 있어야 재생됨 — 경로 또는 ?h= 어느 쪽이든 인식
+        const h = v[2] || (u.match(/[?&]h=([A-Za-z0-9]+)/) || [])[1];
+        return { type: "Vimeo", src: `https://player.vimeo.com/video/${v[1]}?${h ? "h=" + h + "&" : ""}autoplay=1`, thumb: "" };
+    }
+    return null;
 }
-/* ── 인사이트 미디어: 사진(지연 로딩) + 유튜브(클릭 전엔 썸네일만 → 가벼움) ── */
+/* ── 인사이트 미디어: 사진(지연 로딩) + 영상(클릭 전엔 로드 안 함 → 가벼움) ── */
 function InsightMedia({ img, yt }) {
     const [play, setPlay] = useState(false);
-    const vid = ytId(yt);
+    const vid = videoInfo(yt);
     if (!img && !vid)
         return null;
     return (React.createElement("div", { style: { marginTop: 10, display: "grid", gap: 8 } },
@@ -859,16 +870,20 @@ function InsightMedia({ img, yt }) {
                 style: { width: "100%", maxHeight: 380, objectFit: "cover", borderRadius: 12, border: `1px solid ${T.line}`, display: "block", background: "#F3F6F5" } }))),
         vid && (play
             ? React.createElement("div", { style: { position: "relative", paddingTop: "56.25%", borderRadius: 12, overflow: "hidden", background: "#000" } },
-                React.createElement("iframe", { src: `https://www.youtube.com/embed/${vid}?autoplay=1`, title: "유튜브 영상",
+                React.createElement("iframe", { src: vid.src, title: `${vid.type} 영상`,
                     allow: "autoplay; encrypted-media; picture-in-picture", allowFullScreen: true,
                     style: { position: "absolute", inset: 0, width: "100%", height: "100%", border: "none" } }))
             : React.createElement("button", { onClick: () => setPlay(true), title: "영상 재생",
-                style: { position: "relative", padding: 0, border: "none", cursor: "pointer", borderRadius: 12, overflow: "hidden", background: "#000", display: "block", width: "100%" } },
-                React.createElement("img", { src: `https://i.ytimg.com/vi/${vid}/hqdefault.jpg`, alt: "영상 썸네일", loading: "lazy",
-                    style: { width: "100%", display: "block", opacity: 0.85 } }),
+                style: { position: "relative", padding: 0, border: "none", cursor: "pointer", borderRadius: 12, overflow: "hidden",
+                    background: "linear-gradient(120deg,#1C2333,#2A3550)", display: "block", width: "100%" } },
+                vid.thumb
+                    ? React.createElement("img", { src: vid.thumb, alt: "영상 썸네일", loading: "lazy", style: { width: "100%", display: "block", opacity: 0.85 } })
+                    : React.createElement("div", { style: { paddingTop: "56.25%" } }),
                 React.createElement("span", { style: { position: "absolute", top: "50%", left: "50%", transform: "translate(-50%,-50%)",
-                        background: "rgba(28,35,51,.65)", borderRadius: 999, width: 58, height: 58,
-                        display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, color: "#fff" } }, "▶")))));
+                        display: "flex", flexDirection: "column", alignItems: "center", gap: 8, whiteSpace: "nowrap" } },
+                    React.createElement("span", { style: { background: "rgba(28,35,51,.65)", border: "1px solid rgba(255,255,255,.35)", borderRadius: 999, width: 58, height: 58,
+                            display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, color: "#fff" } }, "▶"),
+                    React.createElement("span", { style: { color: "rgba(255,255,255,.9)", fontSize: 12, fontWeight: 800 } }, `${vid.type} 영상 재생`))))));
 }
 /* ── 인사이트 본문 — 줄바꿈 그대로 표시 · 긴 글은 접고 '더보기' ── */
 function InsightBody({ body, clamp = 4 }) {
@@ -881,62 +896,9 @@ function InsightBody({ body, clamp = 4 }) {
             style: { marginTop: 8, cursor: "pointer", border: `1px solid ${T.line}`, background: "#FAFCFB", color: T.sub,
                 borderRadius: 999, padding: "4px 12px", fontSize: 11.5, fontWeight: 800, fontFamily: "inherit" } }, open ? "접기 ▲" : "더보기 ▼"))));
 }
-/* ── 비밀번호 변경 모달 (멤버 본인 · 숫자 4자리) ── */
-function PwModal({ onChangePw, onClose }) {
-    const [cur, setCur] = useState("");
-    const [nw, setNw] = useState("");
-    const [nw2, setNw2] = useState("");
-    const [error, setError] = useState("");
-    const [busy, setBusy] = useState(false);
-    const [done, setDone] = useState(false);
-    const only4 = (v) => v.replace(/[^0-9]/g, "").slice(0, 4);
-    const ready = cur.length === 4 && nw.length === 4 && nw2.length === 4 && !busy;
-    const submit = async () => {
-        if (nw !== nw2) { setError("새 비밀번호가 서로 달라요. 다시 확인해주세요."); return; }
-        if (nw === cur) { setError("현재 비밀번호와 다른 숫자로 정해주세요."); return; }
-        setBusy(true);
-        setError("");
-        const r = await onChangePw(cur, nw);
-        setBusy(false);
-        if (r.ok) setDone(true);
-        else setError(r.error || "변경에 실패했어요. 잠시 후 다시 시도해주세요.");
-    };
-    /* 주의: 컴포넌트가 아니라 함수 호출로 렌더 (매 렌더마다 리마운트되어 포커스가 풀리는 문제 방지) */
-    const field = (label, value, set, autoFocus) => (React.createElement(React.Fragment, { key: label },
-        React.createElement("div", { style: { fontSize: 12, fontWeight: 800, color: T.sub, marginBottom: 4 } }, label),
-        React.createElement(Input, { type: "password", inputMode: "numeric", maxLength: 4, value: value, autoFocus: autoFocus,
-            onChange: (e) => { set(only4(e.target.value)); setError(""); },
-            style: { width: "100%", boxSizing: "border-box", marginBottom: 12, letterSpacing: "0.3em", fontWeight: 800 } })));
-    return (React.createElement("div", { style: { position: "fixed", inset: 0, background: "rgba(28,35,51,.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 20 } },
-        React.createElement("div", { style: { background: "#fff", borderRadius: 20, padding: 24, width: "100%", maxWidth: 340, boxShadow: "0 20px 50px rgba(28,35,51,.35)" } }, done
-            ? React.createElement(React.Fragment, null,
-                React.createElement("div", { style: { fontSize: 30, textAlign: "center" } }, "✅"),
-                React.createElement("div", { style: { fontWeight: 800, fontSize: 16, letterSpacing: "-0.02em", textAlign: "center", marginTop: 8 } }, "비밀번호 변경 완료"),
-                React.createElement("div", { style: { fontSize: 12.5, color: T.sub, textAlign: "center", margin: "8px 0 16px", lineHeight: 1.6 } },
-                    "다음 입장부터 새 비밀번호 4자리를 사용하세요.",
-                    React.createElement("br", null),
-                    "잊어버리면 운영진에게 초기화를 요청할 수 있어요."),
-                React.createElement(Btn, { style: { width: "100%" }, onClick: onClose }, "확인"))
-            : React.createElement(React.Fragment, null,
-                React.createElement("div", { style: { fontWeight: 800, fontSize: 16, letterSpacing: "-0.02em" } }, "🔒 비밀번호 변경"),
-                React.createElement("div", { style: { fontSize: 12, color: T.sub, margin: "6px 0 14px", lineHeight: 1.6 } },
-                    "입장에 사용할 비밀번호를 원하는 숫자 4자리로 바꿀 수 있어요.",
-                    React.createElement("br", null),
-                    "아직 바꾼 적이 없다면 현재 비밀번호는 ",
-                    React.createElement("b", { style: { color: T.ink } }, "전화번호 뒷 4자리"),
-                    "예요."),
-                field("현재 비밀번호", cur, setCur, true),
-                field("새 비밀번호 (숫자 4자리)", nw, setNw, false),
-                field("새 비밀번호 확인", nw2, setNw2, false),
-                error && (React.createElement("div", { style: { padding: "10px 12px", background: "rgba(225,95,80,.08)", border: `1px solid rgba(225,95,80,.25)`, borderRadius: 10, fontSize: 12.5, color: T.coral, fontWeight: 700, lineHeight: 1.5, marginBottom: 4 } }, error)),
-                React.createElement("div", { style: { display: "flex", gap: 8, marginTop: 10 } },
-                    React.createElement(Btn, { small: true, tone: "ghost", style: { flex: 1 }, onClick: onClose }, "취소"),
-                    React.createElement(Btn, { small: true, style: { flex: 1 }, disabled: !ready, onClick: submit }, busy ? "변경 중..." : "변경하기"))))));
-}
 /* ── 공개 조회 페이지 (탭 대시보드) ── */
 function PublicPage({ members, ledger, log, insights, settings, viewer, onLogin, onLogout, onChangePw }) {
     const [ptab, setPtab] = useState("home");
-    const [pwOpen, setPwOpen] = useState(false);
     /* 선택된 탭이 화면 밖에 있으면 탭바를 자동 스크롤해 보이게 함 */
     useEffect(() => {
         const el = document.getElementById("ptab-" + ptab);
@@ -944,7 +906,7 @@ function PublicPage({ members, ledger, log, insights, settings, viewer, onLogin,
             el.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
     }, [ptab, viewer]);
     if (!viewer)
-        return React.createElement(Gate, { onLogin: onLogin });
+        return React.createElement(Gate, { onLogin: onLogin, onChangePw: onChangePw });
     const ranked = [...members].sort((a, b) => b.credits - a.credits);
     const growthRanked = [...members].map((m) => ({ ...m, gs: growthScore(m) })).sort((a, b) => b.gs - a.gs);
     const meMember = members.find((m) => m.id === viewer);
@@ -1425,11 +1387,7 @@ function PublicPage({ members, ledger, log, insights, settings, viewer, onLogin,
                         meMember.credits.toLocaleString(),
                         " \uD06C\uB808\uB527"),
                     meMember.founder && React.createElement(Pill, { style: { background: "rgba(255,248,228,.18)", border: "1px solid rgba(247,234,203,.5)", color: "#F7EACB", fontSize: 11.5, letterSpacing: "0.08em" } }, "\u2726 \uCC3D\uB9BD\uBA64\uBC84"),
-                    meMember.staff && React.createElement(Pill, { tone: "gold" }, "\u2B50 \uC6B4\uC601\uC9C4"),
-                    React.createElement("button", { onClick: () => setPwOpen(true), title: "\uC785\uC7A5 \uBE44\uBC00\uBC88\uD638 \uBCC0\uACBD",
-                        style: { display: "inline-flex", alignItems: "center", gap: 4, background: "rgba(255,255,255,.14)",
-                            border: "1px solid rgba(255,255,255,.35)", color: "#fff", cursor: "pointer", borderRadius: 999,
-                            padding: "3px 11px", fontSize: 12.5, fontWeight: 800, fontFamily: "inherit", whiteSpace: "nowrap" } }, "\uD83D\uDD12 \uBE44\uBC00\uBC88\uD638 \uBCC0\uACBD")))),
+                    meMember.staff && React.createElement(Pill, { tone: "gold" }, "\u2B50 \uC6B4\uC601\uC9C4")))),
         React.createElement("div", { style: { maxWidth: 720, margin: "-18px auto 0", padding: "0 16px 60px" } },
             React.createElement(TabBar, null),
             ptab === "home" && React.createElement(HomeTab, null),
@@ -1441,15 +1399,20 @@ function PublicPage({ members, ledger, log, insights, settings, viewer, onLogin,
             React.createElement("div", { style: { textAlign: "center", color: T.sub, fontSize: 11.5, marginTop: 24, lineHeight: 1.7 } },
                 "\uD574\uD53C\uD14C\uD06C \u00B7 \uADF8\uB85C\uC778 \uBA64\uBC84\uC2ED",
                 React.createElement("br", null),
-                "\uD568\uAED8 \uC131\uC7A5\uD558\uB294 \uACF3 \uD83C\uDF31")),
-        pwOpen && React.createElement(PwModal, { onChangePw: onChangePw, onClose: () => setPwOpen(false) })));
+                "\uD568\uAED8 \uC131\uC7A5\uD558\uB294 \uACF3 \uD83C\uDF31"))));
 }
 /* ── 공개 페이지 입장 게이트 (이름 + 비밀번호 4자리 · 초기값은 전화 뒷4자리) ── */
-function Gate({ onLogin }) {
+function Gate({ onLogin, onChangePw }) {
+    const [mode, setMode] = useState("login"); // login | pw (비밀번호 변경)
     const [name, setName] = useState("");
     const [p4, setP4] = useState("");
+    const [cur, setCur] = useState("");
+    const [nw, setNw] = useState("");
+    const [nw2, setNw2] = useState("");
     const [error, setError] = useState("");
+    const [notice, setNotice] = useState("");
     const [busy, setBusy] = useState(false);
+    const only4 = (v) => v.replace(/[^0-9]/g, "").slice(0, 4);
     const tryEnter = async () => {
         setBusy(true);
         setError("");
@@ -1458,6 +1421,37 @@ function Gate({ onLogin }) {
         if (!r.ok)
             setError(r.error);
     };
+    /* 기존 데이터(이름+기존 비밀번호)가 일치할 때만 변경 — 검증은 서버에서 수행 */
+    const tryChange = async () => {
+        if (nw !== nw2) {
+            setError("변경할 비밀번호가 서로 달라요. 다시 확인해주세요.");
+            return;
+        }
+        if (nw === cur) {
+            setError("기존 비밀번호와 다른 숫자로 정해주세요.");
+            return;
+        }
+        setBusy(true);
+        setError("");
+        const r = await onChangePw(name.trim(), cur, nw);
+        setBusy(false);
+        if (r.ok) {
+            setMode("login");
+            setP4("");
+            setCur("");
+            setNw("");
+            setNw2("");
+            setNotice("비밀번호 변경 완료! 새 비밀번호로 입장해주세요.");
+        }
+        else
+            setError(r.error || "변경에 실패했어요. 잠시 후 다시 시도해주세요.");
+    };
+    const switchMode = (m) => { setMode(m); setError(""); setNotice(""); setP4(""); setCur(""); setNw(""); setNw2(""); };
+    const canChange = name.trim() && cur.length === 4 && nw.length === 4 && nw2.length === 4 && !busy;
+    const label = { fontSize: 12, fontWeight: 800, color: T.sub, marginBottom: 4 };
+    const pwInput = { width: "100%", boxSizing: "border-box", letterSpacing: "0.3em", fontWeight: 800 };
+    const linkBtn = { border: "none", background: "transparent", cursor: "pointer", color: T.sub, fontSize: 12, fontWeight: 700, fontFamily: "inherit", textDecoration: "underline", textUnderlineOffset: 3 };
+    const errBox = error && (React.createElement("div", { style: { marginTop: 12, padding: "10px 12px", background: "rgba(225,95,80,.08)", border: `1px solid rgba(225,95,80,.25)`, borderRadius: 10, fontSize: 12.5, color: T.coral, fontWeight: 700, lineHeight: 1.5 } }, error));
     return (React.createElement("div", { style: { minHeight: "calc(100vh - 32px)", background: T.grad, display: "flex", alignItems: "center", justifyContent: "center", padding: 20, position: "relative", overflow: "hidden" } },
         React.createElement("div", { style: { position: "absolute", top: -60, right: -60, width: 280, height: 280, background: "rgba(255,255,255,.08)", borderRadius: "50%" } }),
         React.createElement("div", { style: { position: "absolute", bottom: -80, left: -40, width: 240, height: 240, background: "rgba(255,255,255,.06)", borderRadius: "50%" } }),
@@ -1467,7 +1461,8 @@ function Gate({ onLogin }) {
                 React.createElement("div", { style: { fontSize: 11.5, fontWeight: 800, letterSpacing: "0.2em", opacity: 0.9, marginTop: 6 } }, "\uD574\uD53C\uD14C\uD06C \u00B7 GROW IN"),
                 React.createElement("div", { style: { fontSize: 24, fontWeight: 800, letterSpacing: "-0.03em", marginTop: 2 } }, "\uADF8\uB85C\uC778 \uCEE4\uBBA4\uB2C8\uD2F0"),
                 React.createElement("div", { style: { fontSize: 13, opacity: 0.9, marginTop: 4 } }, "\uD06C\uB808\uB527 \u00B7 \uB7AD\uD0B9 \u00B7 \uC778\uC0AC\uC774\uD2B8 \uC544\uCE74\uC774\uBE0C")),
-            React.createElement("div", { style: { background: "#fff", borderRadius: 20, padding: 24, boxShadow: "0 20px 50px rgba(28,35,51,.25)" } },
+            React.createElement("div", { style: { background: "#fff", borderRadius: 20, padding: 24, boxShadow: "0 20px 50px rgba(28,35,51,.25)" } }, mode === "login"
+                ? React.createElement(React.Fragment, null,
                 React.createElement("div", { style: { fontWeight: 800, fontSize: 15, letterSpacing: "-0.01em", marginBottom: 4 } }, "\uBA64\uBC84 \uD655\uC778"),
                 React.createElement("div", { style: { fontSize: 12, color: T.sub, marginBottom: 16, lineHeight: 1.5 } },
                     React.createElement("b", { style: { color: T.ink } }, "\uC774\uB984"),
@@ -1478,6 +1473,9 @@ function Gate({ onLogin }) {
                     "\uCC98\uC74C \uBE44\uBC00\uBC88\uD638\uB294 ",
                     React.createElement("b", { style: { color: T.ink } }, "\uACB0\uC81C \uC2DC \uC0AC\uC6A9\uD55C \uC804\uD654\uBC88\uD638 \uB4B7 4\uC790\uB9AC"),
                     "\uC608\uC694."),
+                notice && (React.createElement("div", { style: { marginBottom: 12, padding: "10px 12px", background: "rgba(53,201,168,.1)", border: "1px solid rgba(53,201,168,.35)", borderRadius: 10, fontSize: 12.5, color: "#1E8A72", fontWeight: 700, lineHeight: 1.5 } },
+                    "\u2705 ",
+                    notice)),
                 React.createElement("div", { style: { fontSize: 12, fontWeight: 800, color: T.sub, marginBottom: 4 } }, "\uC774\uB984"),
                 React.createElement(Input, { value: name, onChange: (e) => { setName(e.target.value); setError(""); }, placeholder: "\uC608: \uD64D\uAE38\uB3D9", style: { width: "100%", boxSizing: "border-box", marginBottom: 12 } }),
                 React.createElement("div", { style: { fontSize: 12, fontWeight: 800, color: T.sub, marginBottom: 4 } }, "\uBE44\uBC00\uBC88\uD638 4\uC790\uB9AC"),
@@ -1485,10 +1483,36 @@ function Gate({ onLogin }) {
                 error && (React.createElement("div", { style: { marginTop: 12, padding: "10px 12px", background: "rgba(225,95,80,.08)", border: `1px solid rgba(225,95,80,.25)`, borderRadius: 10, fontSize: 12.5, color: T.coral, fontWeight: 700, lineHeight: 1.5 } }, error)),
                 React.createElement("div", { style: { marginTop: 16 } },
                     React.createElement(Btn, { style: { width: "100%" }, disabled: !name.trim() || p4.length !== 4 || busy, onClick: tryEnter }, busy ? "확인 중..." : "입장하기")),
-                React.createElement("div", { style: { fontSize: 11, color: T.sub, textAlign: "center", marginTop: 12, lineHeight: 1.6 } },
-                    "\uBE44\uBC00\uBC88\uD638\uB294 \uC785\uC7A5 \uD6C4 \uC6D0\uD558\uB294 4\uC790\uB9AC\uB85C \uBC14\uAFC0 \uC218 \uC788\uC5B4\uC694.",
+                React.createElement("div", { style: { display: "flex", justifyContent: "center", marginTop: 12 } },
+                    React.createElement("button", { onClick: () => switchMode("pw"), style: linkBtn }, "\uD83D\uDD12 \uBE44\uBC00\uBC88\uD638 \uBCC0\uACBD")),
+                React.createElement("div", { style: { fontSize: 11, color: T.sub, textAlign: "center", marginTop: 8, lineHeight: 1.6 } },
+                    "\uC785\uC7A5\uC774 \uC548 \uB418\uAC70\uB098 \uBE44\uBC00\uBC88\uD638\uB97C \uC78A\uC73C\uC168\uB2E4\uBA74",
                     React.createElement("br", null),
-                    "\uC785\uC7A5\uC774 \uC548 \uB418\uAC70\uB098 \uBE44\uBC00\uBC88\uD638\uB97C \uC78A\uC73C\uC168\uB2E4\uBA74 \uB2E8\uD1A1\uBC29\uC5D0\uC11C \uD574\uD53C\uD14C\uD06C\uC5D0\uAC8C \uBB38\uC758\uD574\uC8FC\uC138\uC694.")))));
+                    "\uB2E8\uD1A1\uBC29\uC5D0\uC11C \uD574\uD53C\uD14C\uD06C\uC5D0\uAC8C \uBB38\uC758\uD574\uC8FC\uC138\uC694."))
+                : React.createElement(React.Fragment, null,
+                    React.createElement("div", { style: { fontWeight: 800, fontSize: 15, letterSpacing: "-0.01em", marginBottom: 4 } }, "\uD83D\uDD12 \uBE44\uBC00\uBC88\uD638 \uBCC0\uACBD"),
+                    React.createElement("div", { style: { fontSize: 12, color: T.sub, marginBottom: 16, lineHeight: 1.5 } },
+                        "\uB4F1\uB85D\uB41C ",
+                        React.createElement("b", { style: { color: T.ink } }, "\uC774\uB984"),
+                        "\uACFC ",
+                        React.createElement("b", { style: { color: T.ink } }, "\uAE30\uC874 \uBE44\uBC00\uBC88\uD638"),
+                        "\uAC00 \uC77C\uCE58\uD560 \uB54C\uB9CC \uBCC0\uACBD\uD560 \uC218 \uC788\uC5B4\uC694."),
+                    React.createElement("div", { style: label }, "\uC774\uB984"),
+                    React.createElement(Input, { value: name, onChange: (e) => { setName(e.target.value); setError(""); }, placeholder: "\uC608: \uD64D\uAE38\uB3D9", style: { width: "100%", boxSizing: "border-box", marginBottom: 12 } }),
+                    React.createElement("div", { style: label }, "\uAE30\uC874 \uBE44\uBC00\uBC88\uD638 (\uCC98\uC74C\uC5D4 \uC804\uD654 \uB4B7 4\uC790\uB9AC)"),
+                    React.createElement(Input, { value: cur, type: "password", inputMode: "numeric", maxLength: 4, onChange: (e) => { setCur(only4(e.target.value)); setError(""); }, placeholder: "\uC608: 1234", style: { ...pwInput, marginBottom: 12 } }),
+                    React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 } },
+                        React.createElement("div", null,
+                            React.createElement("div", { style: label }, "\uBCC0\uACBD\uD560 \uBE44\uBC00\uBC88\uD638"),
+                            React.createElement(Input, { value: nw, type: "password", inputMode: "numeric", maxLength: 4, onChange: (e) => { setNw(only4(e.target.value)); setError(""); }, placeholder: "\uC22B\uC790 4\uC790\uB9AC", style: pwInput })),
+                        React.createElement("div", null,
+                            React.createElement("div", { style: label }, "\uC7AC\uD655\uC778"),
+                            React.createElement(Input, { value: nw2, type: "password", inputMode: "numeric", maxLength: 4, onChange: (e) => { setNw2(only4(e.target.value)); setError(""); }, onKeyDown: (e) => e.key === "Enter" && canChange && tryChange(), placeholder: "\uD55C \uBC88 \uB354", style: pwInput }))),
+                    errBox,
+                    React.createElement("div", { style: { marginTop: 16 } },
+                        React.createElement(Btn, { style: { width: "100%" }, disabled: !canChange, onClick: tryChange }, busy ? "\uBCC0\uACBD \uC911..." : "\uBE44\uBC00\uBC88\uD638 \uBCC0\uACBD\uD558\uAE30")),
+                    React.createElement("div", { style: { display: "flex", justifyContent: "center", marginTop: 12 } },
+                        React.createElement("button", { onClick: () => switchMode("login"), style: linkBtn }, "\u2190 \uB85C\uADF8\uC778\uC73C\uB85C \uB3CC\uC544\uAC00\uAE30")))))));
 }
 /* ── 앱 셸 (구글 시트 연동 · 관리자 PIN) ── */
 function App() {
@@ -1580,20 +1604,20 @@ function App() {
             return { ok: false, error: e.message };
         }
     };
-    /* ── 비밀번호 변경 (멤버 본인) ── */
-    const onChangePw = async (currentPw, newPw) => {
-        const me = members.find((m) => m.id === viewer);
-        if (!me)
-            return { ok: false, error: "로그인 정보를 찾을 수 없어요. 다시 입장해주세요." };
+    /* ── 비밀번호 변경 (로그인 화면) — 이름 + 기존 비밀번호가 등록 정보와 일치할 때만 변경 ── */
+    const onChangePw = async (name, currentPw, newPw) => {
+        const n = String(name || "").trim();
+        if (!n)
+            return { ok: false, error: "이름을 입력해주세요" };
         if (!live) {
-            if ((me.pw || me.phone4) !== currentPw)
-                return { ok: false, error: "현재 비밀번호가 등록 정보와 달라요" };
+            const me = members.find((m) => m.realName === n && (m.pw || m.phone4) === currentPw);
+            if (!me)
+                return { ok: false, error: "이름 또는 기존 비밀번호가 등록 정보와 달라요" };
             setMembers((M) => M.map((m) => m.id === me.id ? { ...m, pw: newPw, pwCustom: true } : m));
             return { ok: true };
         }
         try {
-            await api("changePw", { name: me.realName, currentPw, newPw });
-            setMembers((M) => M.map((m) => m.id === me.id ? { ...m, pwCustom: true } : m));
+            await api("changePw", { name: n, currentPw, newPw }); // 서버에서 이름+기존 비밀번호 검증 (5회 실패 시 잠금)
             return { ok: true };
         }
         catch (e) {
