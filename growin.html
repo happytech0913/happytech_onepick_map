@@ -125,6 +125,12 @@ const imgsOf = (x) => {
 };
 const isPinned = (x) => !!x && (x.pin === true || x.pin === "TRUE" || x.pin === "true" || x.pin === 1);
 const sortPinned = (list) => list.map((x, i) => [x, i]).sort((a, b) => isPinned(b[0]) - isPinned(a[0]) || a[1] - b[1]).map(([x]) => x);
+const catFilters = (stdCats, items) => {
+  const present = Array.from(new Set(items.map((x) => x.cat).filter(Boolean)));
+  const known = stdCats.filter((c) => present.indexOf(c) >= 0);
+  const custom = present.filter((c) => stdCats.indexOf(c) < 0);
+  return ["전체", ...known, ...custom];
+};
 let _id = 500;
 const nid = () => ++_id;
 const SEED_MEMBERS = [
@@ -677,28 +683,20 @@ function PhotoUploadButton({ imgs, setImgs, onUpload, disabled }) {
     "×"
   )))));
 }
-function Insights({ insights, onAdd, onDelete, onUpload, onTogglePin }) {
-  const [cat, setCat] = useState(INSIGHT_CATS[0]);
-  const [title, setTitle] = useState("");
-  const [body, setBody] = useState("");
-  const [imgs, setImgs] = useState([]);
-  const [yt, setYt] = useState("");
-  const [pin, setPin] = useState(false);
-  const [filter, setFilter] = useState("전체");
-  const canSave = title.trim() && body.trim();
-  const list = sortPinned(filter === "전체" ? insights : insights.filter((i) => i.cat === filter));
-  return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(
-    SectionTitle,
-    {
-      eyebrow: "톡강 · 코멘트 · Q&A 정리",
-      title: "인사이트 아카이브",
-      right: /* @__PURE__ */ React.createElement(Pill, { tone: "line" }, "공개 페이지에 자동 게시")
-    }
-  ), /* @__PURE__ */ React.createElement(Card, { pad: 0, style: { overflow: "hidden", marginBottom: 14 } }, /* @__PURE__ */ React.createElement("div", { style: { background: T.grad, padding: "14px 20px", color: "#fff" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 15.5, fontWeight: 800, letterSpacing: "-0.02em" } }, "오늘의 인사이트를 남기세요"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12.5, opacity: 0.9, marginTop: 2 } }, "톡방에서 흘러간 좋은 코멘트가 멤버들의 자산이 됩니다.")), /* @__PURE__ */ React.createElement("div", { style: { padding: 18 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 } }, INSIGHT_CATS.map((c) => /* @__PURE__ */ React.createElement(
+function CatSelect({ cats, value, onChange }) {
+  const known = cats.indexOf(value) >= 0 && value !== "기타";
+  const [custom, setCustom] = useState(known ? "" : value && value !== "기타" ? value : "");
+  const customActive = !known;
+  const activeChip = known ? value : "기타";
+  const pick = (c) => {
+    if (c === "기타") onChange(custom.trim() || "기타");
+    else onChange(c);
+  };
+  return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 6, flexWrap: "wrap" } }, cats.map((c) => /* @__PURE__ */ React.createElement(
     "button",
     {
       key: c,
-      onClick: () => setCat(c),
+      onClick: () => pick(c),
       style: {
         cursor: "pointer",
         borderRadius: 999,
@@ -706,13 +704,55 @@ function Insights({ insights, onAdd, onDelete, onUpload, onTogglePin }) {
         fontWeight: 800,
         fontSize: 12,
         fontFamily: "inherit",
-        background: cat === c ? T.grad : "#fff",
-        color: cat === c ? "#fff" : T.sub,
-        border: cat === c ? "none" : `1.5px solid ${T.line}`
+        background: activeChip === c ? T.grad : "#fff",
+        color: activeChip === c ? "#fff" : T.sub,
+        border: activeChip === c ? "none" : `1.5px solid ${T.line}`
       }
     },
-    c
-  ))), /* @__PURE__ */ React.createElement(
+    c === "기타" ? "기타 ✎" : c
+  ))), customActive && /* @__PURE__ */ React.createElement(
+    Input,
+    {
+      value: custom,
+      autoFocus: true,
+      placeholder: "분류 직접 입력 (예: 대출·규제)",
+      onChange: (e) => {
+        setCustom(e.target.value);
+        onChange(e.target.value.trim() || "기타");
+      },
+      style: { width: "100%", boxSizing: "border-box", marginTop: 8 }
+    }
+  ));
+}
+function Insights({ insights, onAdd, onDelete, onUpload, onTogglePin, onEditCat }) {
+  const [cat, setCat] = useState(INSIGHT_CATS[0]);
+  const [title, setTitle] = useState("");
+  const [body, setBody] = useState("");
+  const [imgs, setImgs] = useState([]);
+  const [yt, setYt] = useState("");
+  const [pin, setPin] = useState(false);
+  const [filter, setFilter] = useState("전체");
+  const [editId, setEditId] = useState(null);
+  const [draftCat, setDraftCat] = useState("");
+  const [formKey, setFormKey] = useState(0);
+  const canSave = title.trim() && body.trim();
+  const list = sortPinned(filter === "전체" ? insights : insights.filter((i) => i.cat === filter));
+  const startEdit = (i) => {
+    setEditId(i.id);
+    setDraftCat(i.cat);
+  };
+  const commitEdit = () => {
+    onEditCat(editId, draftCat.trim() || "기타");
+    setEditId(null);
+  };
+  return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(
+    SectionTitle,
+    {
+      eyebrow: "톡강 · 코멘트 · Q&A 정리",
+      title: "인사이트 아카이브",
+      right: /* @__PURE__ */ React.createElement(Pill, { tone: "line" }, "공개 페이지에 자동 게시")
+    }
+  ), /* @__PURE__ */ React.createElement(Card, { pad: 0, style: { overflow: "hidden", marginBottom: 14 } }, /* @__PURE__ */ React.createElement("div", { style: { background: T.grad, padding: "14px 20px", color: "#fff" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 15.5, fontWeight: 800, letterSpacing: "-0.02em" } }, "오늘의 인사이트를 남기세요"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12.5, opacity: 0.9, marginTop: 2 } }, "톡방에서 흘러간 좋은 코멘트가 멤버들의 자산이 됩니다.")), /* @__PURE__ */ React.createElement("div", { style: { padding: 18 } }, /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 12 } }, /* @__PURE__ */ React.createElement(CatSelect, { key: formKey, cats: INSIGHT_CATS, value: cat, onChange: setCat })), /* @__PURE__ */ React.createElement(
     Input,
     {
       value: title,
@@ -774,7 +814,9 @@ function Insights({ insights, onAdd, onDelete, onUpload, onTogglePin }) {
     setImgs([]);
     setYt("");
     setPin(false);
-  } }, "아카이브에 저장")))), /* @__PURE__ */ React.createElement(SectionTitle, { title: "저장된 인사이트", right: /* @__PURE__ */ React.createElement(Pill, { tone: "line" }, insights.length, "건") }), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 } }, ["전체", ...INSIGHT_CATS.filter((c) => insights.some((i) => i.cat === c))].map((c) => /* @__PURE__ */ React.createElement(
+    setCat(INSIGHT_CATS[0]);
+    setFormKey((k) => k + 1);
+  } }, "아카이브에 저장")))), /* @__PURE__ */ React.createElement(SectionTitle, { title: "저장된 인사이트", right: /* @__PURE__ */ React.createElement(Pill, { tone: "line" }, insights.length, "건") }), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 } }, catFilters(INSIGHT_CATS, insights).map((c) => /* @__PURE__ */ React.createElement(
     "button",
     {
       key: c,
@@ -792,7 +834,26 @@ function Insights({ insights, onAdd, onDelete, onUpload, onTogglePin }) {
       }
     },
     c
-  ))), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gap: 10 } }, list.length === 0 && /* @__PURE__ */ React.createElement(Card, { pad: 24, style: { textAlign: "center", color: T.sub, fontSize: 13 } }, "이 카테고리에는 아직 인사이트가 없어요. 위에서 첫 번째 기록을 남겨보세요."), list.map((i) => /* @__PURE__ */ React.createElement(Card, { key: i.id, pad: 16, style: isPinned(i) ? { border: `1.5px solid ${T.mint}`, background: "linear-gradient(#fff,#fff) padding-box, " + T.gradSoft } : void 0 }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" } }, isPinned(i) && /* @__PURE__ */ React.createElement(Pill, { tone: "soft", style: { fontSize: 11 } }, "📌 고정"), /* @__PURE__ */ React.createElement(Pill, { tone: "soft", style: { fontSize: 11.5 } }, i.cat), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 14.5, letterSpacing: "-0.01em", flex: 1 } }, i.title), /* @__PURE__ */ React.createElement(Pill, { tone: "line", style: { fontSize: 11 } }, shortDate(i.date)), /* @__PURE__ */ React.createElement(
+  ))), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gap: 10 } }, list.length === 0 && /* @__PURE__ */ React.createElement(Card, { pad: 24, style: { textAlign: "center", color: T.sub, fontSize: 13 } }, "이 카테고리에는 아직 인사이트가 없어요. 위에서 첫 번째 기록을 남겨보세요."), list.map((i) => /* @__PURE__ */ React.createElement(Card, { key: i.id, pad: 16, style: isPinned(i) ? { border: `1.5px solid ${T.mint}`, background: "linear-gradient(#fff,#fff) padding-box, " + T.gradSoft } : void 0 }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" } }, isPinned(i) && /* @__PURE__ */ React.createElement(Pill, { tone: "soft", style: { fontSize: 11 } }, "📌 고정"), /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      onClick: () => editId === i.id ? setEditId(null) : startEdit(i),
+      title: "분류 변경",
+      style: {
+        cursor: "pointer",
+        border: `1.5px solid ${editId === i.id ? T.mint : T.line}`,
+        background: editId === i.id ? T.gradSoft : "#F3F6F5",
+        color: T.ink,
+        borderRadius: 999,
+        padding: "4px 10px",
+        fontSize: 11.5,
+        fontWeight: 800,
+        fontFamily: "inherit"
+      }
+    },
+    i.cat,
+    " ✎"
+  ), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 14.5, letterSpacing: "-0.01em", flex: 1 } }, i.title), /* @__PURE__ */ React.createElement(Pill, { tone: "line", style: { fontSize: 11 } }, shortDate(i.date)), /* @__PURE__ */ React.createElement(
     "button",
     {
       onClick: () => onTogglePin(i.id, !isPinned(i)),
@@ -808,17 +869,35 @@ function Insights({ insights, onAdd, onDelete, onUpload, onTogglePin }) {
       title: "삭제"
     },
     "×"
-  )), /* @__PURE__ */ React.createElement(InsightBody, { body: i.body }), /* @__PURE__ */ React.createElement(InsightMedia, { imgs: imgsOf(i), yt: i.yt })))));
+  )), editId === i.id && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 10, padding: 12, borderRadius: 12, background: "#F3F6F5", border: `1px solid ${T.line}` } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, fontWeight: 800, color: T.sub, marginBottom: 8 } }, "분류 변경"), /* @__PURE__ */ React.createElement(CatSelect, { cats: INSIGHT_CATS, value: draftCat, onChange: setDraftCat }), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "flex-end", gap: 6, marginTop: 10 } }, /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      onClick: () => setEditId(null),
+      style: { cursor: "pointer", border: `1.5px solid ${T.line}`, background: "#fff", color: T.sub, borderRadius: 999, padding: "7px 14px", fontSize: 12.5, fontWeight: 800, fontFamily: "inherit" }
+    },
+    "취소"
+  ), /* @__PURE__ */ React.createElement(Btn, { onClick: commitEdit }, "분류 저장"))), /* @__PURE__ */ React.createElement(InsightBody, { body: i.body }), /* @__PURE__ */ React.createElement(InsightMedia, { imgs: imgsOf(i), yt: i.yt })))));
 }
-function Lectures({ lectures, onAdd, onDelete, onTogglePin, onUpload }) {
+function Lectures({ lectures, onAdd, onDelete, onTogglePin, onUpload, onEditCat }) {
   const [cat, setCat] = useState(LECTURE_CATS[0]);
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [yt, setYt] = useState("");
   const [imgs, setImgs] = useState([]);
   const [pin, setPin] = useState(false);
+  const [editId, setEditId] = useState(null);
+  const [draftCat, setDraftCat] = useState("");
+  const [formKey, setFormKey] = useState(0);
   const canSave = title.trim() && (yt.trim() || body.trim() || imgs.length);
   const list = sortPinned(lectures);
+  const startEdit = (l) => {
+    setEditId(l.id);
+    setDraftCat(l.cat);
+  };
+  const commitEdit = () => {
+    onEditCat(editId, draftCat.trim() || "기타");
+    setEditId(null);
+  };
   return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(
     SectionTitle,
     {
@@ -826,25 +905,7 @@ function Lectures({ lectures, onAdd, onDelete, onTogglePin, onUpload }) {
       title: "강의 아카이브",
       right: /* @__PURE__ */ React.createElement(Pill, { tone: "line" }, "공개 페이지 · 강의 탭")
     }
-  ), /* @__PURE__ */ React.createElement(Card, { pad: 0, style: { overflow: "hidden", marginBottom: 14 } }, /* @__PURE__ */ React.createElement("div", { style: { background: T.grad, padding: "14px 20px", color: "#fff" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 15.5, fontWeight: 800, letterSpacing: "-0.02em" } }, "강의를 올려두세요"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12.5, opacity: 0.9, marginTop: 2 } }, "영상 링크를 임베드하면 멤버들이 강의 탭에서 언제든 다시 볼 수 있어요.")), /* @__PURE__ */ React.createElement("div", { style: { padding: 18 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 } }, LECTURE_CATS.map((c) => /* @__PURE__ */ React.createElement(
-    "button",
-    {
-      key: c,
-      onClick: () => setCat(c),
-      style: {
-        cursor: "pointer",
-        borderRadius: 999,
-        padding: "7px 13px",
-        fontWeight: 800,
-        fontSize: 12,
-        fontFamily: "inherit",
-        background: cat === c ? T.grad : "#fff",
-        color: cat === c ? "#fff" : T.sub,
-        border: cat === c ? "none" : `1.5px solid ${T.line}`
-      }
-    },
-    c
-  ))), /* @__PURE__ */ React.createElement(
+  ), /* @__PURE__ */ React.createElement(Card, { pad: 0, style: { overflow: "hidden", marginBottom: 14 } }, /* @__PURE__ */ React.createElement("div", { style: { background: T.grad, padding: "14px 20px", color: "#fff" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 15.5, fontWeight: 800, letterSpacing: "-0.02em" } }, "강의를 올려두세요"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12.5, opacity: 0.9, marginTop: 2 } }, "영상 링크를 임베드하면 멤버들이 강의 탭에서 언제든 다시 볼 수 있어요.")), /* @__PURE__ */ React.createElement("div", { style: { padding: 18 } }, /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 12 } }, /* @__PURE__ */ React.createElement(CatSelect, { key: formKey, cats: LECTURE_CATS, value: cat, onChange: setCat })), /* @__PURE__ */ React.createElement(
     Input,
     {
       value: title,
@@ -906,7 +967,28 @@ function Lectures({ lectures, onAdd, onDelete, onTogglePin, onUpload }) {
     setYt("");
     setImgs([]);
     setPin(false);
-  } }, "강의 올리기")))), /* @__PURE__ */ React.createElement(SectionTitle, { title: "올린 강의", right: /* @__PURE__ */ React.createElement(Pill, { tone: "line" }, lectures.length, "개") }), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gap: 10 } }, list.length === 0 && /* @__PURE__ */ React.createElement(Card, { pad: 24, style: { textAlign: "center", color: T.sub, fontSize: 13 } }, "아직 올린 강의가 없어요. 위에서 첫 강의를 임베드해보세요."), list.map((lec) => /* @__PURE__ */ React.createElement(Card, { key: lec.id, pad: 16, style: isPinned(lec) ? { border: `1.5px solid ${T.mint}`, background: "linear-gradient(#fff,#fff) padding-box, " + T.gradSoft } : void 0 }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" } }, isPinned(lec) && /* @__PURE__ */ React.createElement(Pill, { tone: "soft", style: { fontSize: 11 } }, "📌 고정"), /* @__PURE__ */ React.createElement(Pill, { tone: "soft", style: { fontSize: 11.5 } }, lec.cat), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 14.5, letterSpacing: "-0.01em", flex: 1 } }, lec.title), /* @__PURE__ */ React.createElement(Pill, { tone: "line", style: { fontSize: 11 } }, shortDate(lec.date)), /* @__PURE__ */ React.createElement(
+    setCat(LECTURE_CATS[0]);
+    setFormKey((k) => k + 1);
+  } }, "강의 올리기")))), /* @__PURE__ */ React.createElement(SectionTitle, { title: "올린 강의", right: /* @__PURE__ */ React.createElement(Pill, { tone: "line" }, lectures.length, "개") }), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gap: 10 } }, list.length === 0 && /* @__PURE__ */ React.createElement(Card, { pad: 24, style: { textAlign: "center", color: T.sub, fontSize: 13 } }, "아직 올린 강의가 없어요. 위에서 첫 강의를 임베드해보세요."), list.map((lec) => /* @__PURE__ */ React.createElement(Card, { key: lec.id, pad: 16, style: isPinned(lec) ? { border: `1.5px solid ${T.mint}`, background: "linear-gradient(#fff,#fff) padding-box, " + T.gradSoft } : void 0 }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" } }, isPinned(lec) && /* @__PURE__ */ React.createElement(Pill, { tone: "soft", style: { fontSize: 11 } }, "📌 고정"), /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      onClick: () => editId === lec.id ? setEditId(null) : startEdit(lec),
+      title: "분류 변경",
+      style: {
+        cursor: "pointer",
+        border: `1.5px solid ${editId === lec.id ? T.mint : T.line}`,
+        background: editId === lec.id ? T.gradSoft : "#F3F6F5",
+        color: T.ink,
+        borderRadius: 999,
+        padding: "4px 10px",
+        fontSize: 11.5,
+        fontWeight: 800,
+        fontFamily: "inherit"
+      }
+    },
+    lec.cat,
+    " ✎"
+  ), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 14.5, letterSpacing: "-0.01em", flex: 1 } }, lec.title), /* @__PURE__ */ React.createElement(Pill, { tone: "line", style: { fontSize: 11 } }, shortDate(lec.date)), /* @__PURE__ */ React.createElement(
     "button",
     {
       onClick: () => onTogglePin(lec.id, !isPinned(lec)),
@@ -922,7 +1004,14 @@ function Lectures({ lectures, onAdd, onDelete, onTogglePin, onUpload }) {
       title: "삭제"
     },
     "×"
-  )), lec.body && /* @__PURE__ */ React.createElement(InsightBody, { body: lec.body }), /* @__PURE__ */ React.createElement(InsightMedia, { imgs: imgsOf(lec), yt: lec.yt })))));
+  )), editId === lec.id && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 10, padding: 12, borderRadius: 12, background: "#F3F6F5", border: `1px solid ${T.line}` } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, fontWeight: 800, color: T.sub, marginBottom: 8 } }, "분류 변경"), /* @__PURE__ */ React.createElement(CatSelect, { cats: LECTURE_CATS, value: draftCat, onChange: setDraftCat }), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "flex-end", gap: 6, marginTop: 10 } }, /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      onClick: () => setEditId(null),
+      style: { cursor: "pointer", border: `1.5px solid ${T.line}`, background: "#fff", color: T.sub, borderRadius: 999, padding: "7px 14px", fontSize: 12.5, fontWeight: 800, fontFamily: "inherit" }
+    },
+    "취소"
+  ), /* @__PURE__ */ React.createElement(Btn, { onClick: commitEdit }, "분류 저장"))), lec.body && /* @__PURE__ */ React.createElement(InsightBody, { body: lec.body }), /* @__PURE__ */ React.createElement(InsightMedia, { imgs: imgsOf(lec), yt: lec.yt })))));
 }
 function InsightBody({ body, clamp = 4 }) {
   const [open, setOpen] = useState(false);
@@ -1259,8 +1348,8 @@ function PublicPage({ members, ledger, log, insights, lectures, settings, viewer
   const LecturesTab = () => {
     const [filter, setFilter] = useState("전체");
     const list = sortPinned(filter === "전체" ? lectures : lectures.filter((l) => l.cat === filter));
-    const cats = ["전체", ...LECTURE_CATS.filter((c) => lectures.some((l) => l.cat === c))];
-    return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(SectionTitle, { eyebrow: "다시보기 · 톡강 · 특강", title: "강의 아카이브", right: /* @__PURE__ */ React.createElement(Pill, { tone: "line" }, lectures.length, "개") }), /* @__PURE__ */ React.createElement(Card, { pad: 14, style: { background: T.gradSoft, border: "none", marginBottom: 14 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 10, alignItems: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 22 } }, "🎬"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12.5, color: T.ink, lineHeight: 1.6 } }, "놓친 특강 or 보고 싶은 강의를 여기서 언제든 다시 볼 수 있어요.", /* @__PURE__ */ React.createElement("b", { style: { color: T.coral } }, ""), ""))), cats.length > 1 && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12, overflowX: "auto" } }, cats.map((c) => /* @__PURE__ */ React.createElement(
+    const cats = catFilters(LECTURE_CATS, lectures);
+    return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(SectionTitle, { eyebrow: "다시보기 · 톡강 · 특강", title: "강의 아카이브", right: /* @__PURE__ */ React.createElement(Pill, { tone: "line" }, lectures.length, "개") }), /* @__PURE__ */ React.createElement(Card, { pad: 14, style: { background: T.gradSoft, border: "none", marginBottom: 14 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 10, alignItems: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 22 } }, "🎬"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12.5, color: T.ink, lineHeight: 1.6, wordBreak: "keep-all" } }, "놓친 특강 or 보고 싶은 강의를 여기서 언제든 다시 볼 수 있어요."))), cats.length > 1 && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12, overflowX: "auto" } }, cats.map((c) => /* @__PURE__ */ React.createElement(
       "button",
       {
         key: c,
@@ -1284,7 +1373,7 @@ function PublicPage({ members, ledger, log, insights, lectures, settings, viewer
   const InsightsTab = () => {
     const [filter, setFilter] = useState("전체");
     const list = sortPinned(filter === "전체" ? insights : insights.filter((i) => i.cat === filter));
-    const cats = ["전체", ...INSIGHT_CATS.filter((c) => insights.some((i) => i.cat === c))];
+    const cats = catFilters(INSIGHT_CATS, insights);
     return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(SectionTitle, { title: "인사이트 아카이브", right: /* @__PURE__ */ React.createElement(Pill, { tone: "line" }, insights.length, "건") }), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12, overflowX: "auto" } }, cats.map((c) => /* @__PURE__ */ React.createElement(
       "button",
       {
@@ -1719,6 +1808,15 @@ function App() {
       fail(e);
     }
   };
+  const onEditInsightCat = async (id, cat) => {
+    try {
+      if (live) await api("editInsight", { adminKey, id, cat });
+      setInsights((I) => I.map((i) => i.id === id ? { ...i, cat } : i));
+      say("분류를 변경했어요");
+    } catch (e) {
+      fail(e);
+    }
+  };
   const onUploadImage = async (file) => {
     try {
       if (!file.type || file.type.indexOf("image/") !== 0) {
@@ -1766,6 +1864,15 @@ function App() {
       if (live) await api("pinLecture", { adminKey, id, pin });
       setLectures((L) => L.map((l) => l.id === id ? { ...l, pin } : l));
       say(pin ? "📌 상단에 고정했어요" : "고정을 해제했어요");
+    } catch (e) {
+      fail(e);
+    }
+  };
+  const onEditLectureCat = async (id, cat) => {
+    try {
+      if (live) await api("editLecture", { adminKey, id, cat });
+      setLectures((L) => L.map((l) => l.id === id ? { ...l, cat } : l));
+      say("분류를 변경했어요");
     } catch (e) {
       fail(e);
     }
@@ -1886,7 +1993,7 @@ function App() {
       }
     },
     label
-  ))), effTab === "board" && /* @__PURE__ */ React.createElement(Leaderboard, { members, settings }), effTab === "members" && /* @__PURE__ */ React.createElement(Members, { members, ledger, onAdjust, onAddMember, onBumpStat, onSetLevel, onResetPw, settings, staffOnly: isStaff }), effTab === "events" && /* @__PURE__ */ React.createElement(Events, { members, log: eventLog, onLogEvent, settings }), effTab === "mate" && /* @__PURE__ */ React.createElement(Mate, { members, onApprove, settings }), effTab === "insights" && /* @__PURE__ */ React.createElement(Insights, { insights, onAdd: onAddInsight, onDelete: onDeleteInsight, onUpload: onUploadImage, onTogglePin: onTogglePinInsight }), effTab === "lectures" && /* @__PURE__ */ React.createElement(Lectures, { lectures, onAdd: onAddLecture, onDelete: onDeleteLecture, onTogglePin: onTogglePinLecture, onUpload: onUploadImage }), effTab === "awards" && /* @__PURE__ */ React.createElement(Awards, { members, settings }), effTab === "settings" && /* @__PURE__ */ React.createElement(Settings, { settings, setSettings: persistSettings }))), pinPrompt && /* @__PURE__ */ React.createElement("div", { style: { position: "fixed", inset: 0, background: "rgba(28,35,51,.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 20 } }, /* @__PURE__ */ React.createElement("div", { style: { background: "#fff", borderRadius: 20, padding: 24, width: "100%", maxWidth: 320, boxShadow: "0 20px 50px rgba(28,35,51,.35)" } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 16, letterSpacing: "-0.02em" } }, "🛠 관리자 · 운영진 인증"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12.5, color: T.sub, margin: "6px 0 14px" } }, "관리자 PIN 또는 운영진 PIN을 입력하세요.", /* @__PURE__ */ React.createElement("br", null), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11.5 } }, "운영진 PIN으로는 멤버 등록·인사이트만 관리할 수 있어요.")), /* @__PURE__ */ React.createElement(
+  ))), effTab === "board" && /* @__PURE__ */ React.createElement(Leaderboard, { members, settings }), effTab === "members" && /* @__PURE__ */ React.createElement(Members, { members, ledger, onAdjust, onAddMember, onBumpStat, onSetLevel, onResetPw, settings, staffOnly: isStaff }), effTab === "events" && /* @__PURE__ */ React.createElement(Events, { members, log: eventLog, onLogEvent, settings }), effTab === "mate" && /* @__PURE__ */ React.createElement(Mate, { members, onApprove, settings }), effTab === "insights" && /* @__PURE__ */ React.createElement(Insights, { insights, onAdd: onAddInsight, onDelete: onDeleteInsight, onUpload: onUploadImage, onTogglePin: onTogglePinInsight, onEditCat: onEditInsightCat }), effTab === "lectures" && /* @__PURE__ */ React.createElement(Lectures, { lectures, onAdd: onAddLecture, onDelete: onDeleteLecture, onTogglePin: onTogglePinLecture, onUpload: onUploadImage, onEditCat: onEditLectureCat }), effTab === "awards" && /* @__PURE__ */ React.createElement(Awards, { members, settings }), effTab === "settings" && /* @__PURE__ */ React.createElement(Settings, { settings, setSettings: persistSettings }))), pinPrompt && /* @__PURE__ */ React.createElement("div", { style: { position: "fixed", inset: 0, background: "rgba(28,35,51,.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 20 } }, /* @__PURE__ */ React.createElement("div", { style: { background: "#fff", borderRadius: 20, padding: 24, width: "100%", maxWidth: 320, boxShadow: "0 20px 50px rgba(28,35,51,.35)" } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 16, letterSpacing: "-0.02em" } }, "🛠 관리자 · 운영진 인증"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12.5, color: T.sub, margin: "6px 0 14px" } }, "관리자 PIN 또는 운영진 PIN을 입력하세요.", /* @__PURE__ */ React.createElement("br", null), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11.5 } }, "운영진 PIN으로는 멤버 등록·인사이트만 관리할 수 있어요.")), /* @__PURE__ */ React.createElement(
     Input,
     {
       type: "password",
