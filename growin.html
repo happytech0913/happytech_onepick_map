@@ -755,12 +755,15 @@ function Settings({ settings, setSettings }) {
                 React.createElement(Btn, { small: true, disabled: !changed, onClick: save }, changed ? "변경 저장" : "저장됨")))));
 }
 /* ── 인사이트 아카이브 (관리자) ── */
-function Insights({ insights, onAdd, onDelete }) {
+function Insights({ insights, onAdd, onDelete, onUpload }) {
     const [cat, setCat] = useState(INSIGHT_CATS[0]);
     const [title, setTitle] = useState("");
     const [body, setBody] = useState("");
+    const [img, setImg] = useState("");
+    const [yt, setYt] = useState("");
+    const [uploading, setUploading] = useState(false);
     const [filter, setFilter] = useState("전체");
-    const canSave = title.trim() && body.trim();
+    const canSave = title.trim() && body.trim() && !uploading;
     const list = filter === "전체" ? insights : insights.filter((i) => i.cat === filter);
     return (React.createElement("div", null,
         React.createElement(SectionTitle, { eyebrow: "\uD1A1\uAC15 \u00B7 \uCF54\uBA58\uD2B8 \u00B7 Q&A \uC815\uB9AC", title: "\uC778\uC0AC\uC774\uD2B8 \uC544\uCE74\uC774\uBE0C", right: React.createElement(Pill, { tone: "line" }, "\uACF5\uAC1C \uD398\uC774\uC9C0\uC5D0 \uC790\uB3D9 \uAC8C\uC2DC") }),
@@ -773,10 +776,29 @@ function Insights({ insights, onAdd, onDelete }) {
                         background: cat === c ? T.grad : "#fff", color: cat === c ? "#fff" : T.sub,
                         border: cat === c ? "none" : `1.5px solid ${T.line}` } }, c)))),
                 React.createElement(Input, { value: title, onChange: (e) => setTitle(e.target.value), placeholder: "\uC81C\uBAA9 (\uC608: \uBA85\uB3C4\uC758 \uCCAB \uB2E8\uCD94\uB294 '\uAE30\uC900')", style: { width: "100%", boxSizing: "border-box", marginBottom: 8 } }),
-                React.createElement("textarea", { value: body, onChange: (e) => setBody(e.target.value), placeholder: "\uB0B4\uC6A9 \u2014 \uD1A1\uBC29 \uBA54\uC2DC\uC9C0\uB97C \uBD99\uC5EC\uB123\uACE0 \uB2E4\uB4EC\uC73C\uBA74 \uB429\uB2C8\uB2E4.", rows: 4, style: { width: "100%", boxSizing: "border-box", border: `1.5px solid ${T.line}`, borderRadius: 10, padding: "10px 12px",
+                React.createElement("textarea", { value: body, onChange: (e) => setBody(e.target.value), placeholder: "\uB0B4\uC6A9 \u2014 \uD1A1\uBC29 \uBA54\uC2DC\uC9C0\uB97C \uBD99\uC5EC\uB123\uACE0 \uB2E4\uB4EC\uC73C\uBA74 \uB429\uB2C8\uB2E4. \uC904\uBC14\uAFC8\u00B7\uBB38\uB2E8\uC740 \uD654\uBA74\uC5D0 \uADF8\uB300\uB85C \uD45C\uC2DC\uB3FC\uC694.", rows: 6, style: { width: "100%", boxSizing: "border-box", border: `1.5px solid ${T.line}`, borderRadius: 10, padding: "10px 12px",
                         fontSize: 13.5, fontFamily: "inherit", outline: "none", resize: "vertical", lineHeight: 1.6 } }),
+                React.createElement("div", { style: { display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginTop: 8 } },
+                    React.createElement("label", { style: { cursor: "pointer", borderRadius: 999, padding: "8px 14px", fontWeight: 800, fontSize: 12.5, fontFamily: "inherit",
+                            background: "#fff", color: uploading ? T.sub : T.ink, border: `1.5px solid ${T.line}`, whiteSpace: "nowrap" } },
+                        uploading ? "\u23F3 \uC5C5\uB85C\uB4DC \uC911..." : img ? "\uD83D\uDCF7 \uC0AC\uC9C4 \uBCC0\uACBD" : "\uD83D\uDCF7 \uC0AC\uC9C4 \uCCA8\uBD80",
+                        React.createElement("input", { type: "file", accept: "image/*", style: { display: "none" }, disabled: uploading,
+                            onChange: async (e) => {
+                                const f = e.target.files && e.target.files[0];
+                                e.target.value = "";
+                                if (!f) return;
+                                setUploading(true);
+                                const url = await onUpload(f);
+                                setUploading(false);
+                                if (url) setImg(url);
+                            } })),
+                    React.createElement(Input, { value: yt, onChange: (e) => setYt(e.target.value), placeholder: "\uC720\uD29C\uBE0C \uB9C1\uD06C (\uC120\uD0DD)", style: { flex: "1 1 200px", background: "#fff" } })),
+                img && (React.createElement("div", { style: { marginTop: 10, display: "flex", alignItems: "flex-start", gap: 8 } },
+                    React.createElement("img", { src: img, alt: "\uCCA8\uBD80 \uBBF8\uB9AC\uBCF4\uAE30", style: { maxWidth: 180, maxHeight: 120, borderRadius: 10, border: `1px solid ${T.line}`, display: "block" } }),
+                    React.createElement("button", { onClick: () => setImg(""), title: "\uC0AC\uC9C4 \uC81C\uAC70",
+                        style: { cursor: "pointer", border: `1px solid ${T.line}`, background: "#fff", color: T.sub, borderRadius: 999, padding: "3px 10px", fontSize: 11.5, fontWeight: 700, fontFamily: "inherit" } }, "\u00D7 \uC81C\uAC70"))),
                 React.createElement("div", { style: { display: "flex", justifyContent: "flex-end", marginTop: 10 } },
-                    React.createElement(Btn, { disabled: !canSave, onClick: () => { onAdd({ cat, title: title.trim(), body: body.trim() }); setTitle(""); setBody(""); } }, "\uC544\uCE74\uC774\uBE0C\uC5D0 \uC800\uC7A5")))),
+                    React.createElement(Btn, { disabled: !canSave, onClick: () => { onAdd({ cat, title: title.trim(), body: body.trim(), img, yt: yt.trim() }); setTitle(""); setBody(""); setImg(""); setYt(""); } }, "\uC544\uCE74\uC774\uBE0C\uC5D0 \uC800\uC7A5")))),
         React.createElement(SectionTitle, { title: "\uC800\uC7A5\uB41C \uC778\uC0AC\uC774\uD2B8", right: React.createElement(Pill, { tone: "line" },
                 insights.length,
                 "\uAC74") }),
@@ -791,7 +813,73 @@ function Insights({ insights, onAdd, onDelete }) {
                     React.createElement("div", { style: { fontWeight: 800, fontSize: 14.5, letterSpacing: "-0.01em", flex: 1 } }, i.title),
                     React.createElement(Pill, { tone: "line", style: { fontSize: 11 } }, shortDate(i.date)),
                     React.createElement("button", { onClick: () => onDelete(i.id), style: { border: "none", background: "transparent", color: T.sub, cursor: "pointer", fontSize: 15, padding: "2px 6px" }, title: "\uC0AD\uC81C" }, "\u00D7")),
-                React.createElement("div", { style: { fontSize: 13, color: T.ink, lineHeight: 1.7, marginTop: 8 } }, i.body)))))));
+                React.createElement(InsightBody, { body: i.body }),
+                React.createElement(InsightMedia, { img: i.img, yt: i.yt })))))));
+}
+/* ── 이미지 리사이즈: 업로드 전 브라우저에서 축소 (최대 1280px · JPEG) → base64 반환 ── */
+function resizeImage(file, maxW = 1280) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+            const im = new Image();
+            im.onload = () => {
+                try {
+                    const scale = Math.min(1, maxW / im.width);
+                    const w = Math.max(1, Math.round(im.width * scale));
+                    const h = Math.max(1, Math.round(im.height * scale));
+                    const canvas = document.createElement("canvas");
+                    canvas.width = w;
+                    canvas.height = h;
+                    canvas.getContext("2d").drawImage(im, 0, 0, w, h);
+                    resolve(canvas.toDataURL("image/jpeg", 0.85).split(",")[1]);
+                }
+                catch (err) { reject(err); }
+            };
+            im.onerror = () => reject(new Error("이미지를 읽을 수 없어요"));
+            im.src = reader.result;
+        };
+        reader.onerror = () => reject(new Error("파일을 읽을 수 없어요"));
+        reader.readAsDataURL(file);
+    });
+}
+/* ── 유튜브 URL → 영상 ID ── */
+function ytId(url) {
+    const m = String(url || "").match(/(?:youtu\.be\/|v=|shorts\/|embed\/|live\/)([A-Za-z0-9_-]{11})/);
+    return m ? m[1] : "";
+}
+/* ── 인사이트 미디어: 사진(지연 로딩) + 유튜브(클릭 전엔 썸네일만 → 가벼움) ── */
+function InsightMedia({ img, yt }) {
+    const [play, setPlay] = useState(false);
+    const vid = ytId(yt);
+    if (!img && !vid)
+        return null;
+    return (React.createElement("div", { style: { marginTop: 10, display: "grid", gap: 8 } },
+        img && (React.createElement("a", { href: img, target: "_blank", rel: "noopener noreferrer", title: "원본 크게 보기" },
+            React.createElement("img", { src: img, alt: "인사이트 이미지", loading: "lazy",
+                style: { width: "100%", maxHeight: 380, objectFit: "cover", borderRadius: 12, border: `1px solid ${T.line}`, display: "block", background: "#F3F6F5" } }))),
+        vid && (play
+            ? React.createElement("div", { style: { position: "relative", paddingTop: "56.25%", borderRadius: 12, overflow: "hidden", background: "#000" } },
+                React.createElement("iframe", { src: `https://www.youtube.com/embed/${vid}?autoplay=1`, title: "유튜브 영상",
+                    allow: "autoplay; encrypted-media; picture-in-picture", allowFullScreen: true,
+                    style: { position: "absolute", inset: 0, width: "100%", height: "100%", border: "none" } }))
+            : React.createElement("button", { onClick: () => setPlay(true), title: "영상 재생",
+                style: { position: "relative", padding: 0, border: "none", cursor: "pointer", borderRadius: 12, overflow: "hidden", background: "#000", display: "block", width: "100%" } },
+                React.createElement("img", { src: `https://i.ytimg.com/vi/${vid}/hqdefault.jpg`, alt: "영상 썸네일", loading: "lazy",
+                    style: { width: "100%", display: "block", opacity: 0.85 } }),
+                React.createElement("span", { style: { position: "absolute", top: "50%", left: "50%", transform: "translate(-50%,-50%)",
+                        background: "rgba(28,35,51,.65)", borderRadius: 999, width: 58, height: 58,
+                        display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, color: "#fff" } }, "▶")))));
+}
+/* ── 인사이트 본문 — 줄바꿈 그대로 표시 · 긴 글은 접고 '더보기' ── */
+function InsightBody({ body, clamp = 4 }) {
+    const [open, setOpen] = useState(false);
+    const text = String(body || "");
+    const long = text.length > 180 || text.split("\n").length > clamp;
+    return (React.createElement("div", null,
+        React.createElement("div", { style: Object.assign({ fontSize: 13, color: T.ink, lineHeight: 1.7, marginTop: 8, whiteSpace: "pre-line", wordBreak: "keep-all" }, (long && !open ? { display: "-webkit-box", WebkitLineClamp: clamp, WebkitBoxOrient: "vertical", overflow: "hidden" } : {})) }, text),
+        long && (React.createElement("button", { onClick: () => setOpen(!open),
+            style: { marginTop: 8, cursor: "pointer", border: `1px solid ${T.line}`, background: "#FAFCFB", color: T.sub,
+                borderRadius: 999, padding: "4px 12px", fontSize: 11.5, fontWeight: 800, fontFamily: "inherit" } }, open ? "접기 ▲" : "더보기 ▼"))));
 }
 /* ── 비밀번호 변경 모달 (멤버 본인 · 숫자 4자리) ── */
 function PwModal({ onChangePw, onClose }) {
@@ -849,6 +937,12 @@ function PwModal({ onChangePw, onClose }) {
 function PublicPage({ members, ledger, log, insights, settings, viewer, onLogin, onLogout, onChangePw }) {
     const [ptab, setPtab] = useState("home");
     const [pwOpen, setPwOpen] = useState(false);
+    /* 선택된 탭이 화면 밖에 있으면 탭바를 자동 스크롤해 보이게 함 */
+    useEffect(() => {
+        const el = document.getElementById("ptab-" + ptab);
+        if (el && el.scrollIntoView)
+            el.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
+    }, [ptab, viewer]);
     if (!viewer)
         return React.createElement(Gate, { onLogin: onLogin });
     const ranked = [...members].sort((a, b) => b.credits - a.credits);
@@ -868,7 +962,7 @@ function PublicPage({ members, ledger, log, insights, settings, viewer, onLogin,
         ["guide", "안내", "📢"],
     ];
     const TabBar = () => (React.createElement("div", { style: { display: "flex", gap: 4, background: "#fff", borderRadius: 14, padding: 4, border: `1px solid ${T.line}`,
-            boxShadow: "0 4px 16px rgba(28,35,51,.06)", marginBottom: 16, position: "sticky", top: 6, zIndex: 20, overflowX: "auto" } }, PTABS.map(([k, label, icon]) => (React.createElement("button", { key: k, onClick: () => setPtab(k), style: { flex: "1 0 auto", border: "none", cursor: "pointer", padding: "10px 10px", borderRadius: 12,
+            boxShadow: "0 4px 16px rgba(28,35,51,.06)", marginBottom: 16, position: "sticky", top: 6, zIndex: 20, overflowX: "auto" } }, PTABS.map(([k, label, icon]) => (React.createElement("button", { key: k, id: "ptab-" + k, onClick: () => setPtab(k), style: { flex: "1 0 auto", border: "none", cursor: "pointer", padding: "10px 10px", borderRadius: 12,
             fontWeight: 800, fontSize: 12.5, letterSpacing: "-0.01em", fontFamily: "inherit", whiteSpace: "nowrap",
             background: ptab === k ? T.grad : "transparent", color: ptab === k ? "#fff" : T.sub, transition: "all .15s ease" } },
         icon,
@@ -960,6 +1054,7 @@ function PublicPage({ members, ledger, log, insights, settings, viewer, onLogin,
                         React.createElement("div", { style: { fontWeight: 800, fontSize: 14, letterSpacing: "-0.01em", flex: 1 } }, i.title),
                         React.createElement(Pill, { tone: "line", style: { fontSize: 11 } }, shortDate(i.date))),
                     React.createElement("div", { style: { fontSize: 13, color: T.ink, lineHeight: 1.7, marginTop: 8,
+                            whiteSpace: "pre-line", wordBreak: "keep-all",
                             display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" } }, i.body)))),
                 insights.length === 0 && React.createElement(Card, { pad: 20, style: { textAlign: "center", color: T.sub, fontSize: 13 } }, "\uACE7 \uCCAB \uC778\uC0AC\uC774\uD2B8\uAC00 \uC62C\uB77C\uC635\uB2C8\uB2E4!"))),
         React.createElement("div", { onClick: () => setPtab("guide"), style: { cursor: "pointer" } },
@@ -1219,7 +1314,8 @@ function PublicPage({ members, ledger, log, insights, settings, viewer, onLogin,
                         React.createElement(Pill, { tone: "soft", style: { fontSize: 11.5 } }, i.cat),
                         React.createElement("div", { style: { fontWeight: 800, fontSize: 14.5, letterSpacing: "-0.01em", flex: 1 } }, i.title),
                         React.createElement(Pill, { tone: "line", style: { fontSize: 11 } }, shortDate(i.date))),
-                    React.createElement("div", { style: { fontSize: 13, color: T.ink, lineHeight: 1.7, marginTop: 8 } }, i.body)))))));
+                    React.createElement(InsightBody, { body: i.body }),
+                React.createElement(InsightMedia, { img: i.img, yt: i.yt })))))));
     };
     /* ── 크레딧 안내 ── */
     const GuideTab = () => (React.createElement("div", null,
@@ -1312,11 +1408,8 @@ function PublicPage({ members, ledger, log, insights, settings, viewer, onLogin,
                             "\uC548\uB155\uD558\uC138\uC694, ",
                             meMember.realName,
                             "\uB2D8 \uD83C\uDF31")),
-                    React.createElement("div", { style: { display: "flex", gap: 6, flexShrink: 0 } },
-                        React.createElement("button", { onClick: () => setPwOpen(true), title: "\uC785\uC7A5 \uBE44\uBC00\uBC88\uD638 \uBCC0\uACBD", style: { border: "1px solid rgba(255,255,255,.4)", background: "transparent", color: "#fff", cursor: "pointer",
-                                borderRadius: 999, padding: "6px 14px", fontSize: 12, fontWeight: 700, fontFamily: "inherit", whiteSpace: "nowrap" } }, "\uD83D\uDD12 \uBE44\uBC00\uBC88\uD638"),
-                        React.createElement("button", { onClick: onLogout, style: { border: "1px solid rgba(255,255,255,.4)", background: "transparent", color: "#fff", cursor: "pointer",
-                                borderRadius: 999, padding: "6px 14px", fontSize: 12, fontWeight: 700, fontFamily: "inherit", whiteSpace: "nowrap" } }, "\uB098\uAC00\uAE30"))),
+                    React.createElement("button", { onClick: onLogout, style: { border: "1px solid rgba(255,255,255,.4)", background: "transparent", color: "#fff", cursor: "pointer",
+                            borderRadius: 999, padding: "6px 14px", fontSize: 12, fontWeight: 700, fontFamily: "inherit", whiteSpace: "nowrap" } }, "\uB098\uAC00\uAE30")),
                 React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, marginTop: 10, flexWrap: "wrap" } },
                     React.createElement(Pill, { style: { background: "rgba(255,255,255,.2)" } },
                         myLevel.icon,
@@ -1332,7 +1425,11 @@ function PublicPage({ members, ledger, log, insights, settings, viewer, onLogin,
                         meMember.credits.toLocaleString(),
                         " \uD06C\uB808\uB527"),
                     meMember.founder && React.createElement(Pill, { style: { background: "rgba(255,248,228,.18)", border: "1px solid rgba(247,234,203,.5)", color: "#F7EACB", fontSize: 11.5, letterSpacing: "0.08em" } }, "\u2726 \uCC3D\uB9BD\uBA64\uBC84"),
-                    meMember.staff && React.createElement(Pill, { tone: "gold" }, "\u2B50 \uC6B4\uC601\uC9C4")))),
+                    meMember.staff && React.createElement(Pill, { tone: "gold" }, "\u2B50 \uC6B4\uC601\uC9C4"),
+                    React.createElement("button", { onClick: () => setPwOpen(true), title: "\uC785\uC7A5 \uBE44\uBC00\uBC88\uD638 \uBCC0\uACBD",
+                        style: { display: "inline-flex", alignItems: "center", gap: 4, background: "rgba(255,255,255,.14)",
+                            border: "1px solid rgba(255,255,255,.35)", color: "#fff", cursor: "pointer", borderRadius: 999,
+                            padding: "3px 11px", fontSize: 12.5, fontWeight: 800, fontFamily: "inherit", whiteSpace: "nowrap" } }, "\uD83D\uDD12 \uBE44\uBC00\uBC88\uD638 \uBCC0\uACBD")))),
         React.createElement("div", { style: { maxWidth: 720, margin: "-18px auto 0", padding: "0 16px 60px" } },
             React.createElement(TabBar, null),
             ptab === "home" && React.createElement(HomeTab, null),
@@ -1655,16 +1752,34 @@ function App() {
             fail(e);
         }
     };
-    const onAddInsight = async ({ cat, title, body }) => {
+    const onAddInsight = async ({ cat, title, body, img, yt }) => {
         try {
-            let saved = { id: nid(), date: today, cat, title, body };
+            let saved = { id: nid(), date: today, cat, title, body, img: img || "", yt: yt || "" };
             if (live)
-                saved = await api("addInsight", { adminKey, insight: { cat, title, body } });
+                saved = await api("addInsight", { adminKey, insight: { cat, title, body, img: img || "", yt: yt || "" } });
             setInsights((I) => [saved, ...I]);
             say("인사이트가 아카이브에 저장됐어요");
         }
         catch (e) {
             fail(e);
+        }
+    };
+    /* ── 인사이트 이미지 업로드: 브라우저에서 축소 후 드라이브에 저장 ── */
+    const onUploadImage = async (file) => {
+        try {
+            if (!file.type || file.type.indexOf("image/") !== 0) {
+                say("⚠️ 이미지 파일만 첨부할 수 있어요");
+                return "";
+            }
+            const b64 = await resizeImage(file, 1280);
+            if (!live)
+                return "data:image/jpeg;base64," + b64; // 데모: 화면 표시용
+            const r = await api("uploadImage", { adminKey, filename: (file.name || "insight").replace(/\.[^.]+$/, "") + ".jpg", mime: "image/jpeg", data: b64 });
+            return r.url;
+        }
+        catch (e) {
+            fail(e);
+            return "";
         }
     };
     const onDeleteInsight = async (id) => {
@@ -1743,14 +1858,14 @@ function App() {
                             live && React.createElement("button", { onClick: () => refresh(), title: "\uC2DC\uD2B8\uC5D0\uC11C \uB2E4\uC2DC \uBD88\uB7EC\uC624\uAE30", style: { border: "1px solid rgba(255,255,255,.4)", background: "transparent", color: "#fff", cursor: "pointer", borderRadius: 999, padding: "4px 12px", fontSize: 12, fontWeight: 700, fontFamily: "inherit" } }, "\u21BB \uB3D9\uAE30\uD654"))))),
             React.createElement("div", { style: { maxWidth: 980, margin: "-34px auto 0", padding: "0 16px 60px" } },
                 React.createElement("div", { style: { display: "flex", gap: 6, background: "#fff", borderRadius: 999, padding: 6, border: `1px solid ${T.line}`,
-                        boxShadow: "0 10px 30px rgba(28,35,51,.08)", overflowX: "auto", marginBottom: 20 } }, TABS.map(([k, label]) => (React.createElement("button", { key: k, onClick: () => setTab(k), style: { flex: "1 0 auto", border: "none", cursor: "pointer", padding: "10px 16px", borderRadius: 999,
+                        boxShadow: "0 10px 30px rgba(28,35,51,.08)", overflowX: "auto", marginBottom: 20 } }, TABS.map(([k, label]) => (React.createElement("button", { key: k, onClick: (e) => { setTab(k); if (e.currentTarget.scrollIntoView) e.currentTarget.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" }); }, style: { flex: "1 0 auto", border: "none", cursor: "pointer", padding: "10px 16px", borderRadius: 999,
                         fontWeight: 800, fontSize: 13.5, letterSpacing: "-0.01em", fontFamily: "inherit", whiteSpace: "nowrap",
                         background: effTab === k ? T.grad : "transparent", color: effTab === k ? "#fff" : T.sub, transition: "all .15s ease" } }, label)))),
                 effTab === "board" && React.createElement(Leaderboard, { members: members, settings: settings }),
                 effTab === "members" && React.createElement(Members, { members: members, ledger: ledger, onAdjust: onAdjust, onAddMember: onAddMember, onBumpStat: onBumpStat, onSetLevel: onSetLevel, onResetPw: onResetPw, settings: settings, staffOnly: isStaff }),
                 effTab === "events" && React.createElement(Events, { members: members, log: eventLog, onLogEvent: onLogEvent, settings: settings }),
                 effTab === "mate" && React.createElement(Mate, { members: members, onApprove: onApprove, settings: settings }),
-                effTab === "insights" && React.createElement(Insights, { insights: insights, onAdd: onAddInsight, onDelete: onDeleteInsight }),
+                effTab === "insights" && React.createElement(Insights, { insights: insights, onAdd: onAddInsight, onDelete: onDeleteInsight, onUpload: onUploadImage }),
                 effTab === "awards" && React.createElement(Awards, { members: members, settings: settings }),
                 effTab === "settings" && React.createElement(Settings, { settings: settings, setSettings: persistSettings })))),
         pinPrompt && (React.createElement("div", { style: { position: "fixed", inset: 0, background: "rgba(28,35,51,.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 20 } },
