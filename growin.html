@@ -867,7 +867,7 @@ function InsightMedia({ img, yt }) {
     return (React.createElement("div", { style: { marginTop: 10, display: "grid", gap: 8 } },
         img && (React.createElement("a", { href: img, target: "_blank", rel: "noopener noreferrer", title: "원본 크게 보기" },
             React.createElement("img", { src: img, alt: "인사이트 이미지", loading: "lazy",
-                style: { width: "100%", maxHeight: 380, objectFit: "cover", borderRadius: 12, border: `1px solid ${T.line}`, display: "block", background: "#F3F6F5" } }))),
+                style: { width: "100%", height: "auto", borderRadius: 12, border: `1px solid ${T.line}`, display: "block", background: "#F3F6F5" } }))),
         vid && (play
             ? React.createElement("div", { style: { position: "relative", paddingTop: "56.25%", borderRadius: 12, overflow: "hidden", background: "#000" } },
                 React.createElement("iframe", { src: vid.src, title: `${vid.type} 영상`,
