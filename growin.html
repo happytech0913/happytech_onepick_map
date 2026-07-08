@@ -72,14 +72,18 @@ const autoLevelOf = (m) => {
   if (gs >= LEVEL_PTS[3]) lv = 5;
   return lv;
 };
-/* 표시 등급 = 수동 지정 등급과 자동 등급 중 높은 쪽 (자동으로 내려가지 않음) */
-const effLevelNum = (m) => Math.max(Math.min(Math.max(Number(m && m.level) || 1, 1), 5), autoLevelOf(m));
+/* 하이브리드 등급: 수동 지정(1~5)이 있으면 그대로 · 자동 모드(0)면 활동 점수로 계산 */
+const manualLevelOf = (m) => Math.min(Math.max(Number(m && m.level) || 0, 0), 5); // 0 = 자동
+const effLevelNum = (m) => {
+  const manual = manualLevelOf(m);
+  return manual >= 1 ? manual : autoLevelOf(m);
+};
 const levelOf = (m) => LEVELS[effLevelNum(m) - 1];
 const canUse = (c, S) => c >= S.minUse;
 
 /* 배지 — 조건 달성 시 자동 획득 */
 const BADGES = [
-  { k: "effort", icon: "🎓", name: "노력왕", desc: "그로인 랭킹 10위권 내 유지", earned: (m, ctx) => ctx.rank > 0 && ctx.rank <= 10 && ctx.gs > 0, status: (m, ctx) => ctx.gs > 0 ? `현재 ${ctx.rank}위` : "활동 전" },
+  { k: "effort", icon: "🎓", name: "노력왕", desc: "그로인 랭킹 10위권 내 유지", earned: (m, ctx) => ctx.rank > 0 && ctx.rank <= 10 && ctx.gs > 0, status: (m, ctx) => ctx.gs > 0 ? `${ctx.rank}위` : "활동 전" },
   { k: "quiz", icon: "📚", name: "퀴즈 마스터", desc: "퀴즈·이벤트 당첨 10회 이상", earned: (m) => (m.wins || 0) >= 10, status: (m) => `${m.wins || 0}/10` },
   { k: "visit", icon: "👟", name: "임장 마스터", desc: "임장 인증 5회 이상", earned: (m) => (m.visits || 0) >= 5, status: (m) => `${m.visits || 0}/5` },
   { k: "action", icon: "🏠", name: "실천왕", desc: "낙찰 1회 또는 입찰 3회 이상", earned: (m) => (m.auctions || 0) >= 1 || (m.bids || 0) >= 3, status: (m) => (m.auctions || 0) >= 1 ? "낙찰 달성" : `입찰 ${m.bids || 0}/3` },
@@ -88,11 +92,11 @@ const BADGES = [
 
 /* 성장 점수: 낙찰 5 · 입찰 1 · 임장 0.5 · 당첨 0.2 · 참가 0.1 */
 const GROWTH_RULES = [
-  { k: "auctions", label: "낙찰", icon: "🏆", pts: 5 },
-  { k: "bids", label: "입찰", icon: "📝", pts: 1 },
-  { k: "visits", label: "임장 인증", icon: "🚶", pts: 0.5 },
-  { k: "wins", label: "이벤트 당첨", icon: "🏅", pts: 0.2 },
-  { k: "parts", label: "이벤트 참가", icon: "✋", pts: 0.1 },
+  { k: "auctions", label: "낙찰", short: "낙찰", icon: "🏆", pts: 5 },
+  { k: "bids", label: "입찰", short: "입찰", icon: "📝", pts: 1 },
+  { k: "visits", label: "임장 인증", short: "임장", icon: "🚶", pts: 0.5 },
+  { k: "wins", label: "이벤트 당첨", short: "당첨", icon: "🏅", pts: 0.2 },
+  { k: "parts", label: "이벤트 참가", short: "참가", icon: "✋", pts: 0.1 },
 ];
 const growthScore = (m) =>
   (m.auctions || 0) * 5 + (m.bids || 0) * 1 + (m.visits || 0) * 0.5 + (m.wins || 0) * 0.2 + (m.parts || 0) * 0.1;
@@ -133,22 +137,22 @@ const nid = () => ++_id;
 
 /* 시드 — realName + phone4 는 공개 페이지 입장 인증에 사용 */
 const SEED_MEMBERS = [
-  { id: 1, name: "채인홍/9275", realName: "채인홍", phone4: "9275", joined: "06-29", founder: true, credits: 11000, parts: 5, wins: 2, auctions: 0, bids: 0, invites: 1, visits: 0, staff: false, level: 1 },
-  { id: 2, name: "고수현/1618", realName: "고수현", phone4: "1618", joined: "06-29", founder: true, credits: 10000, parts: 4, wins: 0, auctions: 1, bids: 2, invites: 2, visits: 0, staff: false, level: 1 },
-  { id: 3, name: "박신주/8911", realName: "박신주", phone4: "8911", joined: "06-29", founder: true, credits: 8000, parts: 4, wins: 1, auctions: 0, bids: 2, invites: 1, visits: 0, staff: false, level: 1 },
-  { id: 4, name: "김윤민/3302", realName: "김윤민", phone4: "3302", joined: "06-29", founder: true, credits: 5000, parts: 3, wins: 0, auctions: 1, bids: 1, invites: 1, visits: 0, staff: false, level: 1 },
-  { id: 5, name: "김민정/7714", realName: "김민정", phone4: "7714", joined: "06-29", founder: true, credits: 5000, parts: 3, wins: 0, auctions: 0, bids: 0, invites: 1, visits: 0, staff: false, level: 1 },
-  { id: 6, name: "이경아/0712", realName: "이경아", phone4: "0712", joined: "07-03", founder: false, credits: 3000, parts: 2, wins: 1, auctions: 0, bids: 0, invites: 0, visits: 0, staff: false, level: 1 },
-  { id: 7, name: "이아름/0175", realName: "이아름", phone4: "0175", joined: "07-01", founder: false, credits: 3000, parts: 2, wins: 1, auctions: 0, bids: 0, invites: 0, visits: 0, staff: false, level: 1 },
-  { id: 8, name: "조현이/5521", realName: "조현이", phone4: "5521", joined: "06-29", founder: true, credits: 0, parts: 3, wins: 0, auctions: 0, bids: 0, invites: 0, visits: 0, staff: false, level: 1 },
-  { id: 9, name: "이동원/2304", realName: "이동원", phone4: "2304", joined: "06-30", founder: true, credits: 0, parts: 3, wins: 0, auctions: 0, bids: 0, invites: 0, visits: 0, staff: false, level: 1 },
-  { id: 10, name: "신정아/9515", realName: "신정아", phone4: "9515", joined: "06-30", founder: true, credits: 0, parts: 2, wins: 0, auctions: 0, bids: 0, invites: 0, visits: 0, staff: false, level: 1 },
-  { id: 11, name: "JOY/1004", realName: "JOY", phone4: "1004", joined: "06-29", founder: true, credits: 0, parts: 2, wins: 0, auctions: 0, bids: 0, invites: 0, visits: 0, staff: false, level: 1 },
-  { id: 12, name: "최지우/0778", realName: "최지우", phone4: "0778", joined: "06-30", founder: true, credits: 0, parts: 2, wins: 0, auctions: 0, bids: 0, invites: 0, visits: 0, staff: false, level: 1 },
-  { id: 13, name: "윤미심/7221", realName: "윤미심", phone4: "7221", joined: "06-30", founder: true, credits: 0, parts: 1, wins: 0, auctions: 0, bids: 0, invites: 0, visits: 0, staff: false, level: 1 },
-  { id: 14, name: "이유리/6849", realName: "이유리", phone4: "6849", joined: "06-30", founder: true, credits: 0, parts: 1, wins: 0, auctions: 0, bids: 0, invites: 0, visits: 0, staff: false, level: 1 },
-  { id: 15, name: "이강근/8890", realName: "이강근", phone4: "8890", joined: "07-01", founder: false, credits: 0, parts: 1, wins: 0, auctions: 0, bids: 0, invites: 0, visits: 0, staff: false, level: 1 },
-  { id: 16, name: "이동혁/7083", realName: "이동혁", phone4: "7083", joined: "07-01", founder: false, credits: 0, parts: 1, wins: 0, auctions: 0, bids: 1, invites: 0, visits: 0, staff: false, level: 1 },
+  { id: 1, name: "채인홍/9275", realName: "채인홍", phone4: "9275", joined: "06-29", founder: true, credits: 11000, parts: 5, wins: 2, auctions: 0, bids: 0, invites: 1, visits: 0, staff: false, level: 0 },
+  { id: 2, name: "고수현/1618", realName: "고수현", phone4: "1618", joined: "06-29", founder: true, credits: 10000, parts: 4, wins: 0, auctions: 1, bids: 2, invites: 2, visits: 0, staff: false, level: 0 },
+  { id: 3, name: "박신주/8911", realName: "박신주", phone4: "8911", joined: "06-29", founder: true, credits: 8000, parts: 4, wins: 1, auctions: 0, bids: 2, invites: 1, visits: 0, staff: false, level: 0 },
+  { id: 4, name: "김윤민/3302", realName: "김윤민", phone4: "3302", joined: "06-29", founder: true, credits: 5000, parts: 3, wins: 0, auctions: 1, bids: 1, invites: 1, visits: 0, staff: false, level: 0 },
+  { id: 5, name: "김민정/7714", realName: "김민정", phone4: "7714", joined: "06-29", founder: true, credits: 5000, parts: 3, wins: 0, auctions: 0, bids: 0, invites: 1, visits: 0, staff: false, level: 0 },
+  { id: 6, name: "이경아/0712", realName: "이경아", phone4: "0712", joined: "07-03", founder: false, credits: 3000, parts: 2, wins: 1, auctions: 0, bids: 0, invites: 0, visits: 0, staff: false, level: 0 },
+  { id: 7, name: "이아름/0175", realName: "이아름", phone4: "0175", joined: "07-01", founder: false, credits: 3000, parts: 2, wins: 1, auctions: 0, bids: 0, invites: 0, visits: 0, staff: false, level: 0 },
+  { id: 8, name: "조현이/5521", realName: "조현이", phone4: "5521", joined: "06-29", founder: true, credits: 0, parts: 3, wins: 0, auctions: 0, bids: 0, invites: 0, visits: 0, staff: false, level: 0 },
+  { id: 9, name: "이동원/2304", realName: "이동원", phone4: "2304", joined: "06-30", founder: true, credits: 0, parts: 3, wins: 0, auctions: 0, bids: 0, invites: 0, visits: 0, staff: false, level: 0 },
+  { id: 10, name: "신정아/9515", realName: "신정아", phone4: "9515", joined: "06-30", founder: true, credits: 0, parts: 2, wins: 0, auctions: 0, bids: 0, invites: 0, visits: 0, staff: false, level: 0 },
+  { id: 11, name: "JOY/1004", realName: "JOY", phone4: "1004", joined: "06-29", founder: true, credits: 0, parts: 2, wins: 0, auctions: 0, bids: 0, invites: 0, visits: 0, staff: false, level: 0 },
+  { id: 12, name: "최지우/0778", realName: "최지우", phone4: "0778", joined: "06-30", founder: true, credits: 0, parts: 2, wins: 0, auctions: 0, bids: 0, invites: 0, visits: 0, staff: false, level: 0 },
+  { id: 13, name: "윤미심/7221", realName: "윤미심", phone4: "7221", joined: "06-30", founder: true, credits: 0, parts: 1, wins: 0, auctions: 0, bids: 0, invites: 0, visits: 0, staff: false, level: 0 },
+  { id: 14, name: "이유리/6849", realName: "이유리", phone4: "6849", joined: "06-30", founder: true, credits: 0, parts: 1, wins: 0, auctions: 0, bids: 0, invites: 0, visits: 0, staff: false, level: 0 },
+  { id: 15, name: "이강근/8890", realName: "이강근", phone4: "8890", joined: "07-01", founder: false, credits: 0, parts: 1, wins: 0, auctions: 0, bids: 0, invites: 0, visits: 0, staff: false, level: 0 },
+  { id: 16, name: "이동혁/7083", realName: "이동혁", phone4: "7083", joined: "07-01", founder: false, credits: 0, parts: 1, wins: 0, auctions: 0, bids: 1, invites: 0, visits: 0, staff: false, level: 0 },
 ];
 
 const SEED_LEDGER = [
@@ -361,7 +365,7 @@ function Members({ members, ledger, onAdjust, onAddMember, onBumpStat, onSetLeve
         </div>
       </Card>
 
-      <div style={{ display: "grid", gridTemplateColumns: sel ? "1.4fr 1fr" : "1fr", gap: 14, alignItems: "start" }}>
+      <div style={{ display: "grid", gridTemplateColumns: sel ? "repeat(auto-fit, minmax(300px, 1fr))" : "1fr", gap: 14, alignItems: "start" }}>
         <Card pad={0} style={{ overflow: "hidden" }}>
           <div style={{ display: "grid", gridTemplateColumns: "2fr .9fr .9fr .9fr 1.1fr", padding: "10px 18px", fontSize: 11.5, fontWeight: 800, color: T.sub, letterSpacing: "0.06em", background: "#FAFCFB", borderBottom: `1px solid ${T.line}` }}>
             <div>멤버</div><div>가입</div><div>참가</div><div>초대</div><div style={{ textAlign: "right" }}>{staffOnly ? "등급" : "크레딧"}</div>
@@ -418,14 +422,21 @@ function Members({ members, ledger, onAdjust, onAddMember, onBumpStat, onSetLeve
               <div style={{ fontSize: 11, color: T.sub, marginTop: 6 }}>잘못 눌렀다면 구글 시트 멤버 탭에서 숫자를 직접 수정하세요.</div>
             </div>
             <div style={{ margin: "0 0 10px", padding: "10px 12px", background: "#FAFCFB", borderRadius: 12, border: `1px solid ${T.line}` }}>
-              <div style={{ fontSize: 12, fontWeight: 800, color: T.sub, marginBottom: 8 }}>등급 지정 (수동) <span style={{ fontWeight: 600 }}>· 활동 점수 기준 달성 시 자동으로도 올라가요 (표시는 둘 중 높은 등급)</span></div>
+              <div style={{ fontSize: 12, fontWeight: 800, color: T.sub, marginBottom: 8 }}>등급 지정 <span style={{ fontWeight: 600 }}>· 수동 선택 시 고정, 자동 선택 시 활동 점수({growthScore(selMember).toFixed(1)}점)로 계산</span></div>
               <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                <button onClick={() => onSetLevel(selMember.id, 0)}
+                  style={{ cursor: "pointer", borderRadius: 999, padding: "6px 11px", fontWeight: 800, fontSize: 12, fontFamily: "inherit",
+                    background: manualLevelOf(selMember) === 0 ? T.grad : "#fff",
+                    color: manualLevelOf(selMember) === 0 ? "#fff" : T.ink,
+                    border: manualLevelOf(selMember) === 0 ? "none" : `1.5px solid ${T.line}` }}>
+                  🔄 자동 (현재 {LEVELS[autoLevelOf(selMember) - 1].icon} Lv.{autoLevelOf(selMember)})
+                </button>
                 {LEVELS.map((lv) => (
                   <button key={lv.lv} onClick={() => onSetLevel(selMember.id, lv.lv)}
                     style={{ cursor: "pointer", borderRadius: 999, padding: "6px 11px", fontWeight: 800, fontSize: 12, fontFamily: "inherit",
-                      background: (selMember.level || 1) === lv.lv ? T.grad : "#fff",
-                      color: (selMember.level || 1) === lv.lv ? "#fff" : T.ink,
-                      border: (selMember.level || 1) === lv.lv ? "none" : `1.5px solid ${T.line}` }}>
+                      background: manualLevelOf(selMember) === lv.lv ? T.grad : "#fff",
+                      color: manualLevelOf(selMember) === lv.lv ? "#fff" : T.ink,
+                      border: manualLevelOf(selMember) === lv.lv ? "none" : `1.5px solid ${T.line}` }}>
                     {lv.icon} {lv.name}
                   </button>
                 ))}
@@ -772,10 +783,10 @@ function Settings({ settings, setSettings }) {
         </Card>
 
         <Card pad={18}>
-          <div style={{ fontWeight: 800, fontSize: 15, letterSpacing: "-0.01em", marginBottom: 4 }}>등급 자동 업그레이드 기준</div>
+          <div style={{ fontWeight: 800, fontSize: 15, letterSpacing: "-0.01em", marginBottom: 4 }}>등급 자동 계산 기준</div>
           <div style={{ fontSize: 12, color: T.sub, marginBottom: 14, lineHeight: 1.6 }}>
-            활동 점수(낙찰 5 · 입찰 1 · 임장 0.5 · 당첨 0.2 · 참가 0.1)가 아래 기준을 넘으면 등급이 자동으로 올라갑니다.
-            멤버 관리에서 수동으로 더 높은 등급을 지정하면 그 등급이 유지됩니다.
+            <b>자동 모드</b> 멤버는 활동 점수(낙찰 5 · 입찰 1 · 임장 0.5 · 당첨 0.2 · 참가 0.1)가 아래 기준을 넘으면 등급이 자동으로 올라갑니다.
+            멤버 관리에서 <b>수동으로 등급을 고정한 멤버는 수동이 항상 우선</b>이에요 (🔄 자동 버튼으로 언제든 되돌릴 수 있어요).
           </div>
           {[
             ["lv2Pts", "🌿 Lv.2 달성 점수"],
@@ -789,7 +800,7 @@ function Settings({ settings, setSettings }) {
             </label>
           ))}
           <div style={{ fontSize: 11, color: T.sub, lineHeight: 1.6 }}>
-            💡 3개월 시즌 · 매일 퀴즈+낙찰가 진행 기준: 개근만 하면 약 18점(참가 0.1×180회), 입찰·임장을 병행하면 Lv.4~5 도달 가능하도록 기본값을 잡았어요.
+            💡 3개월 시즌 · 매일 퀴즈+낙찰가 진행 기준: 개근만 하면 약 18점(참가 0.1×180회), 입찰·임장을 병행하면 Lv.4~5 도달이 가능한 기본값이에요.
           </div>
         </Card>
       </div>
@@ -798,7 +809,7 @@ function Settings({ settings, setSettings }) {
         <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 8 }}>현재 규칙 요약</div>
         <div style={{ fontSize: 12.5, color: T.sub, lineHeight: 1.7 }}>
           1 크레딧 = 1원 · 최소 <b style={{ color: T.ink }}>{draft.minUse.toLocaleString()}</b> 크레딧부터 결제 시 사용 · 메이트 소개 성공 시 소개자에게 <b style={{ color: T.coral }}>+{draft.mateReward.toLocaleString()}</b>, 소개받은 사람에게 <b style={{ color: T.coral }}>{draft.mateCoupon.toLocaleString()}원 쿠폰</b>. 이벤트 크레딧은 관리자가 직접 지급.
-          <br/>등급 자동 업그레이드: 활동 점수 <b style={{ color: T.ink }}>Lv.2 {draft.lv2Pts}점 · Lv.3 {draft.lv3Pts}점 · Lv.4 {draft.lv4Pts}점 · Lv.5 {draft.lv5Pts}점</b> 달성 시.
+          <br/>등급: 수동 고정이 우선 · 자동 모드 기준 <b style={{ color: T.ink }}>Lv.2 {draft.lv2Pts}점 · Lv.3 {draft.lv3Pts}점 · Lv.4 {draft.lv4Pts}점 · Lv.5 {draft.lv5Pts}점</b>.
         </div>
         <div style={{ display: "flex", gap: 8, marginTop: 14, justifyContent: "flex-end" }}>
           <Btn small tone="ghost" onClick={reset}>기본값으로 복원</Btn>
@@ -1091,11 +1102,11 @@ function PublicPage({ members, ledger, log, insights, settings, viewer, onLogin,
                 <div style={{ fontSize: 12, fontWeight: 800, color: T.sub }}>내 활동 기록</div>
                 <Pill tone="coral" style={{ fontSize: 11.5 }}>그로인 랭킹 {myGrowthRank}위</Pill>
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 5 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: 5 }}>
                 {GROWTH_RULES.map((r) => (
-                  <div key={r.k} style={{ background: "#fff", borderRadius: 9, padding: "5px 2px", textAlign: "center", border: `1px solid ${T.line}` }}>
-                    <div style={{ fontSize: 13, lineHeight: 1.2 }}>{r.icon} <b style={{ fontSize: 13.5, fontVariantNumeric: "tabular-nums" }}>{meMember[r.k] || 0}</b></div>
-                    <div style={{ fontSize: 9.5, color: T.sub, fontWeight: 700, marginTop: 1 }}>{r.label}</div>
+                  <div key={r.k} style={{ background: "#fff", borderRadius: 9, padding: "5px 2px", textAlign: "center", border: `1px solid ${T.line}`, minWidth: 0 }}>
+                    <div style={{ fontSize: 12.5, lineHeight: 1.2, whiteSpace: "nowrap" }}>{r.icon}<b style={{ fontSize: 13.5, fontVariantNumeric: "tabular-nums", marginLeft: 2 }}>{meMember[r.k] || 0}</b></div>
+                    <div style={{ fontSize: 9.5, color: T.sub, fontWeight: 700, marginTop: 1, whiteSpace: "nowrap", overflow: "hidden" }}>{r.short}</div>
                   </div>
                 ))}
               </div>
@@ -1112,17 +1123,18 @@ function PublicPage({ members, ledger, log, insights, settings, viewer, onLogin,
                       <div style={{ fontSize: 12, fontWeight: 800, color: T.sub }}>내 배지</div>
                       <Pill tone="line" style={{ fontSize: 11 }}>{earnedCount}/{BADGES.length} 획득</Pill>
                     </div>
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 5 }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: 5 }}>
                       {BADGES.map((b) => {
                         const on = b.earned(meMember, ctx);
                         return (
                           <div key={b.k} title={b.desc} style={{
-                            background: on ? T.gradSoft : "#fff", borderRadius: 9, padding: "6px 2px", textAlign: "center",
+                            background: on ? T.gradSoft : "#fff", borderRadius: 9, padding: "6px 2px 5px", textAlign: "center", minWidth: 0,
+                            display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-start",
                             border: on ? `1.5px solid rgba(111,123,224,.45)` : `1px solid ${T.line}`,
                             opacity: on ? 1 : 0.55, filter: on ? "none" : "grayscale(1)" }}>
-                            <div style={{ fontSize: 17 }}>{b.icon}</div>
-                            <div style={{ fontSize: 9.5, fontWeight: 800, marginTop: 1, letterSpacing: "-0.02em" }}>{b.name}</div>
-                            <div style={{ fontSize: 9, color: on ? T.peri : T.sub, fontWeight: 700, marginTop: 1 }}>{on ? "✓ 달성" : b.status(meMember, ctx)}</div>
+                            <div style={{ fontSize: 16, lineHeight: 1 }}>{b.icon}</div>
+                            <div style={{ fontSize: 9, fontWeight: 800, marginTop: 3, letterSpacing: "-0.03em", lineHeight: 1.15, wordBreak: "keep-all", minHeight: 21, display: "flex", alignItems: "center" }}>{b.name}</div>
+                            <div style={{ fontSize: 8.5, color: on ? T.peri : T.sub, fontWeight: 700, whiteSpace: "nowrap" }}>{on ? "✓ 달성" : b.status(meMember, ctx)}</div>
                           </div>
                         );
                       })}
@@ -1349,9 +1361,6 @@ function PublicPage({ members, ledger, log, insights, settings, viewer, onLogin,
             ))}
           </div>
           <div style={{ fontSize: 11.5, color: T.sub, marginTop: 8 }}>등급은 그로인 활동으로 올릴 수 있습니다.</div>
-          <div style={{ fontSize: 11, color: T.sub, marginTop: 4 }}>
-            활동 점수 기준 · Lv.2 {Number(settings.lv2Pts) || 3}점 · Lv.3 {Number(settings.lv3Pts) || 8}점 · Lv.4 {Number(settings.lv4Pts) || 15}점 · Lv.5 {Number(settings.lv5Pts) || 30}점
-          </div>
         </div>
       </Card>
 
@@ -1632,7 +1641,7 @@ function App() {
       if (live) newM = await api("addMember", { adminKey, realName, phone4 });
       else {
         const id = nid();
-        newM = { id, name: `${realName}/${phone4}`, realName, phone4, joined: today, founder: false, credits: 0, parts: 0, wins: 0, auctions: 0, bids: 0, invites: 0, visits: 0, staff: false, level: 1 };
+        newM = { id, name: `${realName}/${phone4}`, realName, phone4, joined: today, founder: false, credits: 0, parts: 0, wins: 0, auctions: 0, bids: 0, invites: 0, visits: 0, staff: false, level: 0 };
       }
       setMembers((M) => [...M, newM]);
       say(`${realName}님 등록 완료 · 이제 입장 가능`);
@@ -1671,8 +1680,8 @@ function App() {
     try {
       if (live) await api("setLevel", { adminKey, memberId, level });
       setMembers((M) => M.map((m) => m.id === memberId ? { ...m, level } : m));
-      const lv = LEVELS[level - 1];
-      say(`등급 변경 완료 · ${lv.icon} ${lv.name}`);
+      if (level === 0) { say("등급 변경 완료 · 🔄 자동 (활동 점수 기준)"); }
+      else { const lv = LEVELS[level - 1]; say(`등급 변경 완료 · ${lv.icon} ${lv.name} 고정`); }
     } catch (e) { fail(e); }
   };
 
