@@ -66,6 +66,19 @@ const DEFAULT_SETTINGS = {
     lv5Pts: 30,
     insightCats: null, // null = 기본 분류(INSIGHT_CATS) 사용 · 관리자가 수정하면 배열 저장
     lectureCats: null,
+    /* 그로인 랭킹 계산 수식 — 활동 1회당 점수 (0 입력 시 해당 활동 제외) */
+    ptsAuctions: 5,
+    ptsBids: 1,
+    ptsVisits: 0.5,
+    ptsWins: 0.2,
+    ptsParts: 0.1,
+};
+/* 빈 값·잘못된 값이면 기본값, 0은 그대로 유지 */
+const numOr = (v, def) => {
+    if (v === null || v === undefined || v === "")
+        return def;
+    const n = Number(v);
+    return isNaN(n) ? def : n;
 };
 /* 등급: 활동 점수가 기준을 넘으면 자동 업그레이드 (기준은 관리자 설정에서 조정) */
 const LEVELS = [
@@ -106,15 +119,19 @@ const BADGES = [
     { k: "action", icon: "🏠", name: "실천왕", desc: "낙찰 1회 또는 입찰 3회 이상", earned: (m) => (m.auctions || 0) >= 1 || (m.bids || 0) >= 3, status: (m) => (m.auctions || 0) >= 1 ? "낙찰 달성" : `입찰 ${m.bids || 0}/3` },
     { k: "mate", icon: "🤝", name: "그로인 메이트", desc: "메이트 1명 이상 초대", earned: (m) => (m.invites || 0) >= 1, status: (m) => `${m.invites || 0}/1` },
 ];
-/* 성장 점수: 낙찰 5 · 입찰 1 · 임장 0.5 · 당첨 0.2 · 참가 0.1 */
+/* 성장 점수 규칙 — pts는 기본값이며 실제 가중치는 설정(GROWTH_PTS)에서 조절 */
 const GROWTH_RULES = [
-    { k: "auctions", label: "낙찰", short: "낙찰", icon: "🏆", pts: 5 },
-    { k: "bids", label: "입찰", short: "입찰", icon: "📝", pts: 1 },
-    { k: "visits", label: "임장 인증", short: "임장", icon: "🚶", pts: 0.5 },
-    { k: "wins", label: "이벤트 당첨", short: "당첨", icon: "🏅", pts: 0.2 },
-    { k: "parts", label: "이벤트 참가", short: "참가", icon: "✋", pts: 0.1 },
+    { k: "auctions", label: "낙찰", short: "낙찰", icon: "🏆", pts: 5, settingKey: "ptsAuctions" },
+    { k: "bids", label: "입찰", short: "입찰", icon: "📝", pts: 1, settingKey: "ptsBids" },
+    { k: "visits", label: "임장 인증", short: "임장", icon: "🚶", pts: 0.5, settingKey: "ptsVisits" },
+    { k: "wins", label: "이벤트 당첨", short: "당첨", icon: "🏅", pts: 0.2, settingKey: "ptsWins" },
+    { k: "parts", label: "이벤트 참가", short: "참가", icon: "✋", pts: 0.1, settingKey: "ptsParts" },
 ];
-const growthScore = (m) => (m.auctions || 0) * 5 + (m.bids || 0) * 1 + (m.visits || 0) * 0.5 + (m.wins || 0) * 0.2 + (m.parts || 0) * 0.1;
+/* 실시간 가중치 — App 렌더 시 settings 값으로 갱신됨 (LEVEL_PTS와 같은 패턴) */
+let GROWTH_PTS = { auctions: 5, bids: 1, visits: 0.5, wins: 0.2, parts: 0.1 };
+const growthScore = (m) => GROWTH_RULES.reduce((s, r) => s + (m[r.k] || 0) * (GROWTH_PTS[r.k] != null ? GROWTH_PTS[r.k] : r.pts), 0);
+/* 현재 수식을 사람이 읽는 문장으로 (설정·랭킹 화면 안내용) */
+const growthFormulaText = () => GROWTH_RULES.map((r) => `${r.short} ${GROWTH_PTS[r.k]}`).join(" · ");
 const fmtScore = (n) => (Math.round(n * 10) / 10).toLocaleString("ko-KR", { minimumFractionDigits: 1 });
 /* 현재 분기·주차 자동 계산 */
 const periodLabel = () => {
@@ -778,6 +795,200 @@ function Mate({ members, onApprove, settings }) {
                         m.invites,
                         "\uBA85 \uC18C\uAC1C"))))))));
 }
+/* ── 그로인 랭킹 (관리자 전용) — 누적 + 최근 1주·2주 기간별 랭킹과 시상 참고 데이터
+     기간 데이터 출처: 이벤트 시트(참가·당첨·임장), 활동기록 시트(낙찰·입찰·임장 수동 기록), 원장(크레딧 획득) ── */
+/* MM-dd 문자열 → 가장 최근에 지난 날짜의 epoch ms (연도 없는 시트 날짜 복원 · 연말 넘김 처리) */
+const mmddMs = (mmdd) => {
+    const m = String(mmdd || "").match(/^(\d{2})-(\d{2})$/);
+    if (!m) {
+        const d = new Date(mmdd);
+        return isNaN(d.getTime()) ? null : d.getTime();
+    }
+    const now = new Date();
+    let d = new Date(now.getFullYear(), Number(m[1]) - 1, Number(m[2]));
+    if (d.getTime() > now.getTime() + 86400000)
+        d = new Date(now.getFullYear() - 1, Number(m[1]) - 1, Number(m[2]));
+    return d.getTime();
+};
+function RankingAdmin({ members, events, ledger, acts, visitlog }) {
+    const [days, setDays] = useState(7); // 0 = 누적 전체
+    const [copied, setCopied] = useState(false);
+    const [openId, setOpenId] = useState(null); // 합산점수 계산 내역 펼침
+    const actList = acts || [];
+    const visitList = visitlog || [];
+    const nameOf = (id) => { const m = members.find((x) => x.id === id); return m ? m.name : `#${id}`; };
+    const inWindow = (dateStr) => {
+        if (!days)
+            return true;
+        const ms = mmddMs(dateStr);
+        return ms != null && Date.now() - ms < days * 86400000;
+    };
+    /* 기간별 멤버 지표 집계 */
+    const stats = {};
+    const st = (id) => (stats[id] = stats[id] || { auctions: 0, bids: 0, visits: 0, wins: 0, parts: 0, credits: 0 });
+    if (!days) {
+        members.forEach((m) => { const s = st(m.id); GROWTH_RULES.forEach((r) => { s[r.k] = m[r.k] || 0; }); });
+        ledger.forEach((l) => { if (l.amount > 0)
+            st(l.m).credits += l.amount; });
+    }
+    else {
+        events.forEach((e) => {
+            if (!inWindow(e.date))
+                return;
+            const pk = e.type === "임장" ? "visits" : "parts";
+            (e.participants || []).forEach((pid) => { st(pid)[pk] += 1; });
+            (e.winners || []).forEach((w) => { st(w.m).wins += 1; });
+        });
+        actList.forEach((a) => { if (inWindow(a.date) && st(a.m)[a.field] != null)
+            st(a.m)[a.field] += a.delta; });
+        ledger.forEach((l) => { if (l.amount > 0 && inWindow(l.date))
+            st(l.m).credits += l.amount; });
+    }
+    const scored = members
+        .map((m) => ({ ...m, s: st(m.id), score: growthScore(st(m.id)) }))
+        .sort((a, b) => b.score - a.score || b.s.credits - a.s.credits);
+    const ranked = scored.filter((m) => m.score > 0 || m.s.credits > 0);
+    /* 시상 참고 부문별 TOP 3 — 부문 실적과 함께 그로인 합산점수도 표시 */
+    const top3 = (key, fmt) => scored.filter((m) => m.s[key] > 0).sort((a, b) => b.s[key] - a.s[key]).slice(0, 3)
+        .map((m) => ({ name: m.name, stat: fmt(m.s), score: m.score }));
+    const CATS = [
+        { icon: "🔥", name: "개근왕", desc: "이벤트 최다 참가", list: top3("parts", (s) => `참가 ${s.parts}회`) },
+        { icon: "🎯", name: "이벤트 챔피언", desc: "최다 당첨", list: top3("wins", (s) => `당첨 ${s.wins}회`) },
+        { icon: "🚶", name: "임장왕", desc: "임장 인증 최다", list: top3("visits", (s) => `임장 ${s.visits}회`) },
+        { icon: "🏠", name: "실전왕", desc: "낙찰·입찰 실전 활동", list: scored.filter((m) => m.s.auctions + m.s.bids > 0)
+                .sort((a, b) => (b.s.auctions - a.s.auctions) || (b.s.bids - a.s.bids)).slice(0, 3)
+                .map((m) => ({ name: m.name, stat: `낙찰 ${m.s.auctions} · 입찰 ${m.s.bids}`, score: m.score })) },
+        { icon: "💰", name: "크레딧왕", desc: "기간 내 크레딧 최다 획득", list: top3("credits", (s) => `+${s.credits.toLocaleString()} 크레딧`) },
+    ];
+    /* 최근 접속 현황 (방문기록 시트) */
+    const activeDays = days || 14;
+    const recentVisits = visitList.filter((v) => v.lastMs && Date.now() - v.lastMs < activeDays * 86400000)
+        .sort((a, b) => b.lastMs - a.lastMs);
+    const agoText = (ms) => {
+        const h = Math.floor((Date.now() - ms) / 3600000);
+        return h < 1 ? "방금 전" : h < 24 ? `${h}시간 전` : `${Math.floor(h / 24)}일 전`;
+    };
+    const label = !days ? "누적 전체" : days === 7 ? "최근 1주" : `최근 ${days / 7}주`;
+    /* 카톡 발표용 텍스트 복사 */
+    const copyAwards = () => {
+        const lines = [`🏆 그로인 랭킹 (${label})`, ""];
+        ranked.slice(0, 3).forEach((m, i) => lines.push(`${["🥇", "🥈", "🥉"][i]} ${m.name} — ${fmtScore(m.score)}점`));
+        CATS.forEach((c) => { if (c.list.length)
+            lines.push("", `${c.icon} ${c.name}: ${c.list[0].name} (${c.list[0].stat})`); });
+        lines.push("", "오늘도 해피 그로인🍀");
+        const text = lines.join("\n");
+        const done = () => { setCopied(true); setTimeout(() => setCopied(false), 2000); };
+        if (navigator.clipboard && navigator.clipboard.writeText)
+            navigator.clipboard.writeText(text).then(done).catch(done);
+        else {
+            const ta = document.createElement("textarea");
+            ta.value = text;
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand("copy");
+            document.body.removeChild(ta);
+            done();
+        }
+    };
+    return (React.createElement("div", null,
+        React.createElement(SectionTitle, { eyebrow: "\uAD00\uB9AC\uC790 \uC804\uC6A9 \u00B7 \uBA64\uBC84\uC5D0\uAC8C\uB294 \uBCF4\uC774\uC9C0 \uC54A\uC544\uC694", title: "\uADF8\uB85C\uC778 \uB7AD\uD0B9 \u00B7 \uC2DC\uC0C1 \uCC38\uACE0", right: React.createElement(Pill, { tone: "line" },
+                "\uC218\uC2DD: ",
+                growthFormulaText()) }),
+        React.createElement("div", { style: { display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12, alignItems: "center" } },
+            [[7, "최근 1주"], [14, "최근 2주"], [0, "누적 전체"]].map(([d, l]) => (React.createElement("button", { key: d, onClick: () => setDays(d), style: { cursor: "pointer", borderRadius: 999, padding: "7px 14px", fontSize: 12.5, fontWeight: 800, fontFamily: "inherit",
+                    border: days === d ? `1.5px solid ${T.mint}` : `1.5px solid ${T.line}`,
+                    background: days === d ? T.gradSoft : "#fff", color: days === d ? T.ink : T.sub } }, l))),
+            React.createElement("div", { style: { flex: 1 } }),
+            React.createElement("button", { onClick: copyAwards, style: { cursor: "pointer", borderRadius: 999, padding: "7px 14px", fontSize: 12.5, fontWeight: 800, fontFamily: "inherit",
+                    border: `1.5px solid ${copied ? T.mint : T.line}`, background: copied ? T.gradSoft : "#fff", color: T.ink } }, copied ? "✅ 복사 완료!" : "📋 시상 발표문 복사")),
+        days > 0 && actList.length === 0 && (React.createElement(Card, { pad: 14, style: { marginBottom: 12, fontSize: 12, color: T.sub, lineHeight: 1.6 } }, "\uD83D\uDCA1 \uAE30\uAC04 \uB7AD\uD0B9\uC758 \uCC38\uAC00\u00B7\uB2F9\uCCA8\u00B7\uC784\uC7A5\u00B7\uD06C\uB808\uB527\uC740 \uC774\uBCA4\uD2B8/\uC6D0\uC7A5 \uAE30\uB85D\uC73C\uB85C \uC815\uD655\uD558\uAC8C \uC9D1\uACC4\uB3FC\uC694. \uB099\uCC30\u00B7\uC785\uCC30 \uC218\uB3D9 \uAE30\uB85D\uC740 \uC774\uBC88 \uC5C5\uB370\uC774\uD2B8\uBD80\uD130 \uB0A0\uC9DC\uAC00 \uB0A8\uAE30 \uC2DC\uC791\uD574\uC11C(\uD65C\uB3D9\uAE30\uB85D \uC2DC\uD2B8), \uC774\uC804\uC5D0 \uAE30\uB85D\uD55C \uAC74\uC740 \uB204\uC801 \uB7AD\uD0B9\uC5D0\uB9CC \uBC18\uC601\uB429\uB2C8\uB2E4.")),
+        React.createElement(SectionTitle, { title: `그로인 랭킹 — ${label}`, right: React.createElement(Pill, { tone: "line" },
+                ranked.length,
+                "\uBA85 \uD65C\uB3D9") }),
+        React.createElement(Card, { pad: 0, style: { overflow: "hidden", marginBottom: 16 } },
+            ranked.length === 0 && React.createElement("div", { style: { padding: 24, textAlign: "center", color: T.sub, fontSize: 13 } }, "\uC774 \uAE30\uAC04\uC5D0\uB294 \uC9D1\uACC4\uB41C \uD65C\uB3D9\uC774 \uC5C6\uC5B4\uC694."),
+            ranked.slice(0, 20).map((m, i) => (React.createElement("div", { key: m.id },
+                React.createElement("div", { onClick: () => setOpenId(openId === m.id ? null : m.id), role: "button", title: "\uD569\uC0B0\uC810\uC218 \uACC4\uC0B0 \uB0B4\uC5ED \uBCF4\uAE30", style: { display: "flex", alignItems: "center", gap: 10, padding: "11px 16px", cursor: "pointer",
+                        borderBottom: `1px solid ${T.line}`, background: i < 3 ? "rgba(53,201,168,.05)" : "#fff" } },
+                    React.createElement("div", { style: { width: 26, fontWeight: 800, fontSize: 14, color: i === 0 ? T.coral : i < 3 ? T.peri : T.sub, fontVariantNumeric: "tabular-nums" } }, i < 3 ? ["🥇", "🥈", "🥉"][i] : i + 1),
+                    React.createElement("div", { style: { flex: 1, minWidth: 0 } },
+                        React.createElement("div", { style: { fontWeight: 800, fontSize: 14 } },
+                            levelOf(m).icon,
+                            " ",
+                            m.name),
+                        React.createElement("div", { style: { fontSize: 11, color: T.sub, marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } },
+                            GROWTH_RULES.filter((r) => m.s[r.k] > 0).map((r) => `${r.short} ${m.s[r.k]}`).join(" · ") || "크레딧 활동",
+                            m.s.credits > 0 && ` · 획득 +${m.s.credits.toLocaleString()}`)),
+                    React.createElement(Pill, { tone: i < 3 ? "soft" : "line", style: { fontVariantNumeric: "tabular-nums" } },
+                        "\uD569\uC0B0 ",
+                        fmtScore(m.score),
+                        "\uC810"),
+                    React.createElement("span", { style: { fontSize: 10, color: T.sub } }, openId === m.id ? "▲" : "▼")),
+                openId === m.id && (React.createElement("div", { style: { padding: "10px 16px 14px 52px", borderBottom: `1px solid ${T.line}`, background: "#FAFCFB" } },
+                    React.createElement("div", { style: { fontSize: 11, fontWeight: 800, color: T.sub, marginBottom: 6 } },
+                        "\uD569\uC0B0\uC810\uC218 \uACC4\uC0B0 \uB0B4\uC5ED \u00B7 ",
+                        label),
+                    GROWTH_RULES.map((r) => (React.createElement("div", { key: r.k, style: { display: "flex", alignItems: "center", gap: 8, padding: "3px 0", fontSize: 12, fontVariantNumeric: "tabular-nums" } },
+                        React.createElement("span", { style: { width: 96, color: m.s[r.k] > 0 ? T.ink : T.sub, fontWeight: m.s[r.k] > 0 ? 700 : 500 } },
+                            r.icon,
+                            " ",
+                            r.label),
+                        React.createElement("span", { style: { flex: 1, color: T.sub } },
+                            m.s[r.k],
+                            "\uD68C \u00D7 ",
+                            GROWTH_PTS[r.k],
+                            "\uC810"),
+                        React.createElement("b", { style: { color: m.s[r.k] > 0 ? T.ink : T.sub } },
+                            fmtScore((m.s[r.k] || 0) * GROWTH_PTS[r.k]),
+                            "\uC810")))),
+                    React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, marginTop: 6, paddingTop: 8, borderTop: `1px dashed ${T.line}`, fontSize: 12.5 } },
+                        React.createElement("span", { style: { width: 96, fontWeight: 800 } }, "\u03A3 \uD569\uC0B0\uC810\uC218"),
+                        React.createElement("span", { style: { flex: 1 } }),
+                        React.createElement("b", { style: { color: T.coral, fontSize: 13.5, fontVariantNumeric: "tabular-nums" } },
+                            fmtScore(m.score),
+                            "\uC810")),
+                    m.s.credits > 0 && (React.createElement("div", { style: { fontSize: 11, color: T.sub, marginTop: 6 } },
+                        "\uD83D\uDCB0 \uAE30\uAC04 \uB0B4 \uD06C\uB808\uB527 \uD68D\uB4DD +",
+                        m.s.credits.toLocaleString(),
+                        " (\uCC38\uACE0\uC6A9 \u00B7 \uD569\uC0B0\uC810\uC218\uC5D0\uB294 \uBBF8\uD3EC\uD568)"))))))),
+            ranked.length > 20 && React.createElement("div", { style: { padding: "10px 16px", fontSize: 11.5, color: T.sub } },
+                "\u2026 \uC678 ",
+                ranked.length - 20,
+                "\uBA85")),
+        React.createElement(SectionTitle, { title: `부문별 시상 참고 — ${label}`, right: React.createElement(Pill, { tone: "line" }, "\uBD80\uBB38\uBCC4 TOP 3") }),
+        React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 12, marginBottom: 16 } }, CATS.map((c) => (React.createElement(Card, { key: c.name, pad: 0, style: { overflow: "hidden" } },
+            React.createElement("div", { style: { background: T.grad, height: 5 } }),
+            React.createElement("div", { style: { padding: 14 } },
+                React.createElement("div", { style: { fontWeight: 800, fontSize: 14.5 } },
+                    c.icon,
+                    " ",
+                    c.name),
+                React.createElement("div", { style: { fontSize: 11.5, color: T.sub, marginTop: 2 } }, c.desc),
+                c.list.length === 0 && React.createElement("div", { style: { fontSize: 12, color: T.sub, marginTop: 10 } }, "\uC774 \uAE30\uAC04 \uAE30\uB85D \uC5C6\uC74C"),
+                c.list.map((w, i) => (React.createElement("div", { key: i, style: { display: "flex", alignItems: "center", gap: 8, marginTop: i === 0 ? 10 : 6 } },
+                    React.createElement("span", { style: { fontSize: 13 } }, ["🥇", "🥈", "🥉"][i]),
+                    React.createElement("span", { style: { fontWeight: 800, fontSize: 13, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, w.name),
+                    React.createElement("span", { style: { textAlign: "right" } },
+                        React.createElement("span", { style: { display: "block", fontSize: 11.5, color: T.peri, fontWeight: 700 } }, w.stat),
+                        React.createElement("span", { style: { display: "block", fontSize: 10.5, color: T.sub, fontWeight: 700, fontVariantNumeric: "tabular-nums" } },
+                            "\uD569\uC0B0 ",
+                            fmtScore(w.score),
+                            "\uC810")))))))))),
+        React.createElement(SectionTitle, { title: "\uCD5C\uADFC \uC811\uC18D \uD604\uD669", right: React.createElement(Pill, { tone: "line" },
+                activeDays,
+                "\uC77C \uB0B4 ",
+                recentVisits.length,
+                "\uBA85") }),
+        React.createElement(Card, { pad: 0, style: { overflow: "hidden" } },
+            recentVisits.length === 0 && (React.createElement("div", { style: { padding: 20, textAlign: "center", color: T.sub, fontSize: 12.5, lineHeight: 1.6 } }, "\uC544\uC9C1 \uBC29\uBB38\uAE30\uB85D\uC774 \uC5C6\uC5B4\uC694. \uBA64\uBC84\uAC00 \uCEE4\uBBA4\uB2C8\uD2F0\uC5D0 \uB85C\uADF8\uC778\uD558\uBA74 \uC5EC\uAE30\uC5D0 \uCD5C\uADFC \uC811\uC18D\uC774 \uD45C\uC2DC\uB429\uB2C8\uB2E4.")),
+            recentVisits.slice(0, 12).map((v) => (React.createElement("div", { key: v.m, style: { display: "flex", alignItems: "center", gap: 10, padding: "10px 16px", borderBottom: `1px solid ${T.line}` } },
+                React.createElement("div", { style: { flex: 1, fontWeight: 700, fontSize: 13.5 } }, nameOf(v.m)),
+                React.createElement(Pill, { tone: "line", style: { fontSize: 11 } },
+                    "\uB204\uC801 ",
+                    v.count,
+                    "\uD68C"),
+                React.createElement("span", { style: { fontSize: 11.5, color: T.sub, fontWeight: 700, width: 64, textAlign: "right" } }, agoText(v.lastMs))))))));
+}
 /* ── 시상식 (개근왕 = 최다 참가) ── */
 function Awards({ members, settings }) {
     const by = (f) => [...members].sort(f)[0];
@@ -840,7 +1051,9 @@ function Settings({ settings, setSettings }) {
                 React.createElement("div", { style: { fontWeight: 800, fontSize: 15, letterSpacing: "-0.01em", marginBottom: 4 } }, "\uB4F1\uAE09 \uC790\uB3D9 \uACC4\uC0B0 \uAE30\uC900"),
                 React.createElement("div", { style: { fontSize: 12, color: T.sub, marginBottom: 14, lineHeight: 1.6 } },
                     React.createElement("b", null, "\uC790\uB3D9 \uBAA8\uB4DC"),
-                    " \uBA64\uBC84\uB294 \uD65C\uB3D9 \uC810\uC218(\uB099\uCC30 5 \u00B7 \uC785\uCC30 1 \u00B7 \uC784\uC7A5 0.5 \u00B7 \uB2F9\uCCA8 0.2 \u00B7 \uCC38\uAC00 0.1)\uAC00 \uC544\uB798 \uAE30\uC900\uC744 \uB118\uC73C\uBA74 \uB4F1\uAE09\uC774 \uC790\uB3D9\uC73C\uB85C \uC62C\uB77C\uAC11\uB2C8\uB2E4. \uBA64\uBC84 \uAD00\uB9AC\uC5D0\uC11C ",
+                    " \uBA64\uBC84\uB294 \uD65C\uB3D9 \uC810\uC218(",
+                    growthFormulaText(),
+                    ")\uAC00 \uC544\uB798 \uAE30\uC900\uC744 \uB118\uC73C\uBA74 \uB4F1\uAE09\uC774 \uC790\uB3D9\uC73C\uB85C \uC62C\uB77C\uAC11\uB2C8\uB2E4. \uBA64\uBC84 \uAD00\uB9AC\uC5D0\uC11C ",
                     React.createElement("b", null, "\uC218\uB3D9\uC73C\uB85C \uB4F1\uAE09\uC744 \uACE0\uC815\uD55C \uBA64\uBC84\uB294 \uC218\uB3D9\uC774 \uD56D\uC0C1 \uC6B0\uC120"),
                     "\uC774\uC5D0\uC694 (\uD83D\uDD04 \uC790\uB3D9 \uBC84\uD2BC\uC73C\uB85C \uC5B8\uC81C\uB4E0 \uB418\uB3CC\uB9B4 \uC218 \uC788\uC5B4\uC694)."),
                 [
@@ -851,7 +1064,27 @@ function Settings({ settings, setSettings }) {
                 ].map(([k, label]) => (React.createElement("label", { key: k, style: { display: "block", marginBottom: 10 } },
                     React.createElement("div", { style: { fontSize: 12.5, fontWeight: 700, color: T.sub, marginBottom: 4 } }, label),
                     React.createElement(Input, { type: "number", value: draft[k], onChange: (e) => setDraft({ ...draft, [k]: Number(e.target.value) || 0 }), style: { width: "100%" } })))),
-                React.createElement("div", { style: { fontSize: 11, color: T.sub, lineHeight: 1.6 } }, "\uD83D\uDCA1 3\uAC1C\uC6D4 \uC2DC\uC98C \u00B7 \uB9E4\uC77C \uD034\uC988+\uB099\uCC30\uAC00 \uC9C4\uD589 \uAE30\uC900: \uAC1C\uADFC\uB9CC \uD558\uBA74 \uC57D 18\uC810(\uCC38\uAC00 0.1\u00D7180\uD68C), \uC785\uCC30\u00B7\uC784\uC7A5\uC744 \uBCD1\uD589\uD558\uBA74 Lv.4~5 \uB3C4\uB2EC\uC774 \uAC00\uB2A5\uD55C \uAE30\uBCF8\uAC12\uC774\uC5D0\uC694."))),
+                React.createElement("div", { style: { fontSize: 11, color: T.sub, lineHeight: 1.6 } }, "\uD83D\uDCA1 3\uAC1C\uC6D4 \uC2DC\uC98C \u00B7 \uB9E4\uC77C \uD034\uC988+\uB099\uCC30\uAC00 \uC9C4\uD589 \uAE30\uC900: \uAC1C\uADFC\uB9CC \uD558\uBA74 \uC57D 18\uC810(\uCC38\uAC00 0.1\u00D7180\uD68C), \uC785\uCC30\u00B7\uC784\uC7A5\uC744 \uBCD1\uD589\uD558\uBA74 Lv.4~5 \uB3C4\uB2EC\uC774 \uAC00\uB2A5\uD55C \uAE30\uBCF8\uAC12\uC774\uC5D0\uC694.")),
+            React.createElement(Card, { pad: 18 },
+                React.createElement("div", { style: { fontWeight: 800, fontSize: 15, letterSpacing: "-0.01em", marginBottom: 4 } }, "\uADF8\uB85C\uC778 \uB7AD\uD0B9 \uACC4\uC0B0 \uC218\uC2DD"),
+                React.createElement("div", { style: { fontSize: 12, color: T.sub, marginBottom: 14, lineHeight: 1.6 } },
+                    "\uD65C\uB3D9 1\uD68C\uB2F9 \uBD80\uC5EC\uB418\uB294 \uC810\uC218\uC608\uC694. \uC800\uC7A5\uD558\uBA74 \uADF8\uB85C\uC778 \uB7AD\uD0B9\u00B7\uC8FC\uAC04 \uB7AD\uD0B9\u00B7\uC790\uB3D9 \uB4F1\uAE09 \uACC4\uC0B0\uC5D0 ",
+                    React.createElement("b", null, "\uC989\uC2DC \uBC18\uC601"),
+                    "\uB429\uB2C8\uB2E4. 0\uC744 \uC785\uB825\uD558\uBA74 \uD574\uB2F9 \uD65C\uB3D9\uC740 \uC810\uC218\uC5D0\uC11C \uC81C\uC678\uB3FC\uC694."),
+                GROWTH_RULES.map((r) => (React.createElement("label", { key: r.settingKey, style: { display: "block", marginBottom: 10 } },
+                    React.createElement("div", { style: { fontSize: 12.5, fontWeight: 700, color: T.sub, marginBottom: 4 } },
+                        r.icon,
+                        " ",
+                        r.label,
+                        " 1\uD68C\uB2F9 \uC810\uC218 ",
+                        React.createElement("span", { style: { fontWeight: 600 } },
+                            "(\uAE30\uBCF8 ",
+                            r.pts,
+                            ")")),
+                    React.createElement(Input, { type: "number", step: "0.1", min: "0", value: draft[r.settingKey], onChange: (e) => setDraft({ ...draft, [r.settingKey]: e.target.value }), style: { width: "100%" } })))),
+                React.createElement("div", { style: { padding: "10px 12px", background: T.gradSoft, borderRadius: 12, fontSize: 12, fontWeight: 700, color: T.ink, lineHeight: 1.6 } },
+                    "\uD604\uC7AC \uC218\uC2DD: ",
+                    GROWTH_RULES.map((r) => `${r.short} ${numOr(draft[r.settingKey], r.pts)}`).join(" · ")))),
         React.createElement(Card, { style: { marginTop: 14 }, pad: 18 },
             React.createElement("div", { style: { fontWeight: 800, fontSize: 14, marginBottom: 8 } }, "\uD604\uC7AC \uADDC\uCE59 \uC694\uC57D"),
             React.createElement("div", { style: { fontSize: 12.5, color: T.sub, lineHeight: 1.7 } },
@@ -1922,6 +2155,8 @@ function App() {
     const [eventLog, setEventLog] = useState(live ? [] : SEED_EVENT_LOG);
     const [insights, setInsights] = useState(live ? [] : SEED_INSIGHTS);
     const [lectures, setLectures] = useState(live ? [] : SEED_LECTURES);
+    const [acts, setActs] = useState([]); // 활동기록 (관리자 응답에만 포함)
+    const [visitlog, setVisitlog] = useState([]); // 방문기록 요약 (관리자 응답에만 포함)
     const [settings, setSettings] = useState(DEFAULT_SETTINGS);
     const [viewer, setViewer] = useState(null);
     const [adminKey, setAdminKey] = useState(null); // 관리자/운영진 PIN (인증 후 보관)
@@ -1940,6 +2175,14 @@ function App() {
         Number(settings.lv4Pts) || DEFAULT_SETTINGS.lv4Pts,
         Number(settings.lv5Pts) || DEFAULT_SETTINGS.lv5Pts,
     ];
+    /* 그로인 랭킹 가중치도 설정값과 동기화 (0은 유효한 값) */
+    GROWTH_PTS = {
+        auctions: numOr(settings.ptsAuctions, DEFAULT_SETTINGS.ptsAuctions),
+        bids: numOr(settings.ptsBids, DEFAULT_SETTINGS.ptsBids),
+        visits: numOr(settings.ptsVisits, DEFAULT_SETTINGS.ptsVisits),
+        wins: numOr(settings.ptsWins, DEFAULT_SETTINGS.ptsWins),
+        parts: numOr(settings.ptsParts, DEFAULT_SETTINGS.ptsParts),
+    };
     async function refresh(key) {
         try {
             const d = await api("all", { adminKey: key || adminKey || undefined });
@@ -1950,6 +2193,10 @@ function App() {
             setLectures(d.lectures || []);
             if (d.settings)
                 setSettings({ ...DEFAULT_SETTINGS, ...d.settings });
+            if (d.acts)
+                setActs(d.acts);
+            if (d.visitlog)
+                setVisitlog(d.visitlog); // 관리자 조회에만 포함
             setPhase("ready");
             /* 공개 데이터만 캐시 (관리자 키 조회 결과는 전화번호가 포함되므로 저장 안 함) */
             if (!key && !adminKey) {
@@ -2324,7 +2571,7 @@ function App() {
     const STAFF_TABS = ["members", "insights", "lectures"]; // 운영진 허용 탭 (크레딧 관련 제외)
     const TABS = [
         ["board", "리더보드"], ["members", "멤버 관리"], ["events", "데일리 이벤트"],
-        ["mate", "그로인 메이트"], ["lectures", "강의"], ["insights", "인사이트"], ["awards", "시상식"], ["settings", "설정"],
+        ["mate", "그로인 메이트"], ["lectures", "강의"], ["insights", "인사이트"], ["ranking", "그로인 랭킹"], ["awards", "시상식"], ["settings", "설정"],
     ].filter(([k]) => !isStaff || STAFF_TABS.includes(k));
     const effTab = TABS.some(([k]) => k === tab) ? tab : TABS[0][0];
     const shellFont = { fontFamily: `-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Pretendard","Noto Sans KR","Malgun Gothic",sans-serif`, WebkitFontSmoothing: "antialiased" };
@@ -2389,6 +2636,7 @@ function App() {
                 effTab === "mate" && React.createElement(Mate, { members: members, onApprove: onApprove, settings: settings }),
                 effTab === "insights" && React.createElement(Insights, { insights: insights, onAdd: onAddInsight, onDelete: onDeleteInsight, onUpload: onUploadImage, onTogglePin: onTogglePinInsight, onEdit: onEditInsight, cats: catsOf(settings, "insightCats", INSIGHT_CATS), onSaveCats: (c) => onSaveCats("insights", c) }),
                 effTab === "lectures" && React.createElement(Lectures, { lectures: lectures, onAdd: onAddLecture, onDelete: onDeleteLecture, onTogglePin: onTogglePinLecture, onUpload: onUploadImage, onEdit: onEditLecture, cats: catsOf(settings, "lectureCats", LECTURE_CATS), onSaveCats: (c) => onSaveCats("lectures", c) }),
+                effTab === "ranking" && React.createElement(RankingAdmin, { members: members, events: eventLog, ledger: ledger, acts: acts, visitlog: visitlog }),
                 effTab === "awards" && React.createElement(Awards, { members: members, settings: settings }),
                 effTab === "settings" && React.createElement(Settings, { settings: settings, setSettings: persistSettings })))),
         pinPrompt && (React.createElement("div", { style: { position: "fixed", inset: 0, background: "rgba(28,35,51,.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 20 } },
