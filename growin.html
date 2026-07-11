@@ -1047,8 +1047,7 @@ function Insights({ insights, onAdd, onDelete, onUpload, onTogglePin, onEdit, ca
                         React.createElement("div", { style: { display: "flex", gap: 6 } },
                             React.createElement("button", { onClick: () => { setEditId(null); setDraft(null); }, style: { cursor: "pointer", border: `1.5px solid ${T.line}`, background: "#fff", color: T.sub, borderRadius: 999, padding: "7px 14px", fontSize: 12.5, fontWeight: 800, fontFamily: "inherit" } }, "\uCDE8\uC18C"),
                             React.createElement(Btn, { disabled: !canSaveEdit, onClick: commitEdit }, "\uC218\uC815 \uC800\uC7A5"))))) : (React.createElement(React.Fragment, null,
-                    React.createElement(InsightBody, { body: i.body, hl: q }),
-                    React.createElement(InsightMedia, { imgs: imgsOf(i), yt: i.yt })))))))));
+                    React.createElement(InsightContent, { body: i.body, imgs: imgsOf(i), yt: i.yt, hl: q })))))))));
 }
 /* ── 강의 다시보기 (관리자) — 임베드 영상 + 사진 · 고정 · 글 전체 수정 + 검색 지원 ── */
 function Lectures({ lectures, onAdd, onDelete, onTogglePin, onUpload, onEdit, cats = LECTURE_CATS, onSaveCats }) {
@@ -1124,8 +1123,7 @@ function Lectures({ lectures, onAdd, onDelete, onTogglePin, onUpload, onEdit, ca
                         React.createElement("div", { style: { display: "flex", gap: 6 } },
                             React.createElement("button", { onClick: () => { setEditId(null); setDraft(null); }, style: { cursor: "pointer", border: `1.5px solid ${T.line}`, background: "#fff", color: T.sub, borderRadius: 999, padding: "7px 14px", fontSize: 12.5, fontWeight: 800, fontFamily: "inherit" } }, "\uCDE8\uC18C"),
                             React.createElement(Btn, { disabled: !canSaveEdit, onClick: commitEdit }, "\uC218\uC815 \uC800\uC7A5"))))) : (React.createElement(React.Fragment, null,
-                    lec.body && React.createElement(InsightBody, { body: lec.body, hl: q }),
-                    React.createElement(InsightMedia, { imgs: imgsOf(lec), yt: lec.yt })))))))));
+                    React.createElement(InsightContent, { body: lec.body, imgs: imgsOf(lec), yt: lec.yt, hl: q })))))))));
 }
 /* ── 인사이트 본문 — 줄바꿈 그대로 표시 · 긴 글은 접고 '더보기'
      링크는 자동 활성화(RichText) · 검색어(hl)가 있으면 하이라이트 + 자동 펼침 ── */
@@ -1218,6 +1216,36 @@ function InsightMedia({ imgs, yt }) {
         list.map((src, idx) => (React.createElement("a", { key: idx, href: src, target: "_blank", rel: "noopener noreferrer", title: "\uC6D0\uBCF8 \uD06C\uAC8C \uBCF4\uAE30" },
             React.createElement("img", { src: src, alt: `인사이트 이미지 ${idx + 1}`, loading: "lazy", style: { width: "100%", height: "auto", borderRadius: 12, border: `1px solid ${T.line}`, display: "block", background: "#F3F6F5" } })))),
         vid && React.createElement(VideoEmbed, { yt: yt })));
+}
+/* ── 인사이트 콘텐츠: 본문 + 사진 + 영상을 하나의 더보기로 통합
+     접힌 상태에선 사진이 작은 썸네일 줄로만 표시돼 화면을 아끼고,
+     '📷 사진 N장 더보기'를 누르면 원본 크기로 펼쳐집니다.
+     검색 중(hl)에는 본문만 자동 펼침 · 사진은 원하면 수동으로 ── */
+function InsightContent({ body, imgs, yt, clamp = 4, hl }) {
+    const [open, setOpen] = useState(false);
+    const text = String(body || "");
+    const list = Array.isArray(imgs) ? imgs.filter(Boolean) : (imgs ? [imgs] : []);
+    const searching = !!String(hl || "").trim();
+    const longText = text.length > 180 || text.split("\n").length > clamp;
+    const textExpanded = open || searching;
+    const showToggle = (longText && !searching) || list.length > 0;
+    const vid = videoInfo(yt);
+    return (React.createElement("div", null,
+        text !== "" && (React.createElement("div", { style: { fontSize: 13, color: T.ink, lineHeight: 1.7, marginTop: 8, whiteSpace: "pre-line", wordBreak: "keep-all",
+                ...(longText && !textExpanded ? { display: "-webkit-box", WebkitLineClamp: clamp, WebkitBoxOrient: "vertical", overflow: "hidden" } : {}) } },
+            React.createElement(RichText, { text: text, hl: searching ? hl.trim() : "" }))),
+        list.length > 0 && !open && (React.createElement("div", { onClick: () => setOpen(true), role: "button", title: "\uC0AC\uC9C4 \uD06C\uAC8C \uBCF4\uAE30", style: { marginTop: 10, display: "flex", gap: 6, alignItems: "center", cursor: "pointer", overflowX: "auto", paddingBottom: 2 } },
+            list.slice(0, 4).map((src, i) => (React.createElement("img", { key: i, src: src, alt: `사진 미리보기 ${i + 1}`, loading: "lazy", style: { width: 62, height: 50, objectFit: "cover", borderRadius: 8, border: `1px solid ${T.line}`, flexShrink: 0, background: "#F3F6F5", display: "block" } }))),
+            list.length > 4 && (React.createElement("span", { style: { flexShrink: 0, width: 62, height: 50, borderRadius: 8, border: `1px dashed ${T.line}`, background: "#FAFCFB",
+                    display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 800, color: T.sub } },
+                "+",
+                list.length - 4)))),
+        list.length > 0 && open && (React.createElement("div", { style: { marginTop: 10, display: "grid", gap: 8 } }, list.map((src, idx) => (React.createElement("a", { key: idx, href: src, target: "_blank", rel: "noopener noreferrer", title: "\uC6D0\uBCF8 \uD06C\uAC8C \uBCF4\uAE30" },
+            React.createElement("img", { src: src, alt: `이미지 ${idx + 1}`, loading: "lazy", style: { width: "100%", height: "auto", borderRadius: 12, border: `1px solid ${T.line}`, display: "block", background: "#F3F6F5" } })))))),
+        vid && React.createElement("div", { style: { marginTop: 10 } },
+            React.createElement(VideoEmbed, { yt: yt })),
+        showToggle && (React.createElement("button", { onClick: () => setOpen(!open), style: { marginTop: 8, cursor: "pointer", border: `1px solid ${T.line}`, background: "#FAFCFB", color: T.sub,
+                borderRadius: 999, padding: "4px 12px", fontSize: 11.5, fontWeight: 800, fontFamily: "inherit" } }, open ? "접기 ▲" : list.length > 0 ? `📷 사진 ${list.length}장 더보기 ▼` : "더보기 ▼"))));
 }
 /* ── 공개 조회 페이지 (탭 대시보드) ── */
 function PublicPage({ members, ledger, log, insights, lectures, settings, viewer, onLogin, onLogout, onChangePw }) {
@@ -1622,8 +1650,7 @@ function PublicPage({ members, ledger, log, insights, lectures, settings, viewer
                         React.createElement(Pill, { tone: "soft", style: { fontSize: 11.5 } }, lec.cat),
                         React.createElement("div", { style: { fontWeight: 800, fontSize: 15, letterSpacing: "-0.01em", flex: 1 } }, q.trim() ? highlightText(lec.title, q.trim(), "lt" + lec.id) : lec.title),
                         React.createElement(Pill, { tone: "line", style: { fontSize: 11 } }, shortDate(lec.date))),
-                    lec.body && React.createElement(InsightBody, { body: lec.body, clamp: 3, hl: q }),
-                    React.createElement(InsightMedia, { imgs: imgsOf(lec), yt: lec.yt })))))));
+                    React.createElement(InsightContent, { body: lec.body, imgs: imgsOf(lec), yt: lec.yt, clamp: 3, hl: q })))))));
     };
     /* ── 인사이트 전체 ── */
     const InsightsTab = () => {
@@ -1648,8 +1675,7 @@ function PublicPage({ members, ledger, log, insights, lectures, settings, viewer
                         React.createElement(Pill, { tone: "soft", style: { fontSize: 11.5 } }, i.cat),
                         React.createElement("div", { style: { fontWeight: 800, fontSize: 14.5, letterSpacing: "-0.01em", flex: 1 } }, q.trim() ? highlightText(i.title, q.trim(), "it" + i.id) : i.title),
                         React.createElement(Pill, { tone: "line", style: { fontSize: 11 } }, shortDate(i.date))),
-                    React.createElement(InsightBody, { body: i.body, hl: q }),
-                    React.createElement(InsightMedia, { imgs: imgsOf(i), yt: i.yt })))))));
+                    React.createElement(InsightContent, { body: i.body, imgs: imgsOf(i), yt: i.yt, hl: q })))))));
     };
     /* ── 크레딧 안내 ── */
     const GuideTab = () => (React.createElement("div", null,
