@@ -1467,6 +1467,10 @@ function InsightContent({ body, imgs, yt, clamp = 4, hl }) {
         text !== "" && (React.createElement("div", { style: { fontSize: 13, color: T.ink, lineHeight: 1.7, marginTop: 8, whiteSpace: "pre-line", wordBreak: "keep-all",
                 ...(longText && !textExpanded ? { display: "-webkit-box", WebkitLineClamp: clamp, WebkitBoxOrient: "vertical", overflow: "hidden" } : {}) } },
             React.createElement(RichText, { text: text, hl: searching ? hl.trim() : "" }))),
+        showToggle && (React.createElement("button", { onClick: () => setOpen(!open), style: { marginTop: 8, cursor: "pointer", border: `1px solid ${T.line}`, background: "#FAFCFB", color: T.sub,
+                borderRadius: 999, padding: "4px 12px", fontSize: 11.5, fontWeight: 800, fontFamily: "inherit" } }, open ? "접기 ▲" : longText && !searching
+            ? (list.length > 0 ? `본문 전체 · 📷 사진 ${list.length}장 더보기 ▼` : "더보기 ▼")
+            : `📷 사진 ${list.length}장 더보기 ▼`)),
         list.length > 0 && !open && (React.createElement("div", { onClick: () => setOpen(true), role: "button", title: "\uC0AC\uC9C4 \uD06C\uAC8C \uBCF4\uAE30", style: { marginTop: 10, display: "flex", gap: 6, alignItems: "center", cursor: "pointer", overflowX: "auto", paddingBottom: 2 } },
             list.slice(0, 4).map((src, i) => (React.createElement("img", { key: i, src: src, alt: `사진 미리보기 ${i + 1}`, loading: "lazy", style: { width: 62, height: 50, objectFit: "cover", borderRadius: 8, border: `1px solid ${T.line}`, flexShrink: 0, background: "#F3F6F5", display: "block" } }))),
             list.length > 4 && (React.createElement("span", { style: { flexShrink: 0, width: 62, height: 50, borderRadius: 8, border: `1px dashed ${T.line}`, background: "#FAFCFB",
@@ -1476,9 +1480,7 @@ function InsightContent({ body, imgs, yt, clamp = 4, hl }) {
         list.length > 0 && open && (React.createElement("div", { style: { marginTop: 10, display: "grid", gap: 8 } }, list.map((src, idx) => (React.createElement("a", { key: idx, href: src, target: "_blank", rel: "noopener noreferrer", title: "\uC6D0\uBCF8 \uD06C\uAC8C \uBCF4\uAE30" },
             React.createElement("img", { src: src, alt: `이미지 ${idx + 1}`, loading: "lazy", style: { width: "100%", height: "auto", borderRadius: 12, border: `1px solid ${T.line}`, display: "block", background: "#F3F6F5" } })))))),
         vid && React.createElement("div", { style: { marginTop: 10 } },
-            React.createElement(VideoEmbed, { yt: yt })),
-        showToggle && (React.createElement("button", { onClick: () => setOpen(!open), style: { marginTop: 8, cursor: "pointer", border: `1px solid ${T.line}`, background: "#FAFCFB", color: T.sub,
-                borderRadius: 999, padding: "4px 12px", fontSize: 11.5, fontWeight: 800, fontFamily: "inherit" } }, open ? "접기 ▲" : list.length > 0 ? `📷 사진 ${list.length}장 더보기 ▼` : "더보기 ▼"))));
+            React.createElement(VideoEmbed, { yt: yt }))));
 }
 /* ── 공개 조회 페이지 (탭 대시보드) ── */
 function PublicPage({ members, ledger, log, insights, lectures, settings, viewer, onLogin, onLogout, onChangePw }) {
