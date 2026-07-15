@@ -324,6 +324,15 @@ const SEED_LECTURES = [
     { id: 1, date: "07-05", cat: "톡강", title: "권리분석 기초 — 말소기준권리 한 번에 이해하기", body: "경매 초보가 가장 먼저 알아야 할 말소기준권리 개념을 예시와 함께 정리한 다시보기입니다.", yt: "https://youtu.be/dQw4w9WgXcQ", pin: true },
     { id: 2, date: "07-02", cat: "실전 사례", title: "수원 영통구 낙찰 복기 — 입찰가 산정 과정", body: "실제 사건(2025-50253)을 놓고 임장부터 입찰가 결정까지 전 과정을 복기합니다.", yt: "", pin: false },
 ];
+/* 인증 게시판 데모 시드 */
+const SEED_CERTS = [
+    { id: 2, date: "07-12", m: 2, type: "입찰", title: "부천 소사구 아파트 입찰 도전기", body: "감정가 대비 82%에 입찰했는데 2등으로 패찰했어요 😭 그래도 법원 분위기 경험한 것만으로 큰 공부!", notion: "" },
+    { id: 1, date: "07-10", m: 1, type: "임장", title: "인천 부평 빌라 임장 후기", body: "주말에 다녀온 임장 기록이에요. 초품아 + 역세권인데 주차가 아쉬웠어요.", notion: "https://growin.notion.site/demo" },
+];
+const SEED_CMTS = [
+    { id: 1, postId: 1, parentId: 0, m: 2, date: "07-10", body: "주차는 세대당 몇 대였나요?" },
+    { id: 2, postId: 1, parentId: 1, m: 1, date: "07-11", body: "0.7대였어요! 저녁엔 이중주차 많더라고요." },
+];
 /* ── 공용 컴포넌트 ── */
 const Pill = ({ children, tone = "grad", style }) => (React.createElement("span", { style: {
         display: "inline-flex", alignItems: "center", gap: 4,
@@ -794,6 +803,104 @@ function Mate({ members, onApprove, settings }) {
                     React.createElement(Pill, { tone: "soft" },
                         m.invites,
                         "\uBA85 \uC18C\uAC1C"))))))));
+}
+/* ── 인증 게시판 관리 (운영진·관리자) — 글 수정·삭제 · 댓글 삭제 · 운영진 답글
+     멤버 화면에는 수정·삭제 UI가 전혀 노출되지 않음 ── */
+function CertsAdmin({ certs, cmts, members, onUpdate, onDelete, onStaffCmt, onDeleteCmt }) {
+    const [q, setQ] = useState("");
+    const [editId, setEditId] = useState(null);
+    const [draft, setDraft] = useState(null);
+    const [replyTo, setReplyTo] = useState(null); // "postId" 또는 "postId:cmtId"
+    const [replyText, setReplyText] = useState("");
+    const list = certs.filter((c) => matchesQuery({ title: c.title, body: c.body, cat: c.type }, q));
+    const nameOf = (m) => cmtAuthor(members, m);
+    const startEdit = (c) => { setEditId(c.id); setDraft({ type: c.type, title: c.title, body: c.body || "", notion: c.notion || "" }); };
+    const commitEdit = () => { onUpdate(editId, { ...draft, title: draft.title.trim(), body: draft.body.trim(), notion: draft.notion.trim() }); setEditId(null); setDraft(null); };
+    const sendReply = (postId, parentId) => {
+        const v = replyText.trim();
+        if (!v)
+            return;
+        onStaffCmt(postId, v, parentId || 0);
+        setReplyText("");
+        setReplyTo(null);
+    };
+    return (React.createElement("div", null,
+        React.createElement(SectionTitle, { eyebrow: "\uBA64\uBC84 \uC791\uC131 \uAE00 \uAD00\uB9AC \u00B7 \uC218\uC815\uACFC \uC0AD\uC81C\uB294 \uC5EC\uAE30\uC11C\uB9CC", title: "\uC778\uC99D \uAC8C\uC2DC\uD310 \uAD00\uB9AC", right: React.createElement(Pill, { tone: "line" },
+                certs.length,
+                "\uAC74") }),
+        React.createElement(SearchBox, { value: q, onChange: setQ, count: list.length, placeholder: "\uAC80\uC0C9 \u2014 \uC81C\uBAA9 \u00B7 \uB0B4\uC6A9 \u00B7 \uC885\uB958" }),
+        React.createElement("div", { style: { display: "grid", gap: 10 } },
+            list.length === 0 && (React.createElement(Card, { pad: 24, style: { textAlign: "center", color: T.sub, fontSize: 13 } }, q.trim() ? `「${q.trim()}」에 맞는 글이 없어요.` : "아직 인증 글이 없어요. 멤버들이 임장·입찰 인증을 올리면 여기서 관리할 수 있어요.")),
+            list.map((c) => {
+                const a = nameOf(c.m);
+                const postCmts = cmts.filter((x) => x.postId === c.id);
+                const tops = postCmts.filter((x) => !x.parentId);
+                return (React.createElement(Card, { key: c.id, pad: 16 },
+                    React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" } },
+                        React.createElement(Pill, { tone: c.type === "임장" ? "soft" : "coral", style: { fontSize: 11 } }, c.type),
+                        React.createElement("div", { style: { fontWeight: 800, fontSize: 14.5, flex: 1, minWidth: 0 } }, c.title),
+                        React.createElement("span", { style: { fontSize: 11.5, color: T.sub, fontWeight: 700 } },
+                            a.icon,
+                            " ",
+                            a.name),
+                        React.createElement(Pill, { tone: "line", style: { fontSize: 11 } }, shortDate(c.date)),
+                        React.createElement("button", { onClick: () => editId === c.id ? (setEditId(null), setDraft(null)) : startEdit(c), style: { cursor: "pointer", border: `1.5px solid ${editId === c.id ? T.mint : T.line}`, background: editId === c.id ? T.gradSoft : "#fff",
+                                color: T.ink, borderRadius: 999, padding: "4px 11px", fontSize: 11.5, fontWeight: 800, fontFamily: "inherit", whiteSpace: "nowrap" } }, "\u270E \uC218\uC815"),
+                        React.createElement("button", { onClick: () => onDelete(c.id), title: "\uC0AD\uC81C", style: { border: "none", background: "transparent", color: T.sub, cursor: "pointer", fontSize: 15, padding: "2px 6px" } }, "\u00D7")),
+                    editId === c.id && draft ? (React.createElement("div", { style: { marginTop: 10, padding: 12, borderRadius: 12, background: "#F3F6F5", border: `1px solid ${T.line}` } },
+                        React.createElement("div", { style: { display: "flex", gap: 6, marginBottom: 8 } }, CERT_TYPES.map((t2) => (React.createElement("button", { key: t2, onClick: () => setDraft((d) => ({ ...d, type: t2 })), style: { cursor: "pointer", borderRadius: 999, padding: "6px 14px", fontSize: 12, fontWeight: 800, fontFamily: "inherit",
+                                border: draft.type === t2 ? `1.5px solid ${T.mint}` : `1.5px solid ${T.line}`,
+                                background: draft.type === t2 ? T.gradSoft : "#fff", color: draft.type === t2 ? T.ink : T.sub } }, t2)))),
+                        React.createElement(Input, { value: draft.title, onChange: (e) => setDraft((d) => ({ ...d, title: e.target.value })), placeholder: "\uC81C\uBAA9", style: { width: "100%", boxSizing: "border-box", marginBottom: 8, background: "#fff" } }),
+                        React.createElement("textarea", { value: draft.body, onChange: (e) => setDraft((d) => ({ ...d, body: e.target.value })), placeholder: "\uB0B4\uC6A9", rows: 4, style: { width: "100%", boxSizing: "border-box", border: `1.5px solid ${T.line}`, borderRadius: 10, padding: "10px 12px",
+                                fontSize: 13.5, fontFamily: "inherit", outline: "none", resize: "vertical", lineHeight: 1.6, background: "#fff" } }),
+                        React.createElement(Input, { value: draft.notion, onChange: (e) => setDraft((d) => ({ ...d, notion: e.target.value })), placeholder: "\uB178\uC158 \uB9C1\uD06C (notion.site)", style: { width: "100%", boxSizing: "border-box", marginTop: 8, background: "#fff" } }),
+                        React.createElement("div", { style: { display: "flex", justifyContent: "flex-end", gap: 6, marginTop: 10 } },
+                            React.createElement("button", { onClick: () => { setEditId(null); setDraft(null); }, style: { cursor: "pointer", border: `1.5px solid ${T.line}`, background: "#fff", color: T.sub, borderRadius: 999, padding: "7px 14px", fontSize: 12.5, fontWeight: 800, fontFamily: "inherit" } }, "\uCDE8\uC18C"),
+                            React.createElement(Btn, { small: true, disabled: !draft.title.trim(), onClick: commitEdit }, "\uC218\uC815 \uC800\uC7A5")))) : (React.createElement(React.Fragment, null,
+                        c.body && React.createElement(InsightContent, { body: c.body, imgs: [], yt: "", hl: q }),
+                        React.createElement(NotionEmbed, { url: c.notion }))),
+                    React.createElement("div", { style: { marginTop: 12, paddingTop: 10, borderTop: `1px dashed ${T.line}` } },
+                        React.createElement("div", { style: { fontSize: 12, fontWeight: 800, color: T.sub, marginBottom: 4 } },
+                            "\uD83D\uDCAC \uB313\uAE00 ",
+                            postCmts.length,
+                            "\uAC1C"),
+                        tops.map((cm) => {
+                            const ca = nameOf(cm.m);
+                            const replies = postCmts.filter((x) => x.parentId === cm.id);
+                            return (React.createElement("div", { key: cm.id, style: { padding: "8px 0 0 0" } },
+                                React.createElement("div", { style: { display: "flex", gap: 6, alignItems: "flex-start" } },
+                                    React.createElement("div", { style: { flex: 1, minWidth: 0 } },
+                                        React.createElement("b", { style: { fontSize: 12 } },
+                                            ca.icon,
+                                            " ",
+                                            ca.name),
+                                        React.createElement("span", { style: { fontSize: 10.5, color: T.sub, marginLeft: 6 } }, shortDate(cm.date)),
+                                        React.createElement("div", { style: { fontSize: 12.5, lineHeight: 1.6, whiteSpace: "pre-line" } }, cm.body)),
+                                    React.createElement("button", { onClick: () => { setReplyTo(replyTo === c.id + ":" + cm.id ? null : c.id + ":" + cm.id); setReplyText(""); }, style: { cursor: "pointer", border: `1px solid ${T.line}`, background: "#fff", color: T.sub, borderRadius: 999,
+                                            padding: "3px 10px", fontSize: 10.5, fontWeight: 800, fontFamily: "inherit", flexShrink: 0 } }, "\uD83C\uDF3F \uB2F5\uAE00"),
+                                    React.createElement("button", { onClick: () => onDeleteCmt(cm.id), title: "\uB313\uAE00 \uC0AD\uC81C (\uB2F5\uAE00 \uD3EC\uD568)", style: { border: "none", background: "transparent", color: T.sub, cursor: "pointer", fontSize: 13, padding: "1px 4px", flexShrink: 0 } }, "\u00D7")),
+                                replies.map((r) => {
+                                    const ra = nameOf(r.m);
+                                    return (React.createElement("div", { key: r.id, style: { display: "flex", gap: 6, alignItems: "flex-start", padding: "6px 0 0 22px" } },
+                                        React.createElement("div", { style: { flex: 1, minWidth: 0 } },
+                                            React.createElement("b", { style: { fontSize: 12 } },
+                                                "\u21B3 ",
+                                                ra.name),
+                                            ra.staff && React.createElement(Pill, { tone: "gold", style: { fontSize: 9, padding: "1px 6px", marginLeft: 5 } }, "\u2B50 \uC6B4\uC601\uC9C4"),
+                                            React.createElement("span", { style: { fontSize: 10.5, color: T.sub, marginLeft: 6 } }, shortDate(r.date)),
+                                            React.createElement("div", { style: { fontSize: 12.5, lineHeight: 1.6, whiteSpace: "pre-line" } }, r.body)),
+                                        React.createElement("button", { onClick: () => onDeleteCmt(r.id), title: "\uB2F5\uAE00 \uC0AD\uC81C", style: { border: "none", background: "transparent", color: T.sub, cursor: "pointer", fontSize: 13, padding: "1px 4px", flexShrink: 0 } }, "\u00D7")));
+                                }),
+                                replyTo === c.id + ":" + cm.id && (React.createElement("div", { style: { display: "flex", gap: 6, marginTop: 6, paddingLeft: 22 } },
+                                    React.createElement(Input, { value: replyText, onChange: (e) => setReplyText(e.target.value), placeholder: "\uC6B4\uC601\uC9C4 \uBA85\uC758\uB85C \uB2F5\uAE00\uC774 \uB2EC\uB824\uC694", onKeyDown: (e) => e.key === "Enter" && sendReply(c.id, cm.id), style: { flex: 1, minWidth: 0, background: "#fff", fontSize: 12.5, padding: "8px 12px" } }),
+                                    React.createElement(Btn, { small: true, disabled: !replyText.trim(), onClick: () => sendReply(c.id, cm.id) }, "\uB4F1\uB85D")))));
+                        }),
+                        replyTo === c.id ? (React.createElement("div", { style: { display: "flex", gap: 6, marginTop: 8 } },
+                            React.createElement(Input, { value: replyText, onChange: (e) => setReplyText(e.target.value), placeholder: "\uC6B4\uC601\uC9C4 \uBA85\uC758 \uB313\uAE00", onKeyDown: (e) => e.key === "Enter" && sendReply(c.id, 0), style: { flex: 1, minWidth: 0, background: "#fff", fontSize: 12.5, padding: "8px 12px" } }),
+                            React.createElement(Btn, { small: true, disabled: !replyText.trim(), onClick: () => sendReply(c.id, 0) }, "\uB4F1\uB85D"))) : (React.createElement("button", { onClick: () => { setReplyTo(c.id); setReplyText(""); }, style: { marginTop: 8, cursor: "pointer", border: `1px dashed ${T.line}`, background: "#FAFCFB", color: T.sub,
+                                borderRadius: 999, padding: "4px 12px", fontSize: 11, fontWeight: 800, fontFamily: "inherit" } }, "\uD83C\uDF3F \uC6B4\uC601\uC9C4 \uB313\uAE00 \uB0A8\uAE30\uAE30")))));
+            }))));
 }
 /* ── 그로인 랭킹 (관리자 전용) — 누적 + 최근 1주·2주 기간별 랭킹과 시상 참고 데이터
      기간 데이터 출처: 이벤트 시트(참가·당첨·임장), 활동기록 시트(낙찰·입찰·임장 수동 기록), 원장(크레딧 획득) ── */
@@ -1482,8 +1589,161 @@ function InsightContent({ body, imgs, yt, clamp = 4, hl }) {
         vid && React.createElement("div", { style: { marginTop: 10 } },
             React.createElement(VideoEmbed, { yt: yt }))));
 }
+/* ══════════════ 임장·입찰 인증 게시판 ══════════════ */
+/* 노션 '웹에 게시' 링크(notion.site / notion.so)만 임베드 */
+const isNotionUrl = (u) => /^https:\/\/([A-Za-z0-9-]+\.)*(notion\.site|notion\.so)(\/|$)/.test(String(u || "").trim());
+/* ── 노션 페이지 임베드 — 원픽 지도처럼 고정 높이 · 내용이 길면 내부 스크롤 ── */
+function NotionEmbed({ url }) {
+    if (!url)
+        return null;
+    if (!isNotionUrl(url)) {
+        return (React.createElement("div", { style: { marginTop: 10, fontSize: 12.5 } },
+            "\uD83D\uDD17 ",
+            React.createElement("a", { href: url, target: "_blank", rel: "noopener noreferrer", style: { color: T.peri, fontWeight: 700, wordBreak: "break-all" } }, url)));
+    }
+    return (React.createElement("div", { style: { marginTop: 10, border: `1px solid ${T.line}`, borderRadius: 14, overflow: "hidden", background: "#fff" } },
+        React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", background: "#FAFCFB", borderBottom: `1px solid ${T.line}` } },
+            React.createElement("span", { style: { fontSize: 12, fontWeight: 800, color: T.ink, flex: 1 } }, "\uD83D\uDCDD \uB178\uC158 \uB178\uD2B8"),
+            React.createElement("span", { style: { fontSize: 10.5, color: T.sub } }, "\u2195 \uC2A4\uD06C\uB864\uB85C \uC804\uCCB4 \uD655\uC778"),
+            React.createElement("a", { href: url, target: "_blank", rel: "noopener noreferrer", style: { textDecoration: "none", flexShrink: 0 } },
+                React.createElement(Pill, { tone: "line", style: { fontSize: 10.5, cursor: "pointer" } }, "\u26F6 \uD06C\uAC8C \uBCF4\uAE30"))),
+        React.createElement("iframe", { src: url, title: "\uB178\uC158 \uC784\uC7A5 \uB178\uD2B8", loading: "lazy", style: { display: "block", width: "100%", height: "52vh", minHeight: 340, maxHeight: 560, border: "none", background: "#fff" } })));
+}
+/* ── 댓글 작성자 이름 (m=0 은 운영진 명의) ── */
+const cmtAuthor = (members, m) => {
+    if (m === 0)
+        return { name: "운영진", icon: "🌿", staff: true };
+    const mem = members.find((x) => x.id === m);
+    return { name: mem ? mem.name : "탈퇴 멤버", icon: mem ? levelOf(mem).icon : "🌱", staff: false };
+};
+/* ── 게시글 댓글 스레드 — 질문·답변 (글 작성자는 답글 가능) ── */
+function CommentThread({ post, cmts, me, members, onAddCmt }) {
+    const [open, setOpen] = useState(false);
+    const [text, setText] = useState("");
+    const [replyTo, setReplyTo] = useState(null); // 답글 대상 댓글 id
+    const [replyText, setReplyText] = useState("");
+    const [busy, setBusy] = useState(false);
+    const list = cmts.filter((c) => c.postId === post.id);
+    const tops = list.filter((c) => !c.parentId);
+    const repliesOf = (id) => list.filter((c) => c.parentId === id);
+    const isAuthor = me && me.id === post.m;
+    const submit = async (body, parentId, clear) => {
+        const v = String(body || "").trim();
+        if (!v || busy)
+            return;
+        setBusy(true);
+        const ok = await onAddCmt(post.id, v, parentId || 0);
+        setBusy(false);
+        if (ok)
+            clear();
+    };
+    const CmtRow = ({ c, reply }) => {
+        const a = cmtAuthor(members, c.m);
+        return (React.createElement("div", { style: { display: "flex", gap: 8, padding: reply ? "8px 0 0 26px" : "10px 0 0 0" } },
+            React.createElement("span", { style: { fontSize: 14, flexShrink: 0 } }, reply ? "↳" : a.icon),
+            React.createElement("div", { style: { flex: 1, minWidth: 0 } },
+                React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" } },
+                    React.createElement("b", { style: { fontSize: 12.5 } }, a.name),
+                    a.staff && React.createElement(Pill, { tone: "gold", style: { fontSize: 9.5, padding: "1px 7px" } }, "\u2B50 \uC6B4\uC601\uC9C4"),
+                    !a.staff && c.m === post.m && React.createElement(Pill, { tone: "soft", style: { fontSize: 9.5, padding: "1px 7px" } }, "\uC791\uC131\uC790"),
+                    React.createElement("span", { style: { fontSize: 10.5, color: T.sub } }, shortDate(c.date))),
+                React.createElement("div", { style: { fontSize: 12.5, lineHeight: 1.6, marginTop: 2, whiteSpace: "pre-line", wordBreak: "keep-all" } },
+                    React.createElement(RichText, { text: c.body })),
+                !reply && isAuthor && (React.createElement("button", { onClick: () => { setReplyTo(replyTo === c.id ? null : c.id); setReplyText(""); }, style: { marginTop: 4, cursor: "pointer", border: "none", background: "transparent", color: T.sub,
+                        fontSize: 11, fontWeight: 800, fontFamily: "inherit", padding: 0, textDecoration: "underline", textUnderlineOffset: 2 } }, replyTo === c.id ? "답글 취소" : "답글 달기")),
+                !reply && replyTo === c.id && (React.createElement("div", { style: { display: "flex", gap: 6, marginTop: 6 } },
+                    React.createElement(Input, { value: replyText, onChange: (e) => setReplyText(e.target.value), placeholder: "\uB2F5\uAE00\uC744 \uC785\uB825\uD558\uC138\uC694", onKeyDown: (e) => e.key === "Enter" && submit(replyText, c.id, () => { setReplyText(""); setReplyTo(null); }), style: { flex: 1, minWidth: 0, background: "#fff", fontSize: 12.5, padding: "8px 12px" } }),
+                    React.createElement(Btn, { small: true, disabled: !replyText.trim() || busy, onClick: () => submit(replyText, c.id, () => { setReplyText(""); setReplyTo(null); }) }, "\uB4F1\uB85D"))),
+                repliesOf(c.id).map((r) => React.createElement(CmtRow, { key: r.id, c: r, reply: true })))));
+    };
+    return (React.createElement("div", { style: { marginTop: 12, paddingTop: 10, borderTop: `1px dashed ${T.line}` } },
+        React.createElement("button", { onClick: () => setOpen(!open), style: { cursor: "pointer", border: "none", background: "transparent", color: T.sub, fontSize: 12,
+                fontWeight: 800, fontFamily: "inherit", padding: 0 } },
+            "\uD83D\uDCAC ",
+            list.length > 0 ? `댓글 ${list.length}개` : "첫 댓글을 남겨보세요",
+            " ",
+            open ? "▲" : "▼"),
+        open && (React.createElement("div", null,
+            tops.map((c) => React.createElement(CmtRow, { key: c.id, c: c })),
+            React.createElement("div", { style: { display: "flex", gap: 6, marginTop: 12 } },
+                React.createElement(Input, { value: text, onChange: (e) => setText(e.target.value), placeholder: "\uC9C8\uBB38\uC774\uB098 \uC751\uC6D0\uC744 \uB0A8\uACA8\uBCF4\uC138\uC694 (500\uC790)", onKeyDown: (e) => e.key === "Enter" && submit(text, 0, () => setText("")), style: { flex: 1, minWidth: 0, background: "#fff", fontSize: 12.5, padding: "8px 12px" } }),
+                React.createElement(Btn, { small: true, disabled: !text.trim() || busy, onClick: () => submit(text, 0, () => setText("")) }, "\uB4F1\uB85D"))))));
+}
+/* ── 임장·입찰 인증 게시판 (멤버 작성 가능) ── */
+const CERT_TYPES = ["임장", "입찰"];
+function CertBoard({ certs, cmts, members, me, onAddCert, onAddCmt }) {
+    const [type, setType] = useState(CERT_TYPES[0]);
+    const [title, setTitle] = useState("");
+    const [body, setBody] = useState("");
+    const [notion, setNotion] = useState("");
+    const [busy, setBusy] = useState(false);
+    const [formOpen, setFormOpen] = useState(false);
+    const [q, setQ] = useState("");
+    const [filter, setFilter] = useState("전체");
+    const canSave = title.trim() && (body.trim() || notion.trim());
+    const searched = certs.filter((c) => matchesQuery({ title: c.title, body: c.body, cat: c.type }, q));
+    const list = filter === "전체" ? searched : searched.filter((c) => c.type === filter);
+    const nameOf = (m) => cmtAuthor(members, m);
+    const submit = async () => {
+        if (!canSave || busy)
+            return;
+        setBusy(true);
+        const ok = await onAddCert({ type, title: title.trim(), body: body.trim(), notion: notion.trim() });
+        setBusy(false);
+        if (ok) {
+            setTitle("");
+            setBody("");
+            setNotion("");
+            setFormOpen(false);
+        }
+    };
+    return (React.createElement("div", null,
+        React.createElement(SectionTitle, { eyebrow: "\uD568\uAED8 \uC131\uC7A5\uD558\uB294 \uC2E4\uC804 \uAE30\uB85D", title: "\uC784\uC7A5 \u00B7 \uC785\uCC30 \uC778\uC99D", right: React.createElement(Pill, { tone: "line" },
+                certs.length,
+                "\uAC74") }),
+        React.createElement(Card, { pad: 0, style: { overflow: "hidden", marginBottom: 14 } },
+            React.createElement("div", { style: { background: T.grad, padding: "14px 16px", color: "#fff" } },
+                React.createElement("div", { style: { fontSize: 11, fontWeight: 800, opacity: 0.9 } }, "\uD83D\uDEA9 \uC784\uC7A5\u00B7\uC785\uCC30\uC744 \uB2E4\uB140\uC624\uC168\uB098\uC694?"),
+                React.createElement("div", { style: { fontSize: 13.5, fontWeight: 800, marginTop: 3, lineHeight: 1.5 } }, "\uB178\uC158\uC5D0 \uC815\uB9AC\uD55C \uAE30\uB85D\uC744 \uC62C\uB9AC\uBA74 \uAC8C\uC2DC\uAE00 \uC548\uC5D0\uC11C \uBC14\uB85C \uBCFC \uC218 \uC788\uC5B4\uC694. \uC11C\uB85C \uBB3B\uACE0 \uB2F5\uD558\uBA70 \uD568\uAED8 \uC131\uC7A5\uD574\uC694!")),
+            React.createElement("div", { style: { padding: 14 } }, !formOpen ? (React.createElement(Btn, { full: true, onClick: () => setFormOpen(true) }, "\u270D\uFE0F \uC778\uC99D \uAE00 \uC4F0\uAE30")) : (React.createElement("div", null,
+                React.createElement("div", { style: { display: "flex", gap: 6, marginBottom: 10 } }, CERT_TYPES.map((t2) => (React.createElement("button", { key: t2, onClick: () => setType(t2), style: { cursor: "pointer", borderRadius: 999, padding: "7px 16px", fontSize: 12.5, fontWeight: 800, fontFamily: "inherit",
+                        border: type === t2 ? `1.5px solid ${T.mint}` : `1.5px solid ${T.line}`,
+                        background: type === t2 ? T.gradSoft : "#fff", color: type === t2 ? T.ink : T.sub } }, t2 === "임장" ? "🚶 임장 인증" : "📝 입찰 인증")))),
+                React.createElement(Input, { value: title, onChange: (e) => setTitle(e.target.value), placeholder: "\uC81C\uBAA9 \u2014 \uC608: \uC778\uCC9C \uBD80\uD3C9\uAD6C \uBE4C\uB77C \uC784\uC7A5 \uD6C4\uAE30", style: { width: "100%", boxSizing: "border-box", marginBottom: 8 } }),
+                React.createElement("textarea", { value: body, onChange: (e) => setBody(e.target.value), placeholder: "간단한 소감이나 핵심 정리를 남겨주세요 (선택)\n자세한 내용은 아래 노션 링크로!", rows: 4, style: { width: "100%", boxSizing: "border-box", border: `1.5px solid ${T.line}`, borderRadius: 10, padding: "10px 12px",
+                        fontSize: 13.5, fontFamily: "inherit", outline: "none", resize: "vertical", lineHeight: 1.6 } }),
+                React.createElement(Input, { value: notion, onChange: (e) => setNotion(e.target.value), placeholder: "\uB178\uC158 \uB9C1\uD06C (\uC120\uD0DD) \u2014 https://\u2026notion.site/\u2026", style: { width: "100%", boxSizing: "border-box", marginTop: 8 } }),
+                React.createElement("div", { style: { fontSize: 11, color: T.sub, marginTop: 6, lineHeight: 1.6 } },
+                    "\uD83D\uDCA1 \uB178\uC158\uC5D0\uC11C ",
+                    React.createElement("b", null, "\uACF5\uC720 \u2192 \uC6F9\uC5D0 \uAC8C\uC2DC"),
+                    "\uB97C \uCF20 \uB4A4 \uADF8 \uB9C1\uD06C(notion.site)\uB97C \uBD99\uC5EC\uB123\uC73C\uBA74 \uAE00 \uC548\uC5D0 \uB178\uD2B8\uAC00 \uBC14\uB85C \uBCF4\uC5EC\uC694."),
+                React.createElement("div", { style: { display: "flex", justifyContent: "flex-end", gap: 6, marginTop: 10 } },
+                    React.createElement("button", { onClick: () => setFormOpen(false), style: { cursor: "pointer", border: `1.5px solid ${T.line}`, background: "#fff", color: T.sub, borderRadius: 999, padding: "7px 14px", fontSize: 12.5, fontWeight: 800, fontFamily: "inherit" } }, "\uCDE8\uC18C"),
+                    React.createElement(Btn, { disabled: !canSave || busy, onClick: submit }, busy ? "올리는 중…" : "인증 올리기 🚩")))))),
+        React.createElement(SearchBox, { value: q, onChange: setQ, count: list.length, placeholder: "\uAC80\uC0C9 \u2014 \uC81C\uBAA9 \u00B7 \uB0B4\uC6A9 \u00B7 \uC885\uB958" }),
+        React.createElement("div", { style: { display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 } }, ["전체", ...CERT_TYPES].map((c) => (React.createElement("button", { key: c, onClick: () => setFilter(c), style: { cursor: "pointer", borderRadius: 999, padding: "6px 13px", fontSize: 12, fontWeight: 800, fontFamily: "inherit",
+                border: filter === c ? `1.5px solid ${T.mint}` : `1.5px solid ${T.line}`,
+                background: filter === c ? T.gradSoft : "#fff", color: filter === c ? T.ink : T.sub } }, c)))),
+        React.createElement("div", { style: { display: "grid", gap: 12 } },
+            list.length === 0 && (React.createElement(Card, { pad: 22, style: { textAlign: "center", color: T.sub, fontSize: 13, lineHeight: 1.7 } }, q.trim() ? `「${q.trim()}」에 맞는 인증 글이 없어요.` : "아직 인증 글이 없어요. 첫 번째 임장·입찰 기록의 주인공이 되어보세요! 🚩")),
+            list.map((c) => {
+                const a = nameOf(c.m);
+                return (React.createElement(Card, { key: c.id, pad: 16 },
+                    React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" } },
+                        React.createElement(Pill, { tone: c.type === "임장" ? "soft" : "coral", style: { fontSize: 11 } }, c.type === "임장" ? "🚶 임장" : "📝 입찰"),
+                        React.createElement("div", { style: { fontWeight: 800, fontSize: 14.5, letterSpacing: "-0.01em", flex: 1, minWidth: 0 } }, q.trim() ? highlightText(c.title, q.trim(), "ct" + c.id) : c.title),
+                        React.createElement(Pill, { tone: "line", style: { fontSize: 11 } }, shortDate(c.date))),
+                    React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6, marginTop: 6, fontSize: 12, color: T.sub, fontWeight: 700 } },
+                        a.icon,
+                        " ",
+                        a.name),
+                    c.body && React.createElement(InsightContent, { body: c.body, imgs: [], yt: "", hl: q }),
+                    React.createElement(NotionEmbed, { url: c.notion }),
+                    React.createElement(CommentThread, { post: c, cmts: cmts, me: me, members: members, onAddCmt: onAddCmt })));
+            }))));
+}
 /* ── 공개 조회 페이지 (탭 대시보드) ── */
-function PublicPage({ members, ledger, log, insights, lectures, settings, viewer, onLogin, onLogout, onChangePw }) {
+function PublicPage({ members, ledger, log, insights, lectures, settings, certs, cmts, onAddCert, onAddCmt, viewer, onLogin, onLogout, onChangePw }) {
     const [ptab, setPtab] = useState("home");
     /* 선택된 탭이 화면 밖에 있으면 탭바를 자동 스크롤해 보이게 함 */
     useEffect(() => {
@@ -1506,6 +1766,7 @@ function PublicPage({ members, ledger, log, insights, lectures, settings, viewer
         ["ranking", "크레딧", "🏅"],
         ["growth", "그로인 랭킹", "📈"],
         ["onepick", "원픽 지도", "📍"],
+        ["cert", "임장·입찰", "🚩"],
         ["lectures", "강의", "🎬"],
         ["insights", "인사이트", "💡"],
         ["guide", "안내", "📢"],
@@ -2027,6 +2288,7 @@ function PublicPage({ members, ledger, log, insights, lectures, settings, viewer
             ptab === "ranking" && React.createElement(RankingTab, null),
             ptab === "growth" && React.createElement(GrowthTab, null),
             ptab === "onepick" && React.createElement(OnePickTab, null),
+            ptab === "cert" && React.createElement(CertBoard, { certs: certs, cmts: cmts, members: members, me: meMember, onAddCert: onAddCert, onAddCmt: onAddCmt }),
             ptab === "lectures" && React.createElement(LecturesTab, null),
             ptab === "insights" && React.createElement(InsightsTab, null),
             ptab === "guide" && React.createElement(GuideTab, null),
@@ -2159,6 +2421,9 @@ function App() {
     const [lectures, setLectures] = useState(live ? [] : SEED_LECTURES);
     const [acts, setActs] = useState([]); // 활동기록 (관리자 응답에만 포함)
     const [visitlog, setVisitlog] = useState([]); // 방문기록 요약 (관리자 응답에만 포함)
+    const [certs, setCerts] = useState(live ? [] : SEED_CERTS); // 임장·입찰 인증 글
+    const [cmts, setCmts] = useState(live ? [] : SEED_CMTS); // 인증 글 댓글
+    const [sessToken, setSessToken] = useState(null); // 멤버 글·댓글 작성용 세션 토큰
     const [settings, setSettings] = useState(DEFAULT_SETTINGS);
     const [viewer, setViewer] = useState(null);
     const [adminKey, setAdminKey] = useState(null); // 관리자/운영진 PIN (인증 후 보관)
@@ -2195,6 +2460,8 @@ function App() {
             setLectures(d.lectures || []);
             if (d.settings)
                 setSettings({ ...DEFAULT_SETTINGS, ...d.settings });
+            setCerts(d.certs || []);
+            setCmts(d.cmts || []);
             if (d.acts)
                 setActs(d.acts);
             if (d.visitlog)
@@ -2226,6 +2493,8 @@ function App() {
                     setEventLog(d.events);
                     setInsights(d.insights);
                     setLectures(d.lectures || []);
+                    setCerts(d.certs || []);
+                    setCmts(d.cmts || []);
                     if (d.settings)
                         setSettings({ ...DEFAULT_SETTINGS, ...d.settings });
                     setPhase("ready");
@@ -2251,6 +2520,7 @@ function App() {
                 }
                 catch (e) { }
                 setViewer(found.id);
+                setSessToken("demo");
                 setWelcome(welcomeMsg(lastSeenMs, nowMs));
                 return { ok: true };
             }
@@ -2259,6 +2529,7 @@ function App() {
         try {
             const d = await api("login", { name, p4 });
             setViewer(d.memberId);
+            setSessToken(d.token || null); // 인증 게시판 글·댓글 작성용
             setWelcome(welcomeMsg(d.lastSeenMs != null ? d.lastSeenMs : null, d.nowMs)); // 방문기록 시트 기준 경과 시간
             return { ok: true };
         }
@@ -2547,6 +2818,89 @@ function App() {
             fail(e);
         }
     };
+    /* ── 임장·입찰 인증 게시판 ── */
+    const onAddCert = async (post) => {
+        try {
+            if (live) {
+                const d = await api("certAdd", { token: sessToken, post });
+                setCerts((C) => [d.post, ...C]);
+            }
+            else {
+                setCerts((C) => [{ id: Date.now(), date: today, m: viewer, ...post }, ...C]);
+            }
+            say("인증 글을 올렸어요 🚩 함께 성장해요!");
+            return true;
+        }
+        catch (e) {
+            fail(e);
+            return false;
+        }
+    };
+    const onAddCmt = async (postId, body, parentId) => {
+        try {
+            if (live) {
+                const d = await api("cmtAdd", { token: sessToken, postId, body, parentId: parentId || 0 });
+                setCmts((C) => [...C, d.cmt]);
+            }
+            else {
+                setCmts((C) => [...C, { id: Date.now(), postId, parentId: parentId || 0, m: viewer, date: today, body }]);
+            }
+            return true;
+        }
+        catch (e) {
+            fail(e);
+            return false;
+        }
+    };
+    const onUpdateCert = async (id, post) => {
+        try {
+            if (live)
+                await api("certUpdate", { adminKey, id, post });
+            setCerts((C) => C.map((c) => c.id === id ? { ...c, ...post } : c));
+            say("인증 글을 수정했어요");
+        }
+        catch (e) {
+            fail(e);
+        }
+    };
+    const onDeleteCert = async (id) => {
+        try {
+            if (live)
+                await api("certDelete", { adminKey, id });
+            setCerts((C) => C.filter((c) => c.id !== id));
+            setCmts((C) => C.filter((c) => c.postId !== id));
+            say("인증 글을 삭제했어요");
+        }
+        catch (e) {
+            fail(e);
+        }
+    };
+    const onStaffCmt = async (postId, body, parentId) => {
+        try {
+            if (live) {
+                const d = await api("cmtStaffAdd", { adminKey, postId, body, parentId: parentId || 0 });
+                setCmts((C) => [...C, d.cmt]);
+            }
+            else {
+                setCmts((C) => [...C, { id: Date.now(), postId, parentId: parentId || 0, m: 0, date: today, body }]);
+            }
+            say("운영진 댓글을 남겼어요 🌿");
+        }
+        catch (e) {
+            fail(e);
+        }
+    };
+    const onDeleteCmt = async (id) => {
+        try {
+            if (live)
+                await api("cmtDelete", { adminKey, id });
+            setCmts((C) => C.filter((c) => c.id !== id && c.parentId !== id));
+            say("댓글을 삭제했어요");
+        }
+        catch (e) {
+            fail(e);
+        }
+    };
     /* ── 분류 목록 저장 (인사이트·강의) — '기타'는 항상 마지막에 유지 ── */
     const onSaveCats = async (target, cats) => {
         try {
@@ -2570,10 +2924,10 @@ function App() {
     const total = members.reduce((s, m) => s + m.credits, 0);
     const usable = members.filter((m) => canUse(m.credits, settings)).length;
     const isStaff = adminRole === "staff";
-    const STAFF_TABS = ["members", "insights", "lectures"]; // 운영진 허용 탭 (크레딧 관련 제외)
+    const STAFF_TABS = ["members", "insights", "lectures", "certs"]; // 운영진 허용 탭 (크레딧 관련 제외)
     const TABS = [
         ["board", "리더보드"], ["members", "멤버 관리"], ["events", "데일리 이벤트"],
-        ["mate", "그로인 메이트"], ["lectures", "강의"], ["insights", "인사이트"], ["ranking", "그로인 랭킹"], ["awards", "시상식"], ["settings", "설정"],
+        ["mate", "그로인 메이트"], ["lectures", "강의"], ["insights", "인사이트"], ["certs", "인증 게시판"], ["ranking", "그로인 랭킹"], ["awards", "시상식"], ["settings", "설정"],
     ].filter(([k]) => !isStaff || STAFF_TABS.includes(k));
     const effTab = TABS.some(([k]) => k === tab) ? tab : TABS[0][0];
     const shellFont = { fontFamily: `-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Pretendard","Noto Sans KR","Malgun Gothic",sans-serif`, WebkitFontSmoothing: "antialiased" };
@@ -2599,7 +2953,7 @@ function App() {
                     background: mode === "public" ? T.grad : "transparent", color: mode === "public" ? "#fff" : "rgba(255,255,255,.6)" } }, "\uD83D\uDC65 \uCEE4\uBBA4\uB2C8\uD2F0"),
             React.createElement("button", { onClick: wantAdmin, style: { border: "none", cursor: "pointer", padding: "4px 12px", borderRadius: 999, fontSize: 11.5, fontFamily: "inherit", fontWeight: 800,
                     background: mode === "admin" ? T.grad : "transparent", color: mode === "admin" ? "#fff" : "rgba(255,255,255,.6)" } }, "\uD83D\uDEE0 \uAD00\uB9AC\uC790")),
-        mode === "public" ? (React.createElement(PublicPage, { members: members, ledger: ledger, log: eventLog, insights: insights, lectures: lectures, settings: settings, viewer: viewer, onLogin: onLogin, onLogout: () => setViewer(null), onChangePw: onChangePw })) : (React.createElement(React.Fragment, null,
+        mode === "public" ? (React.createElement(PublicPage, { members: members, ledger: ledger, log: eventLog, insights: insights, lectures: lectures, settings: settings, certs: certs, cmts: cmts, onAddCert: onAddCert, onAddCmt: onAddCmt, viewer: viewer, onLogin: onLogin, onLogout: () => setViewer(null), onChangePw: onChangePw })) : (React.createElement(React.Fragment, null,
             React.createElement("div", { style: { background: T.grad, color: "#fff", padding: "26px 22px 62px" } },
                 React.createElement("div", { style: { maxWidth: 980, margin: "0 auto" } },
                     React.createElement("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 } },
@@ -2638,6 +2992,7 @@ function App() {
                 effTab === "mate" && React.createElement(Mate, { members: members, onApprove: onApprove, settings: settings }),
                 effTab === "insights" && React.createElement(Insights, { insights: insights, onAdd: onAddInsight, onDelete: onDeleteInsight, onUpload: onUploadImage, onTogglePin: onTogglePinInsight, onEdit: onEditInsight, cats: catsOf(settings, "insightCats", INSIGHT_CATS), onSaveCats: (c) => onSaveCats("insights", c) }),
                 effTab === "lectures" && React.createElement(Lectures, { lectures: lectures, onAdd: onAddLecture, onDelete: onDeleteLecture, onTogglePin: onTogglePinLecture, onUpload: onUploadImage, onEdit: onEditLecture, cats: catsOf(settings, "lectureCats", LECTURE_CATS), onSaveCats: (c) => onSaveCats("lectures", c) }),
+                effTab === "certs" && React.createElement(CertsAdmin, { certs: certs, cmts: cmts, members: members, onUpdate: onUpdateCert, onDelete: onDeleteCert, onStaffCmt: onStaffCmt, onDeleteCmt: onDeleteCmt }),
                 effTab === "ranking" && React.createElement(RankingAdmin, { members: members, events: eventLog, ledger: ledger, acts: acts, visitlog: visitlog }),
                 effTab === "awards" && React.createElement(Awards, { members: members, settings: settings }),
                 effTab === "settings" && React.createElement(Settings, { settings: settings, setSettings: persistSettings })))),
