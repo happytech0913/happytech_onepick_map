@@ -854,7 +854,7 @@ function CertsAdmin({ certs, cmts, members, onUpdate, onDelete, onStaffCmt, onDe
                         React.createElement(Input, { value: draft.title, onChange: (e) => setDraft((d) => ({ ...d, title: e.target.value })), placeholder: "\uC81C\uBAA9", style: { width: "100%", boxSizing: "border-box", marginBottom: 8, background: "#fff" } }),
                         React.createElement("textarea", { value: draft.body, onChange: (e) => setDraft((d) => ({ ...d, body: e.target.value })), placeholder: "\uB0B4\uC6A9", rows: 4, style: { width: "100%", boxSizing: "border-box", border: `1.5px solid ${T.line}`, borderRadius: 10, padding: "10px 12px",
                                 fontSize: 13.5, fontFamily: "inherit", outline: "none", resize: "vertical", lineHeight: 1.6, background: "#fff" } }),
-                        React.createElement(Input, { value: draft.notion, onChange: (e) => setDraft((d) => ({ ...d, notion: e.target.value })), placeholder: "\uB178\uC158 \uB9C1\uD06C (notion.site)", style: { width: "100%", boxSizing: "border-box", marginTop: 8, background: "#fff" } }),
+                        React.createElement(Input, { value: draft.notion, onChange: (e) => setDraft((d) => ({ ...d, notion: e.target.value })), placeholder: "\uB178\uC158(notion.site) \uB610\uB294 \uAD6C\uAE00 \uBB38\uC11C \uC6F9\uC5D0 \uAC8C\uC2DC \uB9C1\uD06C", style: { width: "100%", boxSizing: "border-box", marginTop: 8, background: "#fff" } }),
                         React.createElement("div", { style: { display: "flex", justifyContent: "flex-end", gap: 6, marginTop: 10 } },
                             React.createElement("button", { onClick: () => { setEditId(null); setDraft(null); }, style: { cursor: "pointer", border: `1.5px solid ${T.line}`, background: "#fff", color: T.sub, borderRadius: 999, padding: "7px 14px", fontSize: 12.5, fontWeight: 800, fontFamily: "inherit" } }, "\uCDE8\uC18C"),
                             React.createElement(Btn, { small: true, disabled: !draft.title.trim(), onClick: commitEdit }, "\uC218\uC815 \uC800\uC7A5")))) : (React.createElement(React.Fragment, null,
@@ -1590,24 +1590,48 @@ function InsightContent({ body, imgs, yt, clamp = 4, hl }) {
             React.createElement(VideoEmbed, { yt: yt }))));
 }
 /* ══════════════ 임장·입찰 인증 게시판 ══════════════ */
-/* 노션 '웹에 게시' 링크(notion.site / notion.so)만 임베드 */
+/* 노션 링크(notion.site / notion.so) 판별 — 노션은 외부 임베드를 차단하므로 바로가기 카드로 표시 */
 const isNotionUrl = (u) => /^https:\/\/([A-Za-z0-9-]+\.)*(notion\.site|notion\.so)(\/|$)/.test(String(u || "").trim());
-/* ── 노션 페이지 임베드 — 원픽 지도처럼 고정 높이 · 내용이 길면 내부 스크롤 ── */
+/* 구글 문서 '웹에 게시' 링크 — 임베드 허용됨 */
+const isGDocPub = (u) => /^https:\/\/docs\.google\.com\/(document|spreadsheets|presentation)\/d\/e\/[A-Za-z0-9_-]+\/(pub|pubhtml|embed)/.test(String(u || "").trim());
+const gdocEmbedSrc = (u) => {
+    const v = String(u).trim();
+    if (/\/(pub|pubhtml)\?/.test(v))
+        return v.indexOf("embedded=true") >= 0 ? v : v + "&embedded=true";
+    if (/\/(pub|pubhtml)$/.test(v))
+        return v + "?embedded=true";
+    return v;
+};
+/* ── 노트 링크 표시 — 구글 문서(웹에 게시)는 글 안에 임베드 · 노션은 바로가기 카드
+     (노션은 보안 정책상 외부 사이트 임베드를 차단해 카드로 안내) ── */
 function NotionEmbed({ url }) {
     if (!url)
         return null;
-    if (!isNotionUrl(url)) {
-        return (React.createElement("div", { style: { marginTop: 10, fontSize: 12.5 } },
-            "\uD83D\uDD17 ",
-            React.createElement("a", { href: url, target: "_blank", rel: "noopener noreferrer", style: { color: T.peri, fontWeight: 700, wordBreak: "break-all" } }, url)));
+    const u = String(url).trim();
+    /* 구글 문서 '웹에 게시' → 고정 높이 임베드 · 내용이 길면 내부 스크롤 */
+    if (isGDocPub(u)) {
+        return (React.createElement("div", { style: { marginTop: 10, border: `1px solid ${T.line}`, borderRadius: 14, overflow: "hidden", background: "#fff" } },
+            React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", background: "#FAFCFB", borderBottom: `1px solid ${T.line}` } },
+                React.createElement("span", { style: { fontSize: 12, fontWeight: 800, color: T.ink, flex: 1 } }, "\uD83D\uDCC4 \uBB38\uC11C \uB178\uD2B8"),
+                React.createElement("span", { style: { fontSize: 10.5, color: T.sub } }, "\u2195 \uC2A4\uD06C\uB864\uB85C \uC804\uCCB4 \uD655\uC778"),
+                React.createElement("a", { href: u, target: "_blank", rel: "noopener noreferrer", style: { textDecoration: "none", flexShrink: 0 } },
+                    React.createElement(Pill, { tone: "line", style: { fontSize: 10.5, cursor: "pointer" } }, "\u26F6 \uD06C\uAC8C \uBCF4\uAE30"))),
+            React.createElement("iframe", { src: gdocEmbedSrc(u), title: "\uBB38\uC11C \uB178\uD2B8", loading: "lazy", style: { display: "block", width: "100%", height: "52vh", minHeight: 340, maxHeight: 560, border: "none", background: "#fff" } })));
     }
-    return (React.createElement("div", { style: { marginTop: 10, border: `1px solid ${T.line}`, borderRadius: 14, overflow: "hidden", background: "#fff" } },
-        React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", background: "#FAFCFB", borderBottom: `1px solid ${T.line}` } },
-            React.createElement("span", { style: { fontSize: 12, fontWeight: 800, color: T.ink, flex: 1 } }, "\uD83D\uDCDD \uB178\uC158 \uB178\uD2B8"),
-            React.createElement("span", { style: { fontSize: 10.5, color: T.sub } }, "\u2195 \uC2A4\uD06C\uB864\uB85C \uC804\uCCB4 \uD655\uC778"),
-            React.createElement("a", { href: url, target: "_blank", rel: "noopener noreferrer", style: { textDecoration: "none", flexShrink: 0 } },
-                React.createElement(Pill, { tone: "line", style: { fontSize: 10.5, cursor: "pointer" } }, "\u26F6 \uD06C\uAC8C \uBCF4\uAE30"))),
-        React.createElement("iframe", { src: url, title: "\uB178\uC158 \uC784\uC7A5 \uB178\uD2B8", loading: "lazy", style: { display: "block", width: "100%", height: "52vh", minHeight: 340, maxHeight: 560, border: "none", background: "#fff" } })));
+    /* 노션 → 바로가기 카드 (노션이 외부 임베드를 차단하므로 새 탭으로 열기) */
+    if (isNotionUrl(u)) {
+        return (React.createElement("a", { href: u, target: "_blank", rel: "noopener noreferrer", style: { textDecoration: "none", display: "block", marginTop: 10 } },
+            React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 12, padding: "14px 16px", borderRadius: 14,
+                    border: `1.5px solid ${T.line}`, background: "linear-gradient(120deg, rgba(204,254,216,.35), rgba(148,185,255,.22))" } },
+                React.createElement("span", { style: { fontSize: 26, flexShrink: 0 } }, "\uD83D\uDCDD"),
+                React.createElement("div", { style: { flex: 1, minWidth: 0 } },
+                    React.createElement("div", { style: { fontWeight: 800, fontSize: 13.5, color: T.ink } }, "\uB178\uC158 \uB178\uD2B8\uAC00 \uC900\uBE44\uB418\uC5B4 \uC788\uC5B4\uC694"),
+                    React.createElement("div", { style: { fontSize: 11.5, color: T.sub, marginTop: 2 } }, "\uD0ED\uD558\uBA74 \uC0C8 \uD0ED\uC5D0\uC11C \uC784\uC7A5\u00B7\uC785\uCC30 \uAE30\uB85D \uC804\uCCB4\uB97C \uBCFC \uC218 \uC788\uC5B4\uC694")),
+                React.createElement(Pill, { tone: "mint", style: { fontSize: 11.5, flexShrink: 0 } }, "\uBCF4\uB7EC \uAC00\uAE30 \u2192"))));
+    }
+    return (React.createElement("div", { style: { marginTop: 10, fontSize: 12.5 } },
+        "\uD83D\uDD17 ",
+        React.createElement("a", { href: u, target: "_blank", rel: "noopener noreferrer", style: { color: T.peri, fontWeight: 700, wordBreak: "break-all" } }, u)));
 }
 /* ── 댓글 작성자 이름 (m=0 은 운영진 명의) ── */
 const cmtAuthor = (members, m) => {
@@ -1712,11 +1736,13 @@ function CertBoard({ certs, cmts, members, me, onAddCert, onAddCmt }) {
                 React.createElement(Input, { value: title, onChange: (e) => setTitle(e.target.value), placeholder: "\uC81C\uBAA9 \u2014 \uC608: \uC778\uCC9C \uBD80\uD3C9\uAD6C \uBE4C\uB77C \uC784\uC7A5 \uD6C4\uAE30", style: { width: "100%", boxSizing: "border-box", marginBottom: 8 } }),
                 React.createElement("textarea", { value: body, onChange: (e) => setBody(e.target.value), placeholder: "간단한 소감이나 핵심 정리를 남겨주세요 (선택)\n자세한 내용은 아래 노션 링크로!", rows: 4, style: { width: "100%", boxSizing: "border-box", border: `1.5px solid ${T.line}`, borderRadius: 10, padding: "10px 12px",
                         fontSize: 13.5, fontFamily: "inherit", outline: "none", resize: "vertical", lineHeight: 1.6 } }),
-                React.createElement(Input, { value: notion, onChange: (e) => setNotion(e.target.value), placeholder: "\uB178\uC158 \uB9C1\uD06C (\uC120\uD0DD) \u2014 https://\u2026notion.site/\u2026", style: { width: "100%", boxSizing: "border-box", marginTop: 8 } }),
+                React.createElement(Input, { value: notion, onChange: (e) => setNotion(e.target.value), placeholder: "\uB178\uC158 \u00B7 \uAD6C\uAE00 \uBB38\uC11C \uB9C1\uD06C (\uC120\uD0DD)", style: { width: "100%", boxSizing: "border-box", marginTop: 8 } }),
                 React.createElement("div", { style: { fontSize: 11, color: T.sub, marginTop: 6, lineHeight: 1.6 } },
-                    "\uD83D\uDCA1 \uB178\uC158\uC5D0\uC11C ",
+                    "\uD83D\uDCA1 \uB178\uC158 \uB9C1\uD06C\uB294 ",
                     React.createElement("b", null, "\uACF5\uC720 \u2192 \uC6F9\uC5D0 \uAC8C\uC2DC"),
-                    "\uB97C \uCF20 \uB4A4 \uADF8 \uB9C1\uD06C(notion.site)\uB97C \uBD99\uC5EC\uB123\uC73C\uBA74 \uAE00 \uC548\uC5D0 \uB178\uD2B8\uAC00 \uBC14\uB85C \uBCF4\uC5EC\uC694."),
+                    " \uB9C1\uD06C(notion.site)\uB97C \uBD99\uC5EC\uB123\uC5B4\uC8FC\uC138\uC694 \u2014 \uB178\uD2B8\uB85C \uBC14\uB85C \uAC00\uB294 \uCE74\uB4DC\uAC00 \uB9CC\uB4E4\uC5B4\uC838\uC694. \uAE00 \uC548\uC5D0 \uBB38\uC11C\uB97C \uD3BC\uCCD0 \uBCF4\uC774\uACE0 \uC2F6\uB2E4\uBA74 ",
+                    React.createElement("b", null, "\uAD6C\uAE00 \uBB38\uC11C \u2192 \uD30C\uC77C \u2192 \uACF5\uC720 \u2192 \uC6F9\uC5D0 \uAC8C\uC2DC"),
+                    " \uB9C1\uD06C\uB97C \uBD99\uC5EC\uB123\uC73C\uBA74 \uC784\uBCA0\uB4DC\uB429\uB2C8\uB2E4."),
                 React.createElement("div", { style: { display: "flex", justifyContent: "flex-end", gap: 6, marginTop: 10 } },
                     React.createElement("button", { onClick: () => setFormOpen(false), style: { cursor: "pointer", border: `1.5px solid ${T.line}`, background: "#fff", color: T.sub, borderRadius: 999, padding: "7px 14px", fontSize: 12.5, fontWeight: 800, fontFamily: "inherit" } }, "\uCDE8\uC18C"),
                     React.createElement(Btn, { disabled: !canSave || busy, onClick: submit }, busy ? "올리는 중…" : "인증 올리기 🚩")))))),
