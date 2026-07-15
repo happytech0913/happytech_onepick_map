@@ -1661,9 +1661,11 @@ function CommentThread({ post, cmts, me, members, onAddCmt }) {
         if (ok)
             clear();
     };
-    const CmtRow = ({ c, reply }) => {
+    /* 주의: 중첩 '컴포넌트'(<CmtRow/>)로 만들면 타이핑마다 컴포넌트 정체성이 바뀌어
+       입력창이 재마운트되고 모바일 키보드가 닫힘 → 일반 함수 호출(JSX 반환)로 렌더 */
+    const cmtRow = (c, reply) => {
         const a = cmtAuthor(members, c.m);
-        return (React.createElement("div", { style: { display: "flex", gap: 8, padding: reply ? "8px 0 0 26px" : "10px 0 0 0" } },
+        return (React.createElement("div", { key: c.id, style: { display: "flex", gap: 8, padding: reply ? "8px 0 0 26px" : "10px 0 0 0" } },
             React.createElement("span", { style: { fontSize: 14, flexShrink: 0 } }, reply ? "↳" : a.icon),
             React.createElement("div", { style: { flex: 1, minWidth: 0 } },
                 React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" } },
@@ -1678,7 +1680,7 @@ function CommentThread({ post, cmts, me, members, onAddCmt }) {
                 !reply && replyTo === c.id && (React.createElement("div", { style: { display: "flex", gap: 6, marginTop: 6 } },
                     React.createElement(Input, { value: replyText, onChange: (e) => setReplyText(e.target.value), placeholder: "\uB2F5\uAE00\uC744 \uC785\uB825\uD558\uC138\uC694", onKeyDown: (e) => e.key === "Enter" && submit(replyText, c.id, () => { setReplyText(""); setReplyTo(null); }), style: { flex: 1, minWidth: 0, background: "#fff", fontSize: 12.5, padding: "8px 12px" } }),
                     React.createElement(Btn, { small: true, disabled: !replyText.trim() || busy, onClick: () => submit(replyText, c.id, () => { setReplyText(""); setReplyTo(null); }) }, "\uB4F1\uB85D"))),
-                repliesOf(c.id).map((r) => React.createElement(CmtRow, { key: r.id, c: r, reply: true })))));
+                repliesOf(c.id).map((r) => cmtRow(r, true)))));
     };
     return (React.createElement("div", { style: { marginTop: 12, paddingTop: 10, borderTop: `1px dashed ${T.line}` } },
         React.createElement("button", { onClick: () => setOpen(!open), style: { cursor: "pointer", border: "none", background: "transparent", color: T.sub, fontSize: 12,
@@ -1688,7 +1690,7 @@ function CommentThread({ post, cmts, me, members, onAddCmt }) {
             " ",
             open ? "▲" : "▼"),
         open && (React.createElement("div", null,
-            tops.map((c) => React.createElement(CmtRow, { key: c.id, c: c })),
+            tops.map((c) => cmtRow(c, false)),
             React.createElement("div", { style: { display: "flex", gap: 6, marginTop: 12 } },
                 React.createElement(Input, { value: text, onChange: (e) => setText(e.target.value), placeholder: "\uC9C8\uBB38\uC774\uB098 \uC751\uC6D0\uC744 \uB0A8\uACA8\uBCF4\uC138\uC694 (500\uC790)", onKeyDown: (e) => e.key === "Enter" && submit(text, 0, () => setText("")), style: { flex: 1, minWidth: 0, background: "#fff", fontSize: 12.5, padding: "8px 12px" } }),
                 React.createElement(Btn, { small: true, disabled: !text.trim() || busy, onClick: () => submit(text, 0, () => setText("")) }, "\uB4F1\uB85D"))))));
