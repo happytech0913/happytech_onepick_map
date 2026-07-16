@@ -957,6 +957,95 @@ function RegionBarChart({ rows, onPick, selected }) {
                 "\uB099\uCC30\uAC00\uC728"),
             React.createElement("span", { style: { fontSize: 10.5, color: T.sub } }, "\u00B7 \uB9C9\uB300\uB97C \uD0ED\uD558\uBA74 \uC6D4\uBCC4 \uCD94\uC774\uB97C \uBCFC \uC218 \uC788\uC5B4\uC694 \u2190\u2192"))));
 }
+/* ── 타일 지도 — 서울 25개 구 · 전국 17개 시도 배치 (지리적 근사 격자) ── */
+const SEOUL_TILES = {
+    "도봉구": [4, 0], "노원구": [5, 0],
+    "은평구": [2, 1], "강북구": [4, 1], "중랑구": [5, 1],
+    "서대문구": [2, 2], "종로구": [3, 2], "성북구": [4, 2], "동대문구": [5, 2],
+    "마포구": [1, 3], "중구": [3, 3], "성동구": [4, 3], "광진구": [5, 3], "강동구": [6, 3],
+    "강서구": [0, 4], "양천구": [1, 4], "영등포구": [2, 4], "용산구": [3, 4], "송파구": [5, 4],
+    "구로구": [0, 5], "금천구": [1, 5], "동작구": [2, 5], "서초구": [3, 5], "강남구": [4, 5],
+    "관악구": [2, 6],
+};
+const KOREA_TILES = {
+    "서울": [1, 0], "강원": [3, 0],
+    "인천": [0, 1], "경기": [1, 1], "충북": [2, 1], "경북": [3, 1],
+    "충남": [0, 2], "세종": [1, 2], "대전": [2, 2], "대구": [3, 2],
+    "전북": [0, 3], "경남": [2, 3], "울산": [3, 3],
+    "광주": [0, 4], "전남": [1, 4], "부산": [3, 4],
+    "제주": [0, 5],
+};
+/* 시도 전체 명칭 → 축약 키 (충청북도→충북, 전북특별자치도→전북 등) */
+const sidoKey = (name) => {
+    const n = String(name || "");
+    if (/^충청북/.test(n))
+        return "충북";
+    if (/^충청남/.test(n))
+        return "충남";
+    if (/^전라북|^전북/.test(n))
+        return "전북";
+    if (/^전라남/.test(n))
+        return "전남";
+    if (/^경상북/.test(n))
+        return "경북";
+    if (/^경상남/.test(n))
+        return "경남";
+    return n.slice(0, 2);
+};
+/* 지역 목록이 어떤 타일 레이아웃에 맞는지 판별 */
+const matchTileLayout = (regions) => {
+    const rs = regions.filter((r) => r !== "전체");
+    if (rs.length === 0)
+        return null;
+    const seoulHit = rs.filter((r) => SEOUL_TILES[r]).length;
+    if (seoulHit >= Math.max(rs.length * 0.7, 10))
+        return "seoul";
+    const koreaHit = rs.filter((r) => KOREA_TILES[sidoKey(r)]).length;
+    if (koreaHit >= Math.max(rs.length * 0.7, 8))
+        return "korea";
+    return null;
+};
+/* 낮음(연민트) → 높음(페리윙클) 색 보간 */
+const tileColor = (v, min, max) => {
+    const t = max > min ? (v - min) / (max - min) : 0.5;
+    const a = [223, 246, 236], b = [111, 123, 224]; // #DFF6EC → #6F7BE0
+    const c = a.map((x, i) => Math.round(x + (b[i] - x) * t));
+    return { bg: `rgb(${c[0]},${c[1]},${c[2]})`, dark: t > 0.55 };
+};
+/* ── 낙찰가율 타일 지도 (탭하면 월별 추이) ── */
+function TileMap({ rows, layout, onPick, selected }) {
+    const tiles = layout === "seoul" ? SEOUL_TILES : KOREA_TILES;
+    const keyOf = (region) => layout === "seoul" ? region : sidoKey(region);
+    const items = rows.filter((r) => tiles[keyOf(r.region)]);
+    if (items.length === 0)
+        return null;
+    const vals = items.map((r) => r.priceRate);
+    const min = Math.min(...vals), max = Math.max(...vals);
+    const SZ = 52, GAP = 5;
+    const cols = Math.max(...items.map((r) => tiles[keyOf(r.region)][0])) + 1;
+    const rowsN = Math.max(...items.map((r) => tiles[keyOf(r.region)][1])) + 1;
+    const W = cols * (SZ + GAP) + GAP, H = rowsN * (SZ + GAP) + GAP;
+    return (React.createElement("div", null,
+        React.createElement("div", { style: { overflowX: "auto", display: "flex", justifyContent: "center" } },
+            React.createElement("svg", { width: W, height: H, role: "img", "aria-label": "\uB099\uCC30\uAC00\uC728 \uC9C0\uB3C4", style: { display: "block", maxWidth: "100%" } }, items.map((r) => {
+                const [cx, cy] = tiles[keyOf(r.region)];
+                const x = GAP + cx * (SZ + GAP), y = GAP + cy * (SZ + GAP);
+                const c = tileColor(r.priceRate, min, max);
+                const isSel = selected === r.region;
+                const label = layout === "seoul" ? r.region.replace(/구$/, "") : keyOf(r.region);
+                return (React.createElement("g", { key: r.region, onClick: () => onPick && onPick(r.region), style: { cursor: onPick ? "pointer" : "default" } },
+                    React.createElement("rect", { x: x, y: y, width: SZ, height: SZ, rx: "11", fill: c.bg, stroke: isSel ? "#35C9A8" : "rgba(28,35,51,.08)", strokeWidth: isSel ? 2.5 : 1 }),
+                    React.createElement("text", { x: x + SZ / 2, y: y + SZ / 2 - 5, textAnchor: "middle", fontSize: label.length > 3 ? 9.5 : 11, fontWeight: "800", fill: c.dark ? "#fff" : "#1C2333", fontFamily: "inherit" }, label),
+                    React.createElement("text", { x: x + SZ / 2, y: y + SZ / 2 + 12, textAnchor: "middle", fontSize: "10.5", fontWeight: "800", fill: c.dark ? "rgba(255,255,255,.92)" : "#6B7486", fontFamily: "inherit", style: { fontVariantNumeric: "tabular-nums" } },
+                        Math.round(r.priceRate),
+                        "%")));
+            }))),
+        React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, marginTop: 8, justifyContent: "center" } },
+            React.createElement("span", { style: { fontSize: 10.5, fontWeight: 700, color: T.sub } }, "\uB0AE\uC74C"),
+            React.createElement("span", { style: { width: 110, height: 8, borderRadius: 999, background: "linear-gradient(90deg,#DFF6EC,#6F7BE0)", display: "inline-block" } }),
+            React.createElement("span", { style: { fontSize: 10.5, fontWeight: 700, color: T.sub } }, "\uB192\uC74C"),
+            React.createElement("span", { style: { fontSize: 10.5, color: T.sub } }, "\u00B7 \uD0C0\uC77C\uC744 \uD0ED\uD558\uBA74 \uC6D4\uBCC4 \uCD94\uC774"))));
+}
 /* 경쟁 온도 배지 — 매각률·매각가율 조합 (참고용 지표) */
 const heatOf = (saleRate, priceRate) => {
     const score = (saleRate || 0) + (priceRate || 0) * 0.5;
@@ -986,7 +1075,7 @@ function AuctionStatsTab({ stats }) {
     const prevOf = (region) => rowsU.find((r) => r.month === prev && r.region === region);
     const histOf = (region) => months.map((mo) => { const r = rowsU.find((x) => x.month === mo && x.region === region); return r ? r.priceRate : null; });
     const selRows = sel ? months.map((mo) => rowsU.find((x) => x.month === mo && x.region === sel)).filter(Boolean) : [];
-    const moLabel = (mo) => mo ? `${mo.slice(0, 4)}년 ${Number(mo.slice(5))}월` : "";
+    const moLabel = (mo) => /^\d{4}-\d{2}$/.test(mo || "") ? `${mo.slice(0, 4)}년 ${Number(mo.slice(5))}월` : String(mo || "");
     const now = new Date();
     const todayLabel = `${now.getFullYear()}.${String(now.getMonth() + 1).padStart(2, "0")}.${String(now.getDate()).padStart(2, "0")}`;
     const regionCount = [...new Set(rowsU.map((r) => r.region))].filter((r) => r !== "전체").length;
@@ -1013,9 +1102,8 @@ function AuctionStatsTab({ stats }) {
                     total ? (React.createElement("div", null,
                         React.createElement("div", { style: { fontSize: 11.5, fontWeight: 800, opacity: 0.9 } },
                             effScope,
-                            " \u00B7 ",
-                            effUsage,
-                            " \u00B7 \uC804\uCCB4 \uB099\uCC30\uAC00\uC728"),
+                            effUsage !== "전체" ? ` · ${effUsage}` : "",
+                            " \u2014 \uC804\uCCB4 \uB099\uCC30\uAC00\uC728"),
                         React.createElement("div", { style: { display: "flex", alignItems: "baseline", gap: 8 } },
                             React.createElement("span", { style: { fontSize: 34, fontWeight: 800, letterSpacing: "-0.03em", fontVariantNumeric: "tabular-nums", lineHeight: 1.1 } },
                                 total.priceRate.toFixed(1),
@@ -1031,8 +1119,7 @@ function AuctionStatsTab({ stats }) {
                             total.cases.toLocaleString(),
                             "\uAC74"))) : (React.createElement("div", { style: { fontSize: 13.5, fontWeight: 800 } },
                         effScope,
-                        " \u00B7 ",
-                        effUsage)),
+                        effUsage !== "전체" ? ` · ${effUsage}` : "")),
                     React.createElement("div", { style: { flex: 1 } }),
                     React.createElement("div", { style: { textAlign: "right", fontSize: 11, fontWeight: 700, opacity: 0.92, lineHeight: 1.7 } },
                         "\uCD5C\uC2E0 ",
@@ -1061,6 +1148,15 @@ function AuctionStatsTab({ stats }) {
         usages.length > 1 && (React.createElement("div", { style: { display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 } }, usages.map((u) => (React.createElement("button", { key: u, onClick: () => { setUsage(u); setSel(null); }, style: { cursor: "pointer", borderRadius: 999, padding: "6px 13px", fontSize: 12, fontWeight: 800, fontFamily: "inherit",
                 border: effUsage === u ? `1.5px solid ${T.mint}` : `1.5px solid ${T.line}`,
                 background: effUsage === u ? T.gradSoft : "#fff", color: effUsage === u ? T.ink : T.sub } }, u))))),
+        (() => {
+            const layout = matchTileLayout(cur.map((r) => r.region));
+            return layout && (React.createElement(Card, { pad: 16, style: { marginBottom: 14 } },
+                React.createElement("div", { style: { fontWeight: 800, fontSize: 14, marginBottom: 10 } },
+                    "\uD83D\uDDFA\uFE0F ",
+                    moLabel(latest),
+                    " \u00B7 \uB099\uCC30\uAC00\uC728 \uC9C0\uB3C4"),
+                React.createElement(TileMap, { rows: cur, layout: layout, selected: sel, onPick: (rg) => setSel(sel === rg ? null : rg) })));
+        })(),
         cur.length >= 2 && (React.createElement(Card, { pad: 16, style: { marginBottom: 14 } },
             React.createElement("div", { style: { fontWeight: 800, fontSize: 14, marginBottom: 10 } },
                 "\uD83D\uDCCA ",
@@ -2309,77 +2405,113 @@ function PublicPage({ members, ledger, log, insights, lectures, settings, certs,
                     color: idx === 1 ? "#fff" : T.coral, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, valueOf(m))));
     })));
     /* ── 홈 ── */
-    const HomeTab = () => (React.createElement("div", null,
-        React.createElement("div", { onClick: () => setPtab("ranking"), style: { cursor: "pointer" } },
-            React.createElement(SectionTitle, { title: "\uC774\uBC88 \uC8FC \uD06C\uB808\uB527 \uB7AD\uD0B9", right: React.createElement(Pill, { tone: "line" }, "TOP 10 \uBCF4\uAE30 \u2192") }),
-            React.createElement(Podium, { list: ranked, valueOf: (m) => m.credits.toLocaleString() })),
-        React.createElement("div", { onClick: () => setPtab("growth"), style: { cursor: "pointer" } },
-            React.createElement(SectionTitle, { title: "\uADF8\uB85C\uC778 \uB7AD\uD0B9", right: React.createElement(Pill, { tone: "line" }, "TOP 10 \uBCF4\uAE30 \u2192") }),
-            React.createElement(Card, { pad: 14, style: { marginBottom: 20 } },
-                React.createElement("div", { style: { display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" } },
-                    growthRanked.slice(0, 3).map((m, i) => (React.createElement(Pill, { key: m.id, tone: i === 0 ? "grad" : "soft", style: { fontSize: 12.5 } },
-                        i === 0 ? "🥇" : i === 1 ? "🥈" : "🥉",
-                        " ",
-                        m.realName,
-                        m.founder ? React.createElement("span", { style: { fontSize: 9, color: i === 0 ? "#F7EACB" : "#B08E3E", marginLeft: 3, verticalAlign: "1px" } }, "\u2726") : null))),
-                    React.createElement("span", { style: { fontSize: 12, color: T.sub } }, "\uB099\uCC30 \u00B7 \uC785\uCC30 \u00B7 \uC784\uC7A5 \u00B7 \uC774\uBCA4\uD2B8 \uD65C\uB3D9 \uC885\uD569")))),
-        React.createElement("div", { onClick: () => setPtab("onepick"), style: { cursor: "pointer" } },
-            React.createElement(SectionTitle, { title: "\uC6D0\uD53D \uACBD\uB9E4 \uC9C0\uB3C4", right: React.createElement(Pill, { tone: "line" }, "\uBCF4\uB7EC \uAC00\uAE30 \u2192") }),
-            React.createElement(Card, { pad: 16, style: { marginBottom: 20, background: T.gradSoft, border: "none" } },
-                React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 12 } },
-                    React.createElement("div", { style: { fontSize: 32 } }, "\uD83D\uDDFA"),
-                    React.createElement("div", null,
-                        React.createElement("div", { style: { fontWeight: 800, fontSize: 14.5, letterSpacing: "-0.01em" } }, "\uC774\uBC88 \uB2EC \uD574\uD53C\uD14C\uD06C \uCD94\uCC9C \uBB3C\uAC74"),
-                        React.createElement("div", { style: { fontSize: 12.5, color: T.sub, marginTop: 2 } }, "\uC5C4\uC120\uD55C \uACBD\uB9E4 \uBB3C\uAC74\uC744 \uC9C0\uB3C4\uC5D0\uC11C \uD55C\uB208\uC5D0 \uD655\uC778\uD558\uC138\uC694"))))),
-        React.createElement("div", { onClick: () => setPtab("lectures"), style: { cursor: "pointer" } },
-            React.createElement(SectionTitle, { title: "\uAC15\uC758 \uB2E4\uC2DC\uBCF4\uAE30", right: React.createElement(Pill, { tone: "line" },
-                    "\uC804\uCCB4 ",
-                    lectures.length,
-                    "\uAC1C \u2192") }),
-            React.createElement("div", { style: { display: "grid", gap: 10, marginBottom: 20 } },
-                sortPinned(lectures).slice(0, 2).map((lec) => (React.createElement(Card, { key: lec.id, pad: 14 },
-                    React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" } },
-                        isPinned(lec) && React.createElement(Pill, { tone: "soft", style: { fontSize: 11 } }, "\uD83D\uDCCC"),
-                        React.createElement("div", { style: { fontSize: 18 } }, "\uD83C\uDFAC"),
-                        React.createElement(Pill, { tone: "soft", style: { fontSize: 11.5 } }, lec.cat),
-                        React.createElement("div", { style: { fontWeight: 800, fontSize: 14, letterSpacing: "-0.01em", flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, lec.title),
-                        React.createElement(Pill, { tone: "line", style: { fontSize: 11 } }, shortDate(lec.date)))))),
-                lectures.length === 0 && React.createElement(Card, { pad: 20, style: { textAlign: "center", color: T.sub, fontSize: 13 } }, "\uACE7 \uAC15\uC758 \uB2E4\uC2DC\uBCF4\uAE30\uAC00 \uC62C\uB77C\uC635\uB2C8\uB2E4!"))),
-        React.createElement("div", { onClick: () => setPtab("insights"), style: { cursor: "pointer" } },
-            React.createElement(SectionTitle, { title: "\uC778\uC0AC\uC774\uD2B8 \uC544\uCE74\uC774\uBE0C", right: React.createElement(Pill, { tone: "line" },
-                    "\uC804\uCCB4 ",
-                    insights.length,
-                    "\uAC74 \u2192") }),
-            React.createElement("div", { style: { display: "grid", gap: 10, marginBottom: 20 } },
-                insights.slice(0, 2).map((i) => (React.createElement(Card, { key: i.id, pad: 14 },
-                    React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" } },
-                        React.createElement(Pill, { tone: "soft", style: { fontSize: 11.5 } }, i.cat),
-                        React.createElement("div", { style: { fontWeight: 800, fontSize: 14, letterSpacing: "-0.01em", flex: 1 } }, i.title),
-                        React.createElement(Pill, { tone: "line", style: { fontSize: 11 } }, shortDate(i.date))),
-                    React.createElement("div", { style: { fontSize: 13, color: T.ink, lineHeight: 1.7, marginTop: 8, whiteSpace: "pre-line", wordBreak: "keep-all",
-                            display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" } },
-                        React.createElement(RichText, { text: i.body }))))),
-                insights.length === 0 && React.createElement(Card, { pad: 20, style: { textAlign: "center", color: T.sub, fontSize: 13 } }, "\uACE7 \uCCAB \uC778\uC0AC\uC774\uD2B8\uAC00 \uC62C\uB77C\uC635\uB2C8\uB2E4!"))),
-        React.createElement("div", { onClick: () => setPtab("guide"), style: { cursor: "pointer" } },
-            React.createElement(SectionTitle, { title: "\uD06C\uB808\uB527 \uC548\uB0B4", right: React.createElement(Pill, { tone: "line" }, "\uC790\uC138\uD788 \u2192") }),
-            React.createElement(Card, { pad: 16, style: { background: T.gradSoft, border: "none" } },
-                React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 } },
-                    React.createElement("div", { style: { background: "#fff", borderRadius: 12, padding: 14, border: `1px solid ${T.line}`, textAlign: "center" } },
-                        React.createElement("div", { style: { fontSize: 28 } }, "\uD83E\uDD1D"),
-                        React.createElement("div", { style: { fontWeight: 800, fontSize: 13.5, marginTop: 6 } }, "\uADF8\uB85C\uC778 \uBA54\uC774\uD2B8"),
-                        React.createElement("div", { style: { fontSize: 12, color: T.sub, marginTop: 4, lineHeight: 1.5 } },
-                            "\uCE5C\uAD6C \uCD08\uB300 1\uD68C\uB2F9",
-                            React.createElement("br", null),
-                            React.createElement("b", { style: { color: T.coral } },
-                                settings.mateReward.toLocaleString(),
-                                " \uD06C\uB808\uB527"))),
-                    React.createElement("div", { style: { background: "#fff", borderRadius: 12, padding: 14, border: `1px solid ${T.line}`, textAlign: "center" } },
-                        React.createElement("div", { style: { fontSize: 28 } }, "\uD83C\uDFC6"),
-                        React.createElement("div", { style: { fontWeight: 800, fontSize: 13.5, marginTop: 6 } }, "\uD65C\uB3D9 \uBCF4\uC0C1"),
-                        React.createElement("div", { style: { fontSize: 12, color: T.sub, marginTop: 4, lineHeight: 1.5 } },
-                            "\uBD84\uAE30 \uC2DC\uC0C1\uC2DD \u00B7 \uC774\uBCA4\uD2B8 \uB2F9\uCCA8",
-                            React.createElement("br", null),
-                            React.createElement("b", { style: { color: T.coral } }, "\uAD00\uB9AC\uC790 \uC9C0\uAE09"))))))));
+    const HomeTab = () => {
+        /* 경매 통계 요약: 가장 최근 월의 '전체' 행 (지역별 데이터 우선) */
+        const statSummary = (() => {
+            if (!austats || austats.length === 0)
+                return null;
+            const totals = austats.filter((r) => r.region === "전체");
+            if (totals.length === 0)
+                return null;
+            const pick = totals.slice().sort((a, b) => b.month.localeCompare(a.month) || (a.scope.indexOf("법원") >= 0 ? 1 : -1))[0];
+            const prevRow = totals.find((r) => r.scope === pick.scope && r.usage === pick.usage && r.month < pick.month);
+            return { ...pick, diff: prevRow ? pick.priceRate - prevRow.priceRate : null };
+        })();
+        const moLbl = (mo) => /^\d{4}-\d{2}$/.test(mo || "") ? `${Number(String(mo).slice(5))}월` : String(mo || "");
+        return (React.createElement("div", null,
+            statSummary && (React.createElement("div", { onClick: () => setPtab("stats"), role: "button", style: { cursor: "pointer", marginBottom: 18 } },
+                React.createElement(Card, { pad: 0, style: { overflow: "hidden" } },
+                    React.createElement("div", { style: { background: T.grad, padding: "13px 16px", color: "#fff", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" } },
+                        React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 7, flexBasis: "100%", marginBottom: 2 } },
+                            React.createElement("span", { style: { width: 7, height: 7, borderRadius: 999, background: "#FF6B5B", animation: "htPulse 1.6s ease-out infinite", flexShrink: 0 } }),
+                            React.createElement("span", { style: { fontSize: 10.5, fontWeight: 800, letterSpacing: ".04em" } }, "GROW IN LIVE \uD83C\uDF31 \uACBD\uB9E4 \uB9E4\uAC01\uD1B5\uACC4")),
+                        React.createElement("div", { style: { display: "flex", alignItems: "baseline", gap: 8 } },
+                            React.createElement("span", { style: { fontSize: 26, fontWeight: 800, letterSpacing: "-0.03em", fontVariantNumeric: "tabular-nums", lineHeight: 1 } },
+                                statSummary.priceRate.toFixed(1),
+                                "%"),
+                            statSummary.diff != null && (React.createElement("span", { style: { fontSize: 12, fontWeight: 800 } },
+                                statSummary.diff > 0 ? "▲" : statSummary.diff < 0 ? "▼" : "—",
+                                Math.abs(statSummary.diff).toFixed(1),
+                                "%p"))),
+                        React.createElement("div", { style: { flex: 1, minWidth: 0, fontSize: 11, fontWeight: 700, opacity: 0.92, lineHeight: 1.5 } },
+                            moLbl(statSummary.month),
+                            " ",
+                            statSummary.scope,
+                            " \uB099\uCC30\uAC00\uC728 \u00B7 \uB9E4\uAC01\uB960 ",
+                            statSummary.saleRate.toFixed(1),
+                            "%"),
+                        React.createElement(Pill, { tone: "line", style: { background: "rgba(255,255,255,.16)", border: "1px solid rgba(255,255,255,.4)", color: "#fff", fontSize: 11 } }, "\uBCF4\uB7EC \uAC00\uAE30 \u2192"))))),
+            React.createElement("div", { onClick: () => setPtab("ranking"), style: { cursor: "pointer" } },
+                React.createElement(SectionTitle, { title: "\uC774\uBC88 \uC8FC \uD06C\uB808\uB527 \uB7AD\uD0B9", right: React.createElement(Pill, { tone: "line" }, "TOP 10 \uBCF4\uAE30 \u2192") }),
+                React.createElement(Podium, { list: ranked, valueOf: (m) => m.credits.toLocaleString() })),
+            React.createElement("div", { onClick: () => setPtab("growth"), style: { cursor: "pointer" } },
+                React.createElement(SectionTitle, { title: "\uADF8\uB85C\uC778 \uB7AD\uD0B9", right: React.createElement(Pill, { tone: "line" }, "TOP 10 \uBCF4\uAE30 \u2192") }),
+                React.createElement(Card, { pad: 14, style: { marginBottom: 20 } },
+                    React.createElement("div", { style: { display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" } },
+                        growthRanked.slice(0, 3).map((m, i) => (React.createElement(Pill, { key: m.id, tone: i === 0 ? "grad" : "soft", style: { fontSize: 12.5 } },
+                            i === 0 ? "🥇" : i === 1 ? "🥈" : "🥉",
+                            " ",
+                            m.realName,
+                            m.founder ? React.createElement("span", { style: { fontSize: 9, color: i === 0 ? "#F7EACB" : "#B08E3E", marginLeft: 3, verticalAlign: "1px" } }, "\u2726") : null))),
+                        React.createElement("span", { style: { fontSize: 12, color: T.sub } }, "\uB099\uCC30 \u00B7 \uC785\uCC30 \u00B7 \uC784\uC7A5 \u00B7 \uC774\uBCA4\uD2B8 \uD65C\uB3D9 \uC885\uD569")))),
+            React.createElement("div", { onClick: () => setPtab("onepick"), style: { cursor: "pointer" } },
+                React.createElement(SectionTitle, { title: "\uC6D0\uD53D \uACBD\uB9E4 \uC9C0\uB3C4", right: React.createElement(Pill, { tone: "line" }, "\uBCF4\uB7EC \uAC00\uAE30 \u2192") }),
+                React.createElement(Card, { pad: 16, style: { marginBottom: 20, background: T.gradSoft, border: "none" } },
+                    React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 12 } },
+                        React.createElement("div", { style: { fontSize: 32 } }, "\uD83D\uDDFA"),
+                        React.createElement("div", null,
+                            React.createElement("div", { style: { fontWeight: 800, fontSize: 14.5, letterSpacing: "-0.01em" } }, "\uC774\uBC88 \uB2EC \uD574\uD53C\uD14C\uD06C \uCD94\uCC9C \uBB3C\uAC74"),
+                            React.createElement("div", { style: { fontSize: 12.5, color: T.sub, marginTop: 2 } }, "\uC5C4\uC120\uD55C \uACBD\uB9E4 \uBB3C\uAC74\uC744 \uC9C0\uB3C4\uC5D0\uC11C \uD55C\uB208\uC5D0 \uD655\uC778\uD558\uC138\uC694"))))),
+            React.createElement("div", { onClick: () => setPtab("lectures"), style: { cursor: "pointer" } },
+                React.createElement(SectionTitle, { title: "\uAC15\uC758 \uB2E4\uC2DC\uBCF4\uAE30", right: React.createElement(Pill, { tone: "line" },
+                        "\uC804\uCCB4 ",
+                        lectures.length,
+                        "\uAC1C \u2192") }),
+                React.createElement("div", { style: { display: "grid", gap: 10, marginBottom: 20 } },
+                    sortPinned(lectures).slice(0, 2).map((lec) => (React.createElement(Card, { key: lec.id, pad: 14 },
+                        React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" } },
+                            isPinned(lec) && React.createElement(Pill, { tone: "soft", style: { fontSize: 11 } }, "\uD83D\uDCCC"),
+                            React.createElement("div", { style: { fontSize: 18 } }, "\uD83C\uDFAC"),
+                            React.createElement(Pill, { tone: "soft", style: { fontSize: 11.5 } }, lec.cat),
+                            React.createElement("div", { style: { fontWeight: 800, fontSize: 14, letterSpacing: "-0.01em", flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, lec.title),
+                            React.createElement(Pill, { tone: "line", style: { fontSize: 11 } }, shortDate(lec.date)))))),
+                    lectures.length === 0 && React.createElement(Card, { pad: 20, style: { textAlign: "center", color: T.sub, fontSize: 13 } }, "\uACE7 \uAC15\uC758 \uB2E4\uC2DC\uBCF4\uAE30\uAC00 \uC62C\uB77C\uC635\uB2C8\uB2E4!"))),
+            React.createElement("div", { onClick: () => setPtab("insights"), style: { cursor: "pointer" } },
+                React.createElement(SectionTitle, { title: "\uC778\uC0AC\uC774\uD2B8 \uC544\uCE74\uC774\uBE0C", right: React.createElement(Pill, { tone: "line" },
+                        "\uC804\uCCB4 ",
+                        insights.length,
+                        "\uAC74 \u2192") }),
+                React.createElement("div", { style: { display: "grid", gap: 10, marginBottom: 20 } },
+                    insights.slice(0, 2).map((i) => (React.createElement(Card, { key: i.id, pad: 14 },
+                        React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" } },
+                            React.createElement(Pill, { tone: "soft", style: { fontSize: 11.5 } }, i.cat),
+                            React.createElement("div", { style: { fontWeight: 800, fontSize: 14, letterSpacing: "-0.01em", flex: 1 } }, i.title),
+                            React.createElement(Pill, { tone: "line", style: { fontSize: 11 } }, shortDate(i.date))),
+                        React.createElement("div", { style: { fontSize: 13, color: T.ink, lineHeight: 1.7, marginTop: 8, whiteSpace: "pre-line", wordBreak: "keep-all",
+                                display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" } },
+                            React.createElement(RichText, { text: i.body }))))),
+                    insights.length === 0 && React.createElement(Card, { pad: 20, style: { textAlign: "center", color: T.sub, fontSize: 13 } }, "\uACE7 \uCCAB \uC778\uC0AC\uC774\uD2B8\uAC00 \uC62C\uB77C\uC635\uB2C8\uB2E4!"))),
+            React.createElement("div", { onClick: () => setPtab("guide"), style: { cursor: "pointer" } },
+                React.createElement(SectionTitle, { title: "\uD06C\uB808\uB527 \uC548\uB0B4", right: React.createElement(Pill, { tone: "line" }, "\uC790\uC138\uD788 \u2192") }),
+                React.createElement(Card, { pad: 16, style: { background: T.gradSoft, border: "none" } },
+                    React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 } },
+                        React.createElement("div", { style: { background: "#fff", borderRadius: 12, padding: 14, border: `1px solid ${T.line}`, textAlign: "center" } },
+                            React.createElement("div", { style: { fontSize: 28 } }, "\uD83E\uDD1D"),
+                            React.createElement("div", { style: { fontWeight: 800, fontSize: 13.5, marginTop: 6 } }, "\uADF8\uB85C\uC778 \uBA54\uC774\uD2B8"),
+                            React.createElement("div", { style: { fontSize: 12, color: T.sub, marginTop: 4, lineHeight: 1.5 } },
+                                "\uCE5C\uAD6C \uCD08\uB300 1\uD68C\uB2F9",
+                                React.createElement("br", null),
+                                React.createElement("b", { style: { color: T.coral } },
+                                    settings.mateReward.toLocaleString(),
+                                    " \uD06C\uB808\uB527"))),
+                        React.createElement("div", { style: { background: "#fff", borderRadius: 12, padding: 14, border: `1px solid ${T.line}`, textAlign: "center" } },
+                            React.createElement("div", { style: { fontSize: 28 } }, "\uD83C\uDFC6"),
+                            React.createElement("div", { style: { fontWeight: 800, fontSize: 13.5, marginTop: 6 } }, "\uD65C\uB3D9 \uBCF4\uC0C1"),
+                            React.createElement("div", { style: { fontSize: 12, color: T.sub, marginTop: 4, lineHeight: 1.5 } },
+                                "\uBD84\uAE30 \uC2DC\uC0C1\uC2DD \u00B7 \uC774\uBCA4\uD2B8 \uB2F9\uCCA8",
+                                React.createElement("br", null),
+                                React.createElement("b", { style: { color: T.coral } }, "\uAD00\uB9AC\uC790 \uC9C0\uAE09"))))))));
+    };
     /* ── 내 크레딧 + 크레딧 랭킹 TOP 10 ── */
     const RankingTab = () => {
         const top10 = ranked.slice(0, 10);
