@@ -1218,7 +1218,24 @@ function AuctionStatsTab({ stats }) {
         React.createElement("div", { style: { fontSize: 10.5, color: T.sub, lineHeight: 1.6, padding: "0 4px" } }, "\uC790\uB8CC: \uB300\uD55C\uBBFC\uAD6D \uBC95\uC6D0\uACBD\uB9E4\uC815\uBCF4 \uB9E4\uAC01\uD1B5\uACC4\uB97C \uADF8\uB85C\uC778 \uC6B4\uC601\uC9C4\uC774 \uB9E4\uC6D4 \uC815\uB9AC\uD574\uC694 \u00B7 \uACBD\uC7C1 \uC628\uB3C4\uB294 \uB9E4\uAC01\uB960\uACFC \uB099\uCC30\uAC00\uC728\uC744 \uC870\uD569\uD55C \uADF8\uB85C\uC778\uB9CC\uC758 \uCC38\uACE0 \uC9C0\uD45C\uC785\uB2C8\uB2E4. \uC2E4\uC81C \uC785\uCC30 \uC804\uC5D0\uB294 \uBB3C\uAC74\uBCC4 \uAD8C\uB9AC\uBD84\uC11D\uACFC \uC2DC\uC138\uB97C \uAF2D \uC9C1\uC811 \uD655\uC778\uD574\uC8FC\uC138\uC694 \uD83C\uDF40")));
 }
 /* ── 운영진·관리자: 매각통계 엑셀 업로드 ── */
-function StatsAdmin({ stats, onSave, onDelete }) {
+function StatsAdmin({ stats, onSave, onDelete, auto, onAutoSave, onAutoRun, onAutoTrigger, isAdmin }) {
+    const [autoOpen, setAutoOpen] = useState(false);
+    const [jobScope, setJobScope] = useState("");
+    const [jobUsage, setJobUsage] = useState("전체");
+    const [jobUrl, setJobUrl] = useState("");
+    const [jobBody, setJobBody] = useState("");
+    const [runBusy, setRunBusy] = useState(false);
+    const jobs = (auto && auto.jobs) || [];
+    const autoLog = (auto && auto.log) || [];
+    const addJob = () => {
+        if (!jobScope.trim() || !jobUrl.trim())
+            return;
+        onAutoSave([...jobs, { scope: jobScope.trim(), usage: jobUsage, url: jobUrl.trim(), body: jobBody }]);
+        setJobScope("");
+        setJobUrl("");
+        setJobBody("");
+    };
+    const runNow = async () => { setRunBusy(true); await onAutoRun(); setRunBusy(false); };
     const [month, setMonth] = useState(() => {
         const d = new Date();
         d.setMonth(d.getMonth() - 1); // 기본값: 지난달
@@ -1335,6 +1352,70 @@ function StatsAdmin({ stats, onSave, onDelete }) {
                 React.createElement("div", { style: { fontSize: 10.5, color: T.sub, marginTop: 6 } },
                     !scope.trim() && React.createElement("b", { style: { color: T.coral } }, "\u26A0\uFE0F \uB370\uC774\uD130 \uAD6C\uBD84\uC744 \uBA3C\uC800 \uC120\uD0DD\u00B7\uC785\uB825\uD574\uC8FC\uC138\uC694. "),
                     "\uAC19\uC740 \uAE30\uC900\uC6D4\u00B7\uAD6C\uBD84\u00B7\uC6A9\uB3C4\uB85C \uB2E4\uC2DC \uC62C\uB9AC\uBA74 \uAE30\uC874 \uB370\uC774\uD130\uB97C \uB36E\uC5B4\uC368\uC694.")))),
+        React.createElement(Card, { pad: 16, style: { marginBottom: 14 } },
+            React.createElement("div", { onClick: () => setAutoOpen(!autoOpen), role: "button", style: { display: "flex", alignItems: "center", gap: 8, cursor: "pointer" } },
+                React.createElement("div", { style: { fontWeight: 800, fontSize: 14.5, flex: 1 } },
+                    "\uD83E\uDD16 \uC790\uB3D9 \uC218\uC9D1 ",
+                    React.createElement(Pill, { tone: "soft", style: { fontSize: 9.5, marginLeft: 4 } }, "\uBCA0\uD0C0")),
+                auto && auto.trigger
+                    ? React.createElement(Pill, { tone: "mint", style: { fontSize: 10.5 } }, "\u23F0 \uB9E4\uC6D4 2\uC77C \uC790\uB3D9 \uC2E4\uD589 \uC911")
+                    : React.createElement(Pill, { tone: "line", style: { fontSize: 10.5 } }, "\uAEBC\uC9D0"),
+                React.createElement("span", { style: { fontSize: 11, color: T.sub } }, autoOpen ? "▲" : "▼")),
+            autoOpen && (React.createElement("div", { style: { marginTop: 12 } },
+                React.createElement("div", { style: { fontSize: 12, color: T.sub, lineHeight: 1.8, padding: 12, background: "#F3F6F5", borderRadius: 12, border: `1px solid ${T.line}` } },
+                    React.createElement("b", { style: { color: T.ink } }, "\uCD5C\uCD08 1\uD68C \u00B7 \uC694\uCCAD \uCEA1\uCC98 \uBC29\uBC95 (PC \uD06C\uB86C)"),
+                    React.createElement("br", null),
+                    "1\uFE0F\u20E3 \uBC95\uC6D0\uACBD\uB9E4\uC815\uBCF4 \u2192 \uB9E4\uAC01\uD1B5\uACC4 \u2192 \uC9C0\uC5ED\uBCC4(\uB610\uB294 \uBC95\uC6D0\uBCC4) \uC811\uC18D \uD6C4 ",
+                    React.createElement("b", null, "F12"),
+                    " \u2192 Network \uD0ED \uC5F4\uAE30",
+                    React.createElement("br", null),
+                    "2\uFE0F\u20E3 \uAE30\uAC04\uC744 ",
+                    React.createElement("b", null, "\uC544\uBB34 \uD55C \uB2EC"),
+                    "(\uC2DC\uC791\uC6D4=\uC885\uB8CC\uC6D4)\uB85C \uC124\uC815\uD558\uACE0 ",
+                    React.createElement("b", null, "\uAC80\uC0C9"),
+                    " \uD074\uB9AD",
+                    React.createElement("br", null),
+                    "3\uFE0F\u20E3 Network \uBAA9\uB85D\uC5D0\uC11C ",
+                    React.createElement("b", null, "select\u2026Stats.on"),
+                    "\uC73C\uB85C \uC2DC\uC791\uD558\uB294 \uC870\uD68C \uC694\uCCAD \uD074\uB9AD (\uC608: selectRletYrDspslStats.on) \u2014 \u26A0\uFE0F xmlToExcel2.wq\uB294 \uD654\uBA74 \uD45C\uB97C \uD30C\uC77C\uB85C \uBC14\uAFB8\uB294 \uC694\uCCAD\uC774\uB77C \uC548 \uB3FC\uC694!",
+                    React.createElement("br", null),
+                    "4\uFE0F\u20E3 Headers\uC758 ",
+                    React.createElement("b", null, "Request URL"),
+                    "\uACFC Payload \uD0ED \u2192 ",
+                    React.createElement("b", null, "view source"),
+                    " \uBCF8\uBB38\uC744 \uBCF5\uC0AC\uD574 \uC544\uB798\uC5D0 \uBD99\uC5EC\uB123\uAE30",
+                    React.createElement("br", null),
+                    "5\uFE0F\u20E3 \uBD99\uC5EC\uB123\uC740 \uBCF8\uBB38\uC5D0\uC11C ",
+                    React.createElement("b", null, "\uAE30\uAC04\uC73C\uB85C \uACE0\uB978 \uC5F0\uB3C4\u00B7\uC6D4 \uAC12"),
+                    "\uC744 \uCC3E\uC544 \uC5F0\uB3C4\uB294 ",
+                    React.createElement("b", null, "{YYYY}"),
+                    ", \uC6D4\uC740 ",
+                    React.createElement("b", null, "{MM}"),
+                    "\uB85C \uBC14\uAFD4\uC8FC\uC138\uC694 (\uC2DC\uC791\u00B7\uC885\uB8CC \uB450 \uAD70\uB370\uC529) \u2014 2026.06\uCC98\uB7FC \uBD99\uC740 \uD615\uC2DD\uC774\uBA74 \uC548 \uBC14\uAFD4\uB3C4 \uC790\uB3D9 \uCE58\uD658\uB3FC\uC694."),
+                jobs.length > 0 && (React.createElement("div", { style: { marginTop: 10 } }, jobs.map((j, i) => (React.createElement("div", { key: i, style: { display: "flex", alignItems: "center", gap: 8, padding: "8px 4px", borderBottom: `1px solid ${T.line}`, flexWrap: "wrap" } },
+                    React.createElement(Pill, { tone: "line", style: { fontSize: 10.5 } }, j.scope),
+                    React.createElement(Pill, { tone: "soft", style: { fontSize: 10.5 } }, j.usage),
+                    React.createElement("span", { style: { flex: 1, fontSize: 10.5, color: T.sub, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 80 } }, j.url.replace("https://www.courtauction.go.kr", "…")),
+                    React.createElement("button", { onClick: () => onAutoSave(jobs.filter((_, x) => x !== i)), title: "\uC791\uC5C5 \uC0AD\uC81C", style: { border: "none", background: "transparent", color: T.sub, cursor: "pointer", fontSize: 13 } }, "\u00D7")))))),
+                React.createElement("div", { style: { marginTop: 10, display: "grid", gap: 8 } },
+                    React.createElement("div", { style: { display: "flex", gap: 8, flexWrap: "wrap" } },
+                        React.createElement(Input, { value: jobScope, onChange: (e) => setJobScope(e.target.value), placeholder: "\uB370\uC774\uD130 \uAD6C\uBD84 \u2014 \uC608: \uC11C\uC6B8 \uC2DC\uAD70\uAD6C", style: { flex: "1 1 160px", background: "#fff" } }),
+                        React.createElement("select", { value: jobUsage, onChange: (e) => setJobUsage(e.target.value), style: { border: `1.5px solid ${T.line}`, borderRadius: 10, padding: "10px 12px", fontSize: 13, fontFamily: "inherit", background: "#fff", outline: "none" } }, AU_USAGES.map((u) => React.createElement("option", { key: u, value: u }, u)))),
+                    React.createElement(Input, { value: jobUrl, onChange: (e) => setJobUrl(e.target.value), placeholder: "Request URL \u2014 https://www.courtauction.go.kr/\u2026", style: { width: "100%", boxSizing: "border-box", background: "#fff" } }),
+                    React.createElement("textarea", { value: jobBody, onChange: (e) => setJobBody(e.target.value), placeholder: "\uC694\uCCAD \uBCF8\uBB38(Payload view source) \u2014 GET \uC694\uCCAD\uC774\uBA74 \uBE44\uC6CC\uB450\uC138\uC694", rows: 3, style: { width: "100%", boxSizing: "border-box", border: `1.5px solid ${T.line}`, borderRadius: 10, padding: "10px 12px",
+                            fontSize: 12, fontFamily: "monospace", outline: "none", resize: "vertical", background: "#fff" } }),
+                    React.createElement("div", { style: { display: "flex", gap: 6, justifyContent: "flex-end", flexWrap: "wrap" } },
+                        React.createElement(Btn, { small: true, tone: "ghost", disabled: !jobScope.trim() || !jobUrl.trim(), onClick: addJob }, "+ \uC791\uC5C5 \uCD94\uAC00"),
+                        React.createElement(Btn, { small: true, disabled: jobs.length === 0 || runBusy, onClick: runNow }, runBusy ? "수집 중…" : "▶ 지난달 지금 수집"),
+                        isAdmin && (React.createElement(Btn, { small: true, tone: "ghost", onClick: () => onAutoTrigger(!(auto && auto.trigger)) }, auto && auto.trigger ? "⏰ 자동 실행 끄기" : "⏰ 매월 자동 실행 켜기")))),
+                autoLog.length > 0 && (React.createElement("div", { style: { marginTop: 10 } },
+                    React.createElement("div", { style: { fontSize: 11.5, fontWeight: 800, color: T.sub, marginBottom: 4 } }, "\uCD5C\uADFC \uC2E4\uD589 \uAE30\uB85D"),
+                    autoLog.slice(0, 5).map((l, i) => (React.createElement("div", { key: i, style: { fontSize: 11, color: T.sub, padding: "3px 0", lineHeight: 1.6 } },
+                        React.createElement("b", { style: { color: T.ink } }, l.ts),
+                        " \u00B7 ",
+                        l.month,
+                        " \u2014 ",
+                        (l.results || []).map((r) => `${r.ok ? "✅" : "⚠️"} ${r.scope}: ${r.msg}`).join(" · "))))))))),
         React.createElement(SectionTitle, { title: "\uC800\uC7A5\uB41C \uD1B5\uACC4" }),
         React.createElement(Card, { pad: 0, style: { overflow: "hidden" } },
             groupList.length === 0 && React.createElement("div", { style: { padding: 20, textAlign: "center", color: T.sub, fontSize: 12.5 } }, "\uC544\uC9C1 \uC5C5\uB85C\uB4DC\uB41C \uD1B5\uACC4\uAC00 \uC5C6\uC5B4\uC694."),
@@ -3034,6 +3115,7 @@ function App() {
     const [acts, setActs] = useState([]); // 활동기록 (관리자 응답에만 포함)
     const [visitlog, setVisitlog] = useState([]); // 방문기록 요약 (관리자 응답에만 포함)
     const [austats, setAustats] = useState([]); // 경매 매각통계 (법원경매정보 엑셀)
+    const [autoStats, setAutoStats] = useState(null); // 자동 수집 상태 (관리자 응답에만 포함)
     const [certs, setCerts] = useState(live ? [] : SEED_CERTS); // 임장·입찰 인증 글
     const [cmts, setCmts] = useState(live ? [] : SEED_CMTS); // 인증 글 댓글
     const [sessToken, setSessToken] = useState(null); // 멤버 글·댓글 작성용 세션 토큰
@@ -3079,7 +3161,9 @@ function App() {
             if (d.acts)
                 setActs(d.acts);
             if (d.visitlog)
-                setVisitlog(d.visitlog); // 관리자 조회에만 포함
+                setVisitlog(d.visitlog);
+            if (d.autoStats)
+                setAutoStats(d.autoStats); // 관리자 조회에만 포함
             setPhase("ready");
             /* 공개 데이터만 캐시 (관리자 키 조회 결과는 전화번호가 포함되므로 저장 안 함) */
             if (!key && !adminKey) {
@@ -3544,6 +3628,50 @@ function App() {
             fail(e);
         }
     };
+    /* ── 매각통계 자동 수집 ── */
+    const onAutoSave = async (jobs) => {
+        try {
+            if (!live) {
+                fail(new Error("자동 수집은 실서비스 모드에서만 설정할 수 있어요"));
+                return;
+            }
+            const d = await api("autoJobsSave", { adminKey, jobs });
+            setAutoStats((A) => ({ ...(A || { log: [], trigger: false }), jobs: d.jobs }));
+            say("자동 수집 작업을 저장했어요 🤖");
+        }
+        catch (e) {
+            fail(e);
+        }
+    };
+    const onAutoRun = async () => {
+        try {
+            if (!live) {
+                fail(new Error("자동 수집은 실서비스 모드에서만 실행할 수 있어요"));
+                return;
+            }
+            const d = await api("autoRun", { adminKey });
+            const okN = d.results.filter((r) => r.ok).length;
+            say(`${d.month} 수집 완료 — 성공 ${okN} / ${d.results.length}`);
+            await refresh(adminKey); // 통계·로그 새로고침
+        }
+        catch (e) {
+            fail(e);
+        }
+    };
+    const onAutoTrigger = async (on) => {
+        try {
+            if (!live) {
+                fail(new Error("자동 수집은 실서비스 모드에서만 설정할 수 있어요"));
+                return;
+            }
+            await api("autoTrigger", { adminKey, on });
+            setAutoStats((A) => ({ ...(A || { jobs: [], log: [] }), trigger: on }));
+            say(on ? "매월 2일 오전 자동 수집이 켜졌어요 ⏰" : "자동 수집을 껐어요");
+        }
+        catch (e) {
+            fail(e);
+        }
+    };
     /* ── 분류 목록 저장 (인사이트·강의) — '기타'는 항상 마지막에 유지 ── */
     const onSaveCats = async (target, cats) => {
         try {
@@ -3636,7 +3764,7 @@ function App() {
                 effTab === "insights" && React.createElement(Insights, { insights: insights, onAdd: onAddInsight, onDelete: onDeleteInsight, onUpload: onUploadImage, onTogglePin: onTogglePinInsight, onEdit: onEditInsight, cats: catsOf(settings, "insightCats", INSIGHT_CATS), onSaveCats: (c) => onSaveCats("insights", c) }),
                 effTab === "lectures" && React.createElement(Lectures, { lectures: lectures, onAdd: onAddLecture, onDelete: onDeleteLecture, onTogglePin: onTogglePinLecture, onUpload: onUploadImage, onEdit: onEditLecture, cats: catsOf(settings, "lectureCats", LECTURE_CATS), onSaveCats: (c) => onSaveCats("lectures", c) }),
                 effTab === "certs" && React.createElement(CertsAdmin, { certs: certs, cmts: cmts, members: members, onUpdate: onUpdateCert, onDelete: onDeleteCert, onStaffCmt: onStaffCmt, onDeleteCmt: onDeleteCmt }),
-                effTab === "austats" && React.createElement(StatsAdmin, { stats: austats, onSave: onSaveStats, onDelete: onDeleteStats }),
+                effTab === "austats" && React.createElement(StatsAdmin, { stats: austats, onSave: onSaveStats, onDelete: onDeleteStats, auto: autoStats, onAutoSave: onAutoSave, onAutoRun: onAutoRun, onAutoTrigger: onAutoTrigger, isAdmin: !isStaff }),
                 effTab === "ranking" && React.createElement(RankingAdmin, { members: members, events: eventLog, ledger: ledger, acts: acts, visitlog: visitlog }),
                 effTab === "awards" && React.createElement(Awards, { members: members, settings: settings }),
                 effTab === "settings" && React.createElement(Settings, { settings: settings, setSettings: persistSettings })))),
