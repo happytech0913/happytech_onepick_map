@@ -18,6 +18,12 @@
     @keyframes gwDim {
       0% { opacity: 0; } 15% { opacity: 1; } 72% { opacity: 1; } 100% { opacity: 0; }
     }
+    /* 경매 통계 라이브 인디케이터 — 빨간 점이 은은하게 깜빡임 */
+    @keyframes htPulse {
+      0% { box-shadow: 0 0 0 0 rgba(225,95,80,.55); opacity: 1; }
+      70% { box-shadow: 0 0 0 8px rgba(225,95,80,0); opacity: .75; }
+      100% { box-shadow: 0 0 0 0 rgba(225,95,80,0); opacity: 1; }
+    }
     @keyframes gwGlow {
       0%   { opacity: 0; transform: translateY(10px) scale(.96); text-shadow: 0 0 0 rgba(255,255,255,0); }
       28%  { opacity: 1; transform: translateY(0) scale(1);      text-shadow: 0 0 26px rgba(255,255,255,.65), 0 0 60px rgba(204,254,216,.35); }
@@ -803,6 +809,450 @@ function Mate({ members, onApprove, settings }) {
                     React.createElement(Pill, { tone: "soft" },
                         m.invites,
                         "\uBA85 \uC18C\uAC1C"))))))));
+}
+/* ══════════════ 경매 매각통계 (법원경매정보 엑셀 → 지역별 대시보드) ══════════════ */
+const AU_USAGES = ["전체", "아파트", "연립·다세대", "단독주택", "오피스텔", "상가", "토지"];
+/* SheetJS를 필요할 때만 로드 (운영진 업로드 화면에서만 사용 · 멤버 페이지 용량에 영향 없음) */
+let _xlsxLoading = null;
+const loadXLSX = () => {
+    if (window.XLSX)
+        return Promise.resolve(window.XLSX);
+    if (!_xlsxLoading)
+        _xlsxLoading = new Promise((res, rej) => {
+            const sc = document.createElement("script");
+            sc.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
+            sc.onload = () => res(window.XLSX);
+            sc.onerror = () => rej(new Error("엑셀 파서를 불러오지 못했어요. 인터넷 연결을 확인해주세요"));
+            document.head.appendChild(sc);
+        });
+    return _xlsxLoading;
+};
+/* "1,234" · "85.3%" · "1,234원" → 숫자 */
+const parseNum = (v) => {
+    const n = Number(String(v == null ? "" : v).replace(/[,%\s원건명]/g, ""));
+    return isNaN(n) ? 0 : n;
+};
+/* ── 법원경매정보 매각통계 엑셀 파싱 — 헤더 행을 자동 탐지하고 열 이름으로 매핑
+     (지역/법원, 경매건수, 매각건수, 매각률, 매각가율, [평균응찰자수]) ── */
+const parseAuctionSheet = (grid) => {
+    let headIdx = -1, cols = null;
+    for (let i = 0; i < Math.min(grid.length, 15); i++) {
+        const row = (grid[i] || []).map((c) => String(c == null ? "" : c));
+        const joined = row.join("|");
+        if (/매각가율|낙찰가율/.test(joined) && /건수/.test(joined)) {
+            cols = { region: -1, cases: -1, sold: -1, saleRate: -1, priceRate: -1, bidders: -1 };
+            row.forEach((h, ci) => {
+                if (cols.region < 0 && /지역|법원|구분|시\s*도|시\s*\/?\s*군\s*\/?\s*구/.test(h))
+                    cols.region = ci;
+                if (cols.cases < 0 && /경매건수|진행건수/.test(h))
+                    cols.cases = ci;
+                if (cols.sold < 0 && /매각건수|낙찰건수/.test(h))
+                    cols.sold = ci;
+                if (cols.saleRate < 0 && /매각[률율](?!가)|낙찰[률율](?!가)/.test(h))
+                    cols.saleRate = ci;
+                if (cols.priceRate < 0 && /매각가[률율]|낙찰가[률율]/.test(h))
+                    cols.priceRate = ci;
+                if (cols.bidders < 0 && /응찰/.test(h))
+                    cols.bidders = ci;
+            });
+            if (cols.region < 0 && cols.priceRate >= 0)
+                cols.region = 0; // 지역 열 이름이 특이하면 첫 열로 간주
+            if (cols.region >= 0 && cols.priceRate >= 0) {
+                headIdx = i;
+                break;
+            }
+            cols = null;
+        }
+    }
+    if (headIdx < 0)
+        throw new Error("표 머리글(지역·매각가율 등)을 찾지 못했어요. 법원경매정보 매각통계에서 받은 엑셀이 맞는지 확인해주세요");
+    const rows = [];
+    for (let i = headIdx + 1; i < grid.length; i++) {
+        const r = grid[i] || [];
+        let region = String(r[cols.region] == null ? "" : r[cols.region]).trim();
+        if (!region)
+            continue;
+        if (/^(합계|총계|계)$/.test(region))
+            region = "전체"; // 법원경매정보 파일의 합계 행 표기는 "전체"
+        rows.push({
+            region,
+            cases: cols.cases >= 0 ? parseNum(r[cols.cases]) : 0,
+            sold: cols.sold >= 0 ? parseNum(r[cols.sold]) : 0,
+            saleRate: cols.saleRate >= 0 ? parseNum(r[cols.saleRate]) : 0,
+            priceRate: parseNum(r[cols.priceRate]),
+            bidders: cols.bidders >= 0 ? parseNum(r[cols.bidders]) : 0,
+        });
+    }
+    if (rows.length === 0)
+        throw new Error("데이터 행을 찾지 못했어요");
+    return { rows, hasBidders: cols.bidders >= 0 };
+};
+/* ── 미니 추이 그래프 (SVG) ── */
+function Sparkline({ values, width = 260, height = 56, color = T.mint2 || "#35C9A8" }) {
+    const vs = values.filter((v) => v != null);
+    if (vs.length < 2)
+        return React.createElement("div", { style: { fontSize: 11, color: T.sub } }, "\uCD94\uC774\uB97C \uBCF4\uB824\uBA74 2\uAC1C\uC6D4 \uC774\uC0C1 \uB370\uC774\uD130\uAC00 \uD544\uC694\uD574\uC694");
+    const min = Math.min(...vs), max = Math.max(...vs), span = max - min || 1;
+    const pts = vs.map((v, i) => `${(i / (vs.length - 1)) * (width - 8) + 4},${height - 8 - ((v - min) / span) * (height - 16)}`).join(" ");
+    return (React.createElement("svg", { width: "100%", viewBox: `0 0 ${width} ${height}`, style: { display: "block" }, role: "img", "aria-label": "\uCD94\uC774 \uADF8\uB798\uD504" },
+        React.createElement("polyline", { points: pts, fill: "none", stroke: color, strokeWidth: "2.5", strokeLinecap: "round", strokeLinejoin: "round" }),
+        vs.map((v, i) => (React.createElement("circle", { key: i, cx: (i / (vs.length - 1)) * (width - 8) + 4, cy: height - 8 - ((v - min) / span) * (height - 16), r: "3", fill: i === vs.length - 1 ? "#E15F50" : color })))));
+}
+/* ── 월별 이중 라인 차트 — 낙찰가율·매각률 추이 (해피테크 브랜드 색) ── */
+function DualLineChart({ labels, series, height = 190 }) {
+    const W = Math.max(labels.length * 54, 330), H = height;
+    const padL = 34, padR = 14, padT = 12, padB = 28;
+    const iw = W - padL - padR, ih = H - padT - padB;
+    const x = (i) => padL + (labels.length <= 1 ? iw / 2 : (i / (labels.length - 1)) * iw);
+    const y = (v) => padT + ih - (Math.min(Math.max(v, 0), 100) / 100) * ih;
+    const step = Math.max(1, Math.ceil(labels.length / 8));
+    return (React.createElement("div", null,
+        React.createElement("div", { style: { overflowX: "auto", paddingBottom: 2 } },
+            React.createElement("svg", { width: W, height: H, role: "img", "aria-label": "\uC6D4\uBCC4 \uCD94\uC774 \uCC28\uD2B8", style: { display: "block" } },
+                [0, 25, 50, 75, 100].map((g) => (React.createElement("g", { key: g },
+                    React.createElement("line", { x1: padL, x2: W - padR, y1: y(g), y2: y(g), stroke: T.line, strokeWidth: "1", strokeDasharray: g === 0 ? "" : "3 4" }),
+                    React.createElement("text", { x: padL - 6, y: y(g) + 3, textAnchor: "end", fontSize: "9", fill: T.sub, fontFamily: "inherit" },
+                        g,
+                        "%")))),
+                labels.map((l, i) => i % step === 0 && (React.createElement("text", { key: l, x: x(i), y: H - 8, textAnchor: "middle", fontSize: "9", fill: T.sub, fontFamily: "inherit" }, l.slice(2).replace("-", ".")))),
+                series.map((sr) => {
+                    const pts = sr.values.map((v, i) => v == null ? null : `${x(i)},${y(v)}`).filter(Boolean).join(" ");
+                    return (React.createElement("g", { key: sr.name },
+                        React.createElement("polyline", { points: pts, fill: "none", stroke: sr.color, strokeWidth: "2.5", strokeLinecap: "round", strokeLinejoin: "round" }),
+                        sr.values.map((v, i) => v != null && (React.createElement("circle", { key: i, cx: x(i), cy: y(v), r: "3", fill: "#fff", stroke: sr.color, strokeWidth: "2" })))));
+                }))),
+        React.createElement("div", { style: { display: "flex", gap: 12, marginTop: 6, flexWrap: "wrap" } }, series.map((sr) => (React.createElement("span", { key: sr.name, style: { display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 800, color: T.sub } },
+            React.createElement("span", { style: { width: 10, height: 10, borderRadius: 999, background: sr.color, display: "inline-block" } }),
+            sr.name))))));
+}
+/* ── 지역·법원 비교 막대 차트 — 매각률·낙찰가율 나란히 (가로 스크롤 · 막대 탭 시 상세) ── */
+function RegionBarChart({ rows, onPick, selected }) {
+    const group = 40, bw = 11, gapIn = 3;
+    const chartH = 128, padT = 10, labelH = 86, padL = 30;
+    const W = padL + rows.length * group + 14, H = padT + chartH + labelH;
+    const y = (v) => padT + chartH - (Math.min(Math.max(v, 0), 100) / 100) * chartH;
+    return (React.createElement("div", null,
+        React.createElement("div", { style: { overflowX: "auto", paddingBottom: 2 } },
+            React.createElement("svg", { width: W, height: H, role: "img", "aria-label": "\uC9C0\uC5ED \uBE44\uAD50 \uCC28\uD2B8", style: { display: "block" } },
+                [0, 50, 100].map((g) => (React.createElement("g", { key: g },
+                    React.createElement("line", { x1: padL, x2: W - 6, y1: y(g), y2: y(g), stroke: T.line, strokeWidth: "1", strokeDasharray: g === 0 ? "" : "3 4" }),
+                    React.createElement("text", { x: padL - 5, y: y(g) + 3, textAnchor: "end", fontSize: "8.5", fill: T.sub, fontFamily: "inherit" },
+                        g,
+                        "%")))),
+                rows.map((r, i) => {
+                    const cx = padL + i * group + group / 2;
+                    const isSel = selected === r.region;
+                    return (React.createElement("g", { key: r.region, onClick: () => onPick && onPick(r.region), style: { cursor: onPick ? "pointer" : "default" } },
+                        React.createElement("rect", { x: padL + i * group + 2, y: padT, width: group - 4, height: chartH + labelH - 8, fill: isSel ? "rgba(53,201,168,.09)" : "transparent", rx: "7" }),
+                        React.createElement("rect", { x: cx - bw - gapIn / 2, y: y(r.saleRate), width: bw, height: Math.max(padT + chartH - y(r.saleRate), 1), rx: "2.5", fill: "#35C9A8" }),
+                        React.createElement("rect", { x: cx + gapIn / 2, y: y(r.priceRate), width: bw, height: Math.max(padT + chartH - y(r.priceRate), 1), rx: "2.5", fill: T.peri }),
+                        React.createElement("text", { transform: `rotate(-55 ${cx} ${padT + chartH + 14})`, x: cx, y: padT + chartH + 14, textAnchor: "end", fontSize: "9", fontWeight: isSel ? "800" : "600", fill: isSel ? T.ink : T.sub, fontFamily: "inherit" }, r.region)));
+                }))),
+        React.createElement("div", { style: { display: "flex", gap: 12, marginTop: 4, flexWrap: "wrap", alignItems: "center" } },
+            React.createElement("span", { style: { display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 800, color: T.sub } },
+                React.createElement("span", { style: { width: 10, height: 10, borderRadius: 3, background: "#35C9A8", display: "inline-block" } }),
+                "\uB9E4\uAC01\uB960"),
+            React.createElement("span", { style: { display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 800, color: T.sub } },
+                React.createElement("span", { style: { width: 10, height: 10, borderRadius: 3, background: T.peri, display: "inline-block" } }),
+                "\uB099\uCC30\uAC00\uC728"),
+            React.createElement("span", { style: { fontSize: 10.5, color: T.sub } }, "\u00B7 \uB9C9\uB300\uB97C \uD0ED\uD558\uBA74 \uC6D4\uBCC4 \uCD94\uC774\uB97C \uBCFC \uC218 \uC788\uC5B4\uC694 \u2190\u2192"))));
+}
+/* 경쟁 온도 배지 — 매각률·매각가율 조합 (참고용 지표) */
+const heatOf = (saleRate, priceRate) => {
+    const score = (saleRate || 0) + (priceRate || 0) * 0.5;
+    if (score >= 80)
+        return { label: "🔥 치열", tone: "coral" };
+    if (score >= 60)
+        return { label: "🌤️ 보통", tone: "soft" };
+    return { label: "❄️ 한산", tone: "line" };
+};
+/* ── 멤버 페이지: 경매 통계 대시보드 — 구분(지역별·법원별)/용도 선택 + 라이브 요약 + 지역 카드 + 추이 ── */
+function AuctionStatsTab({ stats }) {
+    const scopes = [...new Set(stats.map((r) => r.scope || "지역별"))];
+    const [scope, setScope] = useState(scopes[0] || "");
+    const effScope = scopes.indexOf(scope) >= 0 ? scope : (scopes[0] || "");
+    const rowsS = stats.filter((r) => (r.scope || "지역별") === effScope);
+    const usages = AU_USAGES.filter((u) => rowsS.some((r) => r.usage === u))
+        .concat([...new Set(rowsS.map((r) => r.usage))].filter((u) => AU_USAGES.indexOf(u) < 0));
+    const [usage, setUsage] = useState(usages[0] || "전체");
+    const effUsage = usages.indexOf(usage) >= 0 ? usage : (usages[0] || "전체");
+    const [sel, setSel] = useState(null); // 상세 보기 지역
+    const rowsU = rowsS.filter((r) => r.usage === effUsage);
+    const months = [...new Set(rowsU.map((r) => r.month))].sort();
+    const latest = months[months.length - 1];
+    const prev = months[months.length - 2];
+    const cur = rowsU.filter((r) => r.month === latest && r.region !== "전체").sort((a, b) => b.priceRate - a.priceRate);
+    const total = rowsU.find((r) => r.month === latest && r.region === "전체");
+    const prevOf = (region) => rowsU.find((r) => r.month === prev && r.region === region);
+    const histOf = (region) => months.map((mo) => { const r = rowsU.find((x) => x.month === mo && x.region === region); return r ? r.priceRate : null; });
+    const selRows = sel ? months.map((mo) => rowsU.find((x) => x.month === mo && x.region === sel)).filter(Boolean) : [];
+    const moLabel = (mo) => mo ? `${mo.slice(0, 4)}년 ${Number(mo.slice(5))}월` : "";
+    const now = new Date();
+    const todayLabel = `${now.getFullYear()}.${String(now.getMonth() + 1).padStart(2, "0")}.${String(now.getDate()).padStart(2, "0")}`;
+    const regionCount = [...new Set(rowsU.map((r) => r.region))].filter((r) => r !== "전체").length;
+    const totalDiff = total && prev ? (() => { const pv = rowsU.find((r) => r.month === prev && r.region === "전체"); return pv ? total.priceRate - pv.priceRate : null; })() : null;
+    if (stats.length === 0) {
+        return (React.createElement("div", null,
+            React.createElement(SectionTitle, { eyebrow: "\uBC95\uC6D0\uACBD\uB9E4\uC815\uBCF4 \uACF5\uC2DD \uD1B5\uACC4 \uAE30\uBC18", title: "\uACBD\uB9E4 \uB9E4\uAC01\uD1B5\uACC4" }),
+            React.createElement(Card, { pad: 24, style: { textAlign: "center", color: T.sub, fontSize: 13, lineHeight: 1.7 } },
+                "\uD83D\uDCCA \uC544\uC9C1 \uB4F1\uB85D\uB41C \uD1B5\uACC4\uAC00 \uC5C6\uC5B4\uC694.",
+                React.createElement("br", null),
+                "\uC6B4\uC601\uC9C4\uC774 \uC6D4\uAC04 \uB9E4\uAC01\uD1B5\uACC4\uB97C \uC62C\uB9AC\uBA74 \uC9C0\uC5ED\uBCC4 \uB099\uCC30\uAC00\uC728\uACFC \uACBD\uC7C1 \uC628\uB3C4\uB97C \uBCFC \uC218 \uC788\uC5B4\uC694!")));
+    }
+    return (React.createElement("div", null,
+        React.createElement(SectionTitle, { eyebrow: "\uBC95\uC6D0\uACBD\uB9E4\uC815\uBCF4 \uACF5\uC2DD \uD1B5\uACC4 \uAE30\uBC18", title: "\uACBD\uB9E4 \uB9E4\uAC01\uD1B5\uACC4" }),
+        React.createElement(Card, { pad: 0, style: { overflow: "hidden", marginBottom: 14 } },
+            React.createElement("div", { style: { background: T.grad, padding: "16px 18px", color: "#fff" } },
+                React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 7 } },
+                    React.createElement("span", { style: { width: 8, height: 8, borderRadius: 999, background: "#FF6B5B", animation: "htPulse 1.6s ease-out infinite", flexShrink: 0 } }),
+                    React.createElement("span", { style: { fontSize: 11, fontWeight: 800, letterSpacing: ".04em" } },
+                        "GROW IN LIVE \uD83C\uDF31 \uC624\uB298 ",
+                        todayLabel,
+                        " \uAE30\uC900")),
+                React.createElement("div", { style: { display: "flex", alignItems: "flex-end", gap: 14, flexWrap: "wrap", marginTop: 10 } },
+                    total ? (React.createElement("div", null,
+                        React.createElement("div", { style: { fontSize: 11.5, fontWeight: 800, opacity: 0.9 } },
+                            effScope,
+                            " \u00B7 ",
+                            effUsage,
+                            " \u00B7 \uC804\uCCB4 \uB099\uCC30\uAC00\uC728"),
+                        React.createElement("div", { style: { display: "flex", alignItems: "baseline", gap: 8 } },
+                            React.createElement("span", { style: { fontSize: 34, fontWeight: 800, letterSpacing: "-0.03em", fontVariantNumeric: "tabular-nums", lineHeight: 1.1 } },
+                                total.priceRate.toFixed(1),
+                                "%"),
+                            totalDiff != null && (React.createElement("span", { style: { fontSize: 13, fontWeight: 800 } },
+                                totalDiff > 0 ? "▲" : totalDiff < 0 ? "▼" : "—",
+                                Math.abs(totalDiff).toFixed(1),
+                                "%p"))),
+                        React.createElement("div", { style: { fontSize: 11, opacity: 0.9, marginTop: 2 } },
+                            "\uB9E4\uAC01\uB960 ",
+                            total.saleRate.toFixed(1),
+                            "% \u00B7 \uC9C4\uD589 ",
+                            total.cases.toLocaleString(),
+                            "\uAC74"))) : (React.createElement("div", { style: { fontSize: 13.5, fontWeight: 800 } },
+                        effScope,
+                        " \u00B7 ",
+                        effUsage)),
+                    React.createElement("div", { style: { flex: 1 } }),
+                    React.createElement("div", { style: { textAlign: "right", fontSize: 11, fontWeight: 700, opacity: 0.92, lineHeight: 1.7 } },
+                        "\uCD5C\uC2E0 ",
+                        moLabel(latest),
+                        " \uD1B5\uACC4",
+                        React.createElement("br", null),
+                        "\uB204\uC801 ",
+                        months.length,
+                        "\uAC1C\uC6D4 \u00B7 ",
+                        regionCount,
+                        "\uAC1C ",
+                        effScope.indexOf("법원") >= 0 ? "법원" : "지역"))),
+            total && months.length >= 2 && (React.createElement("div", { style: { padding: "10px 14px 12px" } },
+                React.createElement("div", { style: { fontSize: 10.5, fontWeight: 800, color: T.sub, marginBottom: 4 } },
+                    "\uC804\uCCB4 \uB099\uCC30\uAC00\uC728 \uCD94\uC774 (",
+                    moLabel(months[0]),
+                    " ~ ",
+                    moLabel(latest),
+                    ")"),
+                React.createElement(Sparkline, { values: histOf("전체"), height: 48 })))),
+        scopes.length > 1 && (React.createElement("div", { style: { display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 } }, scopes.map((sc) => (React.createElement("button", { key: sc, onClick: () => { setScope(sc); setSel(null); }, style: { cursor: "pointer", borderRadius: 999, padding: "7px 14px", fontSize: 12.5, fontWeight: 800, fontFamily: "inherit",
+                border: effScope === sc ? `1.5px solid ${T.mint}` : `1.5px solid ${T.line}`,
+                background: effScope === sc ? T.gradSoft : "#fff", color: effScope === sc ? T.ink : T.sub } },
+            "\uD83D\uDCC2 ",
+            sc))))),
+        usages.length > 1 && (React.createElement("div", { style: { display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 } }, usages.map((u) => (React.createElement("button", { key: u, onClick: () => { setUsage(u); setSel(null); }, style: { cursor: "pointer", borderRadius: 999, padding: "6px 13px", fontSize: 12, fontWeight: 800, fontFamily: "inherit",
+                border: effUsage === u ? `1.5px solid ${T.mint}` : `1.5px solid ${T.line}`,
+                background: effUsage === u ? T.gradSoft : "#fff", color: effUsage === u ? T.ink : T.sub } }, u))))),
+        cur.length >= 2 && (React.createElement(Card, { pad: 16, style: { marginBottom: 14 } },
+            React.createElement("div", { style: { fontWeight: 800, fontSize: 14, marginBottom: 10 } },
+                "\uD83D\uDCCA ",
+                moLabel(latest),
+                " \u00B7 ",
+                effScope.indexOf("법원") >= 0 ? "법원별" : "지역별",
+                " \uBE44\uAD50"),
+            React.createElement(RegionBarChart, { rows: cur, selected: sel, onPick: (rg) => setSel(sel === rg ? null : rg) }))),
+        React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(150px,1fr))", gap: 10, marginBottom: 14 } }, cur.map((r) => {
+            const pv = prevOf(r.region);
+            const diff = pv ? r.priceRate - pv.priceRate : null;
+            const heat = heatOf(r.saleRate, r.priceRate);
+            return (React.createElement(Card, { key: r.region, pad: 0, style: { overflow: "hidden", cursor: "pointer", border: sel === r.region ? `1.5px solid ${T.mint}` : undefined } },
+                React.createElement("div", { onClick: () => setSel(sel === r.region ? null : r.region), role: "button", style: { padding: 13 } },
+                    React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6 } },
+                        React.createElement("div", { style: { fontWeight: 800, fontSize: 13.5, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, r.region),
+                        React.createElement(Pill, { tone: heat.tone, style: { fontSize: 9.5, padding: "2px 7px" } }, heat.label)),
+                    React.createElement("div", { style: { display: "flex", alignItems: "baseline", gap: 6, marginTop: 8 } },
+                        React.createElement("span", { style: { fontSize: 21, fontWeight: 800, letterSpacing: "-0.02em", fontVariantNumeric: "tabular-nums" } },
+                            r.priceRate.toFixed(1),
+                            "%"),
+                        diff != null && (React.createElement("span", { style: { fontSize: 11, fontWeight: 800, color: diff > 0 ? T.coral : diff < 0 ? T.peri : T.sub } },
+                            diff > 0 ? "▲" : diff < 0 ? "▼" : "—",
+                            Math.abs(diff).toFixed(1),
+                            "%p"))),
+                    React.createElement("div", { style: { fontSize: 10.5, color: T.sub, marginTop: 2 } }, "\uB099\uCC30\uAC00\uC728 (\uAC10\uC815\uAC00 \uB300\uBE44)"),
+                    React.createElement("div", { style: { fontSize: 11, color: T.sub, marginTop: 6, lineHeight: 1.5 } },
+                        "\uB9E4\uAC01\uB960 ",
+                        React.createElement("b", { style: { color: T.ink } },
+                            r.saleRate.toFixed(1),
+                            "%"),
+                        " \u00B7 \uC9C4\uD589 ",
+                        r.cases.toLocaleString(),
+                        "\uAC74",
+                        r.bidders > 0 && React.createElement(React.Fragment, null,
+                            " \u00B7 \uD3C9\uADE0 \uC751\uCC30 ",
+                            React.createElement("b", { style: { color: T.ink } },
+                                r.bidders.toFixed(1),
+                                "\uBA85"))))));
+        })),
+        sel && selRows.length > 0 && (React.createElement(Card, { pad: 16, style: { marginBottom: 14 } },
+            React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 10 } },
+                React.createElement("div", { style: { fontWeight: 800, fontSize: 14.5, flex: 1 } },
+                    "\uD83D\uDCC8 ",
+                    sel,
+                    " \u2014 \uC6D4\uBCC4 \uB9E4\uAC01\uB960\u00B7\uB099\uCC30\uAC00\uC728 \uCD94\uC774"),
+                React.createElement("button", { onClick: () => setSel(null), style: { border: "none", background: "transparent", color: T.sub, cursor: "pointer", fontSize: 14 } }, "\u00D7")),
+            React.createElement(DualLineChart, { labels: selRows.map((r) => r.month), series: [
+                    { name: "낙찰가율", color: T.peri, values: selRows.map((r) => r.priceRate) },
+                    { name: "매각률", color: "#35C9A8", values: selRows.map((r) => r.saleRate) },
+                ] }),
+            React.createElement("div", { style: { display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 } }, selRows.slice(-6).map((r) => (React.createElement(Pill, { key: r.month, tone: "line", style: { fontSize: 10.5, fontVariantNumeric: "tabular-nums" } },
+                r.month.slice(2).replace("-", "."),
+                " \u00B7 \uAC00\uC728 ",
+                r.priceRate.toFixed(1),
+                "% \u00B7 \uB960 ",
+                r.saleRate.toFixed(1),
+                "%")))))),
+        React.createElement("div", { style: { fontSize: 10.5, color: T.sub, lineHeight: 1.6, padding: "0 4px" } }, "\uC790\uB8CC: \uB300\uD55C\uBBFC\uAD6D \uBC95\uC6D0\uACBD\uB9E4\uC815\uBCF4 \uB9E4\uAC01\uD1B5\uACC4\uB97C \uADF8\uB85C\uC778 \uC6B4\uC601\uC9C4\uC774 \uB9E4\uC6D4 \uC815\uB9AC\uD574\uC694 \u00B7 \uACBD\uC7C1 \uC628\uB3C4\uB294 \uB9E4\uAC01\uB960\uACFC \uB099\uCC30\uAC00\uC728\uC744 \uC870\uD569\uD55C \uADF8\uB85C\uC778\uB9CC\uC758 \uCC38\uACE0 \uC9C0\uD45C\uC785\uB2C8\uB2E4. \uC2E4\uC81C \uC785\uCC30 \uC804\uC5D0\uB294 \uBB3C\uAC74\uBCC4 \uAD8C\uB9AC\uBD84\uC11D\uACFC \uC2DC\uC138\uB97C \uAF2D \uC9C1\uC811 \uD655\uC778\uD574\uC8FC\uC138\uC694 \uD83C\uDF40")));
+}
+/* ── 운영진·관리자: 매각통계 엑셀 업로드 ── */
+function StatsAdmin({ stats, onSave, onDelete }) {
+    const [month, setMonth] = useState(() => {
+        const d = new Date();
+        d.setMonth(d.getMonth() - 1); // 기본값: 지난달
+        return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0");
+    });
+    const [scope, setScope] = useState("");
+    const [usage, setUsage] = useState("전체");
+    const SCOPE_HINTS = ["전국 법원별", "서울 시군구", "인천 시군구", "경기 시군구"];
+    const [preview, setPreview] = useState(null); // {rows, hasBidders, fileName}
+    const [busy, setBusy] = useState(false);
+    const [err, setErr] = useState("");
+    const fileRef = React.useRef(null);
+    const onFile = async (e) => {
+        const f = e.target.files && e.target.files[0];
+        if (!f)
+            return;
+        setErr("");
+        setPreview(null);
+        setBusy(true);
+        try {
+            const XLSX = await loadXLSX();
+            const buf = await f.arrayBuffer();
+            const wb = XLSX.read(new Uint8Array(buf), { type: "array" });
+            const ws = wb.Sheets[wb.SheetNames[0]];
+            const grid = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: "" });
+            const parsed = parseAuctionSheet(grid);
+            setPreview({ ...parsed, fileName: f.name });
+        }
+        catch (ex) {
+            setErr(ex.message || String(ex));
+        }
+        setBusy(false);
+        if (fileRef.current)
+            fileRef.current.value = "";
+    };
+    const commit = async () => {
+        if (!preview || busy || !scope.trim())
+            return;
+        setBusy(true);
+        const ok = await onSave(month, scope.trim(), usage, preview.rows);
+        setBusy(false);
+        if (ok)
+            setPreview(null);
+    };
+    /* 저장된 데이터: 월+구분+용도 그룹 */
+    const groups = {};
+    stats.forEach((r) => { const k = r.month + "|" + (r.scope || "지역별") + "|" + r.usage; groups[k] = (groups[k] || 0) + 1; });
+    const groupList = Object.keys(groups).sort().reverse();
+    return (React.createElement("div", null,
+        React.createElement(SectionTitle, { eyebrow: "\uC6D4 1\uD68C \u00B7 5\uBD84\uC774\uBA74 \uCDA9\uBD84\uD574\uC694", title: "\uACBD\uB9E4 \uB9E4\uAC01\uD1B5\uACC4 \uC5C5\uB85C\uB4DC", right: React.createElement(Pill, { tone: "line" },
+                groupList.length,
+                "\uAC1C \uB370\uC774\uD130\uC14B") }),
+        React.createElement(Card, { pad: 16, style: { marginBottom: 14 } },
+            React.createElement("div", { style: { fontSize: 12.5, color: T.sub, lineHeight: 1.8, marginBottom: 12 } },
+                React.createElement("b", { style: { color: T.ink } }, "\uC5C5\uB85C\uB4DC \uBC29\uBC95"),
+                React.createElement("br", null),
+                "1\uFE0F\u20E3 ",
+                React.createElement("a", { href: "https://www.courtauction.go.kr", target: "_blank", rel: "noopener noreferrer", style: { color: T.peri, fontWeight: 700 } }, "\uBC95\uC6D0\uACBD\uB9E4\uC815\uBCF4"),
+                " \u2192 \uB9E4\uAC01\uD1B5\uACC4 \u2192 ",
+                React.createElement("b", null, "\uC9C0\uC5ED\uBCC4 \uB9E4\uAC01\uD1B5\uACC4"),
+                " \uBA54\uB274 \uC811\uC18D",
+                React.createElement("br", null),
+                "2\uFE0F\u20E3 \uAE30\uAC04(\uC6D4)\uACFC \uC6A9\uB3C4\uB97C \uACE0\uB974\uACE0 \uAC80\uC0C9 \u2192 ",
+                React.createElement("b", null, "\uC5D1\uC140 \uB2E4\uC6B4\uB85C\uB4DC"),
+                " (\uC9C0\uC5ED\uBCC4\u00B7\uBC95\uC6D0\uBCC4 \uBAA8\uB450 \uC9C0\uC6D0)",
+                React.createElement("br", null),
+                "3\uFE0F\u20E3 \uC544\uB798\uC5D0\uC11C \uAE30\uC900\uC6D4\u00B7\uAD6C\uBD84\u00B7\uC6A9\uB3C4\uB97C \uC120\uD0DD\uD558\uACE0 \uD30C\uC77C\uC744 \uC62C\uB9AC\uBA74 \uB05D!"),
+            React.createElement("div", { style: { marginBottom: 10 } },
+                React.createElement("div", { style: { fontSize: 12, fontWeight: 800, color: T.sub, marginBottom: 4 } }, "\uB370\uC774\uD130 \uAD6C\uBD84 \u2014 \uC5B4\uB5A4 \uD30C\uC77C\uC778\uAC00\uC694?"),
+                React.createElement("div", { style: { display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 6 } }, SCOPE_HINTS.map((h) => (React.createElement("button", { key: h, onClick: () => setScope(h), style: { cursor: "pointer", borderRadius: 999, padding: "5px 12px", fontSize: 11.5, fontWeight: 800, fontFamily: "inherit",
+                        border: scope === h ? `1.5px solid ${T.mint}` : `1.5px solid ${T.line}`,
+                        background: scope === h ? T.gradSoft : "#fff", color: scope === h ? T.ink : T.sub } }, h)))),
+                React.createElement(Input, { value: scope, onChange: (e) => setScope(e.target.value), placeholder: "\uC9C1\uC811 \uC785\uB825 \u2014 \uC608: \uBD80\uC0B0 \uC2DC\uAD70\uAD6C, \uC218\uC6D0\uC9C0\uBC95 \uAD00\uD560", style: { width: "100%", boxSizing: "border-box", background: "#fff" } })),
+            React.createElement("div", { style: { display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 10 } },
+                React.createElement("label", { style: { fontSize: 12, fontWeight: 800, color: T.sub } },
+                    "\uAE30\uC900\uC6D4",
+                    React.createElement(Input, { type: "month", value: month, onChange: (e) => setMonth(e.target.value), style: { display: "block", marginTop: 4, background: "#fff" } })),
+                React.createElement("label", { style: { fontSize: 12, fontWeight: 800, color: T.sub } },
+                    "\uC6A9\uB3C4",
+                    React.createElement("select", { value: usage, onChange: (e) => setUsage(e.target.value), style: { display: "block", marginTop: 4, border: `1.5px solid ${T.line}`, borderRadius: 10, padding: "10px 12px", fontSize: 13.5, fontFamily: "inherit", background: "#fff", outline: "none" } }, AU_USAGES.map((u) => React.createElement("option", { key: u, value: u }, u))))),
+            React.createElement("input", { ref: fileRef, type: "file", accept: ".xls,.xlsx,.csv", onChange: onFile, style: { fontSize: 12.5, fontFamily: "inherit" } }),
+            busy && !preview && React.createElement("div", { style: { fontSize: 12, color: T.sub, marginTop: 8 } }, "\uD30C\uC77C\uC744 \uC77D\uB294 \uC911\u2026"),
+            err && React.createElement("div", { style: { fontSize: 12, color: T.coral, fontWeight: 700, marginTop: 8, lineHeight: 1.6 } },
+                "\u26A0\uFE0F ",
+                err),
+            preview && (React.createElement("div", { style: { marginTop: 12, padding: 12, borderRadius: 12, background: "#F3F6F5", border: `1px solid ${T.line}` } },
+                React.createElement("div", { style: { fontSize: 12, fontWeight: 800, marginBottom: 8 } },
+                    "\uD83D\uDCC4 ",
+                    preview.fileName,
+                    " \u2192 ",
+                    React.createElement("b", { style: { color: T.mint2 || T.ink } },
+                        preview.rows.length,
+                        "\uAC1C \uC9C0\uC5ED"),
+                    " \uC778\uC2DD",
+                    !preview.hasBidders && React.createElement("span", { style: { color: T.sub, fontWeight: 600 } }, " \u00B7 \uC751\uCC30\uC790\uC218 \uC5F4 \uC5C6\uC74C(\uC0DD\uB7B5)")),
+                React.createElement("div", { style: { maxHeight: 220, overflowY: "auto", background: "#fff", borderRadius: 10, border: `1px solid ${T.line}` } },
+                    React.createElement("table", { style: { width: "100%", borderCollapse: "collapse", fontSize: 11.5 } },
+                        React.createElement("thead", null,
+                            React.createElement("tr", { style: { background: "#FAFCFB" } }, ["지역", "진행", "매각", "매각률", "낙찰가율"].concat(preview.hasBidders ? ["응찰"] : []).map((h) => (React.createElement("th", { key: h, style: { padding: "6px 8px", textAlign: "left", borderBottom: `1px solid ${T.line}`, fontWeight: 800, color: T.sub } }, h))))),
+                        React.createElement("tbody", null, preview.rows.map((r, i) => (React.createElement("tr", { key: i },
+                            React.createElement("td", { style: { padding: "5px 8px", fontWeight: 700 } }, r.region),
+                            React.createElement("td", { style: { padding: "5px 8px" } }, r.cases.toLocaleString()),
+                            React.createElement("td", { style: { padding: "5px 8px" } }, r.sold.toLocaleString()),
+                            React.createElement("td", { style: { padding: "5px 8px" } },
+                                r.saleRate,
+                                "%"),
+                            React.createElement("td", { style: { padding: "5px 8px", fontWeight: 800 } },
+                                r.priceRate,
+                                "%"),
+                            preview.hasBidders && React.createElement("td", { style: { padding: "5px 8px" } }, r.bidders))))))),
+                React.createElement("div", { style: { display: "flex", justifyContent: "flex-end", gap: 6, marginTop: 10 } },
+                    React.createElement("button", { onClick: () => setPreview(null), style: { cursor: "pointer", border: `1.5px solid ${T.line}`, background: "#fff", color: T.sub, borderRadius: 999, padding: "7px 14px", fontSize: 12.5, fontWeight: 800, fontFamily: "inherit" } }, "\uCDE8\uC18C"),
+                    React.createElement(Btn, { disabled: busy || !scope.trim(), onClick: commit }, busy ? "저장 중…" : `${month} · ${scope.trim() || "구분?"} · ${usage} 저장`)),
+                React.createElement("div", { style: { fontSize: 10.5, color: T.sub, marginTop: 6 } },
+                    !scope.trim() && React.createElement("b", { style: { color: T.coral } }, "\u26A0\uFE0F \uB370\uC774\uD130 \uAD6C\uBD84\uC744 \uBA3C\uC800 \uC120\uD0DD\u00B7\uC785\uB825\uD574\uC8FC\uC138\uC694. "),
+                    "\uAC19\uC740 \uAE30\uC900\uC6D4\u00B7\uAD6C\uBD84\u00B7\uC6A9\uB3C4\uB85C \uB2E4\uC2DC \uC62C\uB9AC\uBA74 \uAE30\uC874 \uB370\uC774\uD130\uB97C \uB36E\uC5B4\uC368\uC694.")))),
+        React.createElement(SectionTitle, { title: "\uC800\uC7A5\uB41C \uD1B5\uACC4" }),
+        React.createElement(Card, { pad: 0, style: { overflow: "hidden" } },
+            groupList.length === 0 && React.createElement("div", { style: { padding: 20, textAlign: "center", color: T.sub, fontSize: 12.5 } }, "\uC544\uC9C1 \uC5C5\uB85C\uB4DC\uB41C \uD1B5\uACC4\uAC00 \uC5C6\uC5B4\uC694."),
+            groupList.map((k) => {
+                const [mo, sc, use] = k.split("|");
+                return (React.createElement("div", { key: k, style: { display: "flex", alignItems: "center", gap: 8, padding: "10px 16px", borderBottom: `1px solid ${T.line}`, flexWrap: "wrap" } },
+                    React.createElement("b", { style: { fontSize: 13, fontVariantNumeric: "tabular-nums" } }, mo),
+                    React.createElement(Pill, { tone: "line", style: { fontSize: 10.5 } }, sc),
+                    React.createElement(Pill, { tone: "soft", style: { fontSize: 10.5 } }, use),
+                    React.createElement("span", { style: { flex: 1, fontSize: 11.5, color: T.sub } },
+                        groups[k],
+                        "\uAC1C \uC9C0\uC5ED"),
+                    React.createElement("button", { onClick: () => onDelete(mo, sc, use), title: "\uC774 \uB370\uC774\uD130\uC14B \uC0AD\uC81C", style: { border: "none", background: "transparent", color: T.sub, cursor: "pointer", fontSize: 14, padding: "2px 6px" } }, "\u00D7")));
+            }))));
 }
 /* ── 인증 게시판 관리 (운영진·관리자) — 글 수정·삭제 · 댓글 삭제 · 운영진 답글
      멤버 화면에는 수정·삭제 UI가 전혀 노출되지 않음 ── */
@@ -1771,7 +2221,7 @@ function CertBoard({ certs, cmts, members, me, onAddCert, onAddCmt }) {
             }))));
 }
 /* ── 공개 조회 페이지 (탭 대시보드) ── */
-function PublicPage({ members, ledger, log, insights, lectures, settings, certs, cmts, onAddCert, onAddCmt, viewer, onLogin, onLogout, onChangePw }) {
+function PublicPage({ members, ledger, log, insights, lectures, settings, certs, cmts, austats, onAddCert, onAddCmt, viewer, onLogin, onLogout, onChangePw }) {
     const [ptab, setPtab] = useState("home");
     /* 선택된 탭이 화면 밖에 있으면 탭바를 자동 스크롤해 보이게 함 */
     useEffect(() => {
@@ -1795,6 +2245,7 @@ function PublicPage({ members, ledger, log, insights, lectures, settings, certs,
         ["growth", "그로인 랭킹", "📈"],
         ["onepick", "원픽 지도", "📍"],
         ["cert", "임장·입찰", "🚩"],
+        ["stats", "경매 통계", "📊"],
         ["lectures", "강의", "🎬"],
         ["insights", "인사이트", "💡"],
         ["guide", "안내", "📢"],
@@ -2317,6 +2768,7 @@ function PublicPage({ members, ledger, log, insights, lectures, settings, certs,
             ptab === "growth" && React.createElement(GrowthTab, null),
             ptab === "onepick" && React.createElement(OnePickTab, null),
             ptab === "cert" && React.createElement(CertBoard, { certs: certs, cmts: cmts, members: members, me: meMember, onAddCert: onAddCert, onAddCmt: onAddCmt }),
+            ptab === "stats" && React.createElement(AuctionStatsTab, { stats: austats }),
             ptab === "lectures" && React.createElement(LecturesTab, null),
             ptab === "insights" && React.createElement(InsightsTab, null),
             ptab === "guide" && React.createElement(GuideTab, null),
@@ -2449,6 +2901,7 @@ function App() {
     const [lectures, setLectures] = useState(live ? [] : SEED_LECTURES);
     const [acts, setActs] = useState([]); // 활동기록 (관리자 응답에만 포함)
     const [visitlog, setVisitlog] = useState([]); // 방문기록 요약 (관리자 응답에만 포함)
+    const [austats, setAustats] = useState([]); // 경매 매각통계 (법원경매정보 엑셀)
     const [certs, setCerts] = useState(live ? [] : SEED_CERTS); // 임장·입찰 인증 글
     const [cmts, setCmts] = useState(live ? [] : SEED_CMTS); // 인증 글 댓글
     const [sessToken, setSessToken] = useState(null); // 멤버 글·댓글 작성용 세션 토큰
@@ -2490,6 +2943,7 @@ function App() {
                 setSettings({ ...DEFAULT_SETTINGS, ...d.settings });
             setCerts(d.certs || []);
             setCmts(d.cmts || []);
+            setAustats(d.austats || []);
             if (d.acts)
                 setActs(d.acts);
             if (d.visitlog)
@@ -2523,6 +2977,7 @@ function App() {
                     setLectures(d.lectures || []);
                     setCerts(d.certs || []);
                     setCmts(d.cmts || []);
+                    setAustats(d.austats || []);
                     if (d.settings)
                         setSettings({ ...DEFAULT_SETTINGS, ...d.settings });
                     setPhase("ready");
@@ -2929,6 +3384,34 @@ function App() {
             fail(e);
         }
     };
+    /* ── 경매 매각통계 저장·삭제 (운영진·관리자) ── */
+    const onSaveStats = async (month, scope, usage, rows) => {
+        try {
+            if (live)
+                await api("statsSave", { adminKey, month, scope, usage, rows });
+            setAustats((A) => [
+                ...A.filter((r) => !(r.month === month && (r.scope || "지역별") === scope && r.usage === usage)),
+                ...rows.map((r, i) => ({ id: Date.now() + i, month, scope, usage, ...r })),
+            ]);
+            say(`${month} · ${scope} · ${usage} 통계 ${rows.length}개를 저장했어요 📊`);
+            return true;
+        }
+        catch (e) {
+            fail(e);
+            return false;
+        }
+    };
+    const onDeleteStats = async (month, scope, usage) => {
+        try {
+            if (live)
+                await api("statsDelete", { adminKey, month, scope, usage });
+            setAustats((A) => A.filter((r) => !(r.month === month && (r.scope || "지역별") === scope && r.usage === usage)));
+            say("통계 데이터셋을 삭제했어요");
+        }
+        catch (e) {
+            fail(e);
+        }
+    };
     /* ── 분류 목록 저장 (인사이트·강의) — '기타'는 항상 마지막에 유지 ── */
     const onSaveCats = async (target, cats) => {
         try {
@@ -2952,10 +3435,10 @@ function App() {
     const total = members.reduce((s, m) => s + m.credits, 0);
     const usable = members.filter((m) => canUse(m.credits, settings)).length;
     const isStaff = adminRole === "staff";
-    const STAFF_TABS = ["members", "insights", "lectures", "certs"]; // 운영진 허용 탭 (크레딧 관련 제외)
+    const STAFF_TABS = ["members", "insights", "lectures", "certs", "austats"]; // 운영진 허용 탭 (크레딧 관련 제외)
     const TABS = [
         ["board", "리더보드"], ["members", "멤버 관리"], ["events", "데일리 이벤트"],
-        ["mate", "그로인 메이트"], ["lectures", "강의"], ["insights", "인사이트"], ["certs", "인증 게시판"], ["ranking", "그로인 랭킹"], ["awards", "시상식"], ["settings", "설정"],
+        ["mate", "그로인 메이트"], ["lectures", "강의"], ["insights", "인사이트"], ["certs", "인증 게시판"], ["austats", "경매 통계"], ["ranking", "그로인 랭킹"], ["awards", "시상식"], ["settings", "설정"],
     ].filter(([k]) => !isStaff || STAFF_TABS.includes(k));
     const effTab = TABS.some(([k]) => k === tab) ? tab : TABS[0][0];
     const shellFont = { fontFamily: `-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Pretendard","Noto Sans KR","Malgun Gothic",sans-serif`, WebkitFontSmoothing: "antialiased" };
@@ -2981,7 +3464,7 @@ function App() {
                     background: mode === "public" ? T.grad : "transparent", color: mode === "public" ? "#fff" : "rgba(255,255,255,.6)" } }, "\uD83D\uDC65 \uCEE4\uBBA4\uB2C8\uD2F0"),
             React.createElement("button", { onClick: wantAdmin, style: { border: "none", cursor: "pointer", padding: "4px 12px", borderRadius: 999, fontSize: 11.5, fontFamily: "inherit", fontWeight: 800,
                     background: mode === "admin" ? T.grad : "transparent", color: mode === "admin" ? "#fff" : "rgba(255,255,255,.6)" } }, "\uD83D\uDEE0 \uAD00\uB9AC\uC790")),
-        mode === "public" ? (React.createElement(PublicPage, { members: members, ledger: ledger, log: eventLog, insights: insights, lectures: lectures, settings: settings, certs: certs, cmts: cmts, onAddCert: onAddCert, onAddCmt: onAddCmt, viewer: viewer, onLogin: onLogin, onLogout: () => setViewer(null), onChangePw: onChangePw })) : (React.createElement(React.Fragment, null,
+        mode === "public" ? (React.createElement(PublicPage, { members: members, ledger: ledger, log: eventLog, insights: insights, lectures: lectures, settings: settings, certs: certs, cmts: cmts, austats: austats, onAddCert: onAddCert, onAddCmt: onAddCmt, viewer: viewer, onLogin: onLogin, onLogout: () => setViewer(null), onChangePw: onChangePw })) : (React.createElement(React.Fragment, null,
             React.createElement("div", { style: { background: T.grad, color: "#fff", padding: "26px 22px 62px" } },
                 React.createElement("div", { style: { maxWidth: 980, margin: "0 auto" } },
                     React.createElement("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 } },
@@ -3021,6 +3504,7 @@ function App() {
                 effTab === "insights" && React.createElement(Insights, { insights: insights, onAdd: onAddInsight, onDelete: onDeleteInsight, onUpload: onUploadImage, onTogglePin: onTogglePinInsight, onEdit: onEditInsight, cats: catsOf(settings, "insightCats", INSIGHT_CATS), onSaveCats: (c) => onSaveCats("insights", c) }),
                 effTab === "lectures" && React.createElement(Lectures, { lectures: lectures, onAdd: onAddLecture, onDelete: onDeleteLecture, onTogglePin: onTogglePinLecture, onUpload: onUploadImage, onEdit: onEditLecture, cats: catsOf(settings, "lectureCats", LECTURE_CATS), onSaveCats: (c) => onSaveCats("lectures", c) }),
                 effTab === "certs" && React.createElement(CertsAdmin, { certs: certs, cmts: cmts, members: members, onUpdate: onUpdateCert, onDelete: onDeleteCert, onStaffCmt: onStaffCmt, onDeleteCmt: onDeleteCmt }),
+                effTab === "austats" && React.createElement(StatsAdmin, { stats: austats, onSave: onSaveStats, onDelete: onDeleteStats }),
                 effTab === "ranking" && React.createElement(RankingAdmin, { members: members, events: eventLog, ledger: ledger, acts: acts, visitlog: visitlog }),
                 effTab === "awards" && React.createElement(Awards, { members: members, settings: settings }),
                 effTab === "settings" && React.createElement(Settings, { settings: settings, setSettings: persistSettings })))),
