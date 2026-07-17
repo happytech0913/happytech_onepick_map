@@ -1026,8 +1026,8 @@ function TileMap({ rows, layout, onPick, selected }) {
     const rowsN = Math.max(...items.map((r) => tiles[keyOf(r.region)][1])) + 1;
     const W = cols * (SZ + GAP) + GAP, H = rowsN * (SZ + GAP) + GAP;
     return (React.createElement("div", null,
-        React.createElement("div", { style: { overflowX: "auto", display: "flex", justifyContent: "center" } },
-            React.createElement("svg", { width: W, height: H, role: "img", "aria-label": "\uB099\uCC30\uAC00\uC728 \uC9C0\uB3C4", style: { display: "block", maxWidth: "100%" } }, items.map((r) => {
+        React.createElement("div", { style: { display: "flex", justifyContent: "center" } },
+            React.createElement("svg", { viewBox: `0 0 ${W} ${H}`, width: "100%", role: "img", "aria-label": "\uB099\uCC30\uAC00\uC728 \uC9C0\uB3C4", style: { display: "block", maxWidth: W, height: "auto" } }, items.map((r) => {
                 const [cx, cy] = tiles[keyOf(r.region)];
                 const x = GAP + cx * (SZ + GAP), y = GAP + cy * (SZ + GAP);
                 const c = tileColor(r.priceRate, min, max);
@@ -2487,16 +2487,33 @@ function PublicPage({ members, ledger, log, insights, lectures, settings, certs,
     })));
     /* ── 홈 ── */
     const HomeTab = () => {
-        /* 경매 통계 요약: 가장 최근 월의 '전체' 행 (지역별 데이터 우선) */
+        /* 경매 통계 요약: 가장 최근 월의 '전체' 행 (서울 시군구 → 그 외 지역별 → 법원별 순 우선) */
         const statSummary = (() => {
             if (!austats || austats.length === 0)
                 return null;
             const totals = austats.filter((r) => r.region === "전체");
             if (totals.length === 0)
                 return null;
-            const pick = totals.slice().sort((a, b) => b.month.localeCompare(a.month) || (a.scope.indexOf("법원") >= 0 ? 1 : -1))[0];
+            const rank = (s) => (String(s).indexOf("서울") >= 0 ? 0 : String(s).indexOf("법원") >= 0 ? 2 : 1);
+            const pick = totals.slice().sort((a, b) => b.month.localeCompare(a.month) || rank(a.scope) - rank(b.scope) || a.scope.localeCompare(b.scope, "ko"))[0];
             const prevRow = totals.find((r) => r.scope === pick.scope && r.usage === pick.usage && r.month < pick.month);
             return { ...pick, diff: prevRow ? pick.priceRate - prevRow.priceRate : null };
+        })();
+        /* 구분별 최신 요약 칩 — 수집 중인 모든 데이터(시도별·법원별)를 가로 스크롤 한 줄로 */
+        const statChips = (() => {
+            if (!austats || austats.length === 0 || !statSummary)
+                return [];
+            const latestBy = {};
+            austats.forEach((r) => {
+                if (r.region !== "전체")
+                    return;
+                const k = (r.scope || "지역별") + "|" + (r.usage || "전체");
+                if (!latestBy[k] || latestBy[k].month < r.month)
+                    latestBy[k] = r;
+            });
+            return Object.values(latestBy)
+                .filter((r) => !(r.scope === statSummary.scope && r.usage === statSummary.usage))
+                .sort((a, b) => b.month.localeCompare(a.month) || a.scope.localeCompare(b.scope, "ko"));
         })();
         const moLbl = (mo) => /^\d{4}-\d{2}$/.test(mo || "") ? `${Number(String(mo).slice(5))}월` : String(mo || "");
         return (React.createElement("div", null,
@@ -2521,7 +2538,16 @@ function PublicPage({ members, ledger, log, insights, lectures, settings, certs,
                             " \uB099\uCC30\uAC00\uC728 \u00B7 \uB9E4\uAC01\uB960 ",
                             statSummary.saleRate.toFixed(1),
                             "%"),
-                        React.createElement(Pill, { tone: "line", style: { background: "rgba(255,255,255,.16)", border: "1px solid rgba(255,255,255,.4)", color: "#fff", fontSize: 11 } }, "\uBCF4\uB7EC \uAC00\uAE30 \u2192"))))),
+                        React.createElement(Pill, { tone: "line", style: { background: "rgba(255,255,255,.16)", border: "1px solid rgba(255,255,255,.4)", color: "#fff", fontSize: 11 } }, "\uBCF4\uB7EC \uAC00\uAE30 \u2192"),
+                        statChips.length > 0 && (React.createElement("div", { style: { flexBasis: "100%", display: "flex", gap: 6, overflowX: "auto", marginTop: 4, paddingBottom: 2,
+                                WebkitOverflowScrolling: "touch", scrollbarWidth: "none" } }, statChips.map((r) => (React.createElement("span", { key: r.scope + "|" + r.usage, style: { flexShrink: 0, fontSize: 10.5, fontWeight: 800, whiteSpace: "nowrap",
+                                background: "rgba(255,255,255,.14)", border: "1px solid rgba(255,255,255,.28)", borderRadius: 999,
+                                padding: "3px 9px", fontVariantNumeric: "tabular-nums" } },
+                            String(r.scope).replace(/ ?시군구$/, ""),
+                            r.usage && r.usage !== "전체" ? `·${r.usage}` : "",
+                            " ",
+                            r.priceRate.toFixed(1),
+                            "%"))))))))),
             React.createElement("div", { onClick: () => setPtab("ranking"), style: { cursor: "pointer" } },
                 React.createElement(SectionTitle, { title: "\uC774\uBC88 \uC8FC \uD06C\uB808\uB527 \uB7AD\uD0B9", right: React.createElement(Pill, { tone: "line" }, "TOP 10 \uBCF4\uAE30 \u2192") }),
                 React.createElement(Podium, { list: ranked, valueOf: (m) => m.credits.toLocaleString() })),
@@ -3786,7 +3812,6 @@ function App() {
 }
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(React.createElement(App));
-
-  </script>
+</script>
 </body>
 </html>
