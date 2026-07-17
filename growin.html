@@ -975,6 +975,33 @@ const KOREA_TILES = {
     "광주": [0, 4], "전남": [1, 4], "부산": [3, 4],
     "제주": [0, 5],
 };
+/* 시도별 시·군 지리 배치표 — 주간시계열.py의 스키매틱 그리드를 포팅 (해피테크 KB 지도와 동일 배열)
+   + 경매 데이터에만 있는 지역 보강: 인천 강화·옹진, 경기 연천·포천·가평·양평·여주 · 남구는 미추홀구 옛 명칭 */
+const CITY_TILE_LAYOUTS = {
+    "인천": {
+        "강화군": [0, 0],
+        "계양구": [0, 1],
+        "서구": [0, 2], "부평구": [1, 2],
+        "동구": [0, 3], "미추홀구": [1, 3], "남구": [1, 3],
+        "중구": [0, 4], "남동구": [1, 4],
+        "옹진군": [0, 5], "연수구": [1, 5],
+    },
+    "경기": {
+        "파주시": [2, 0], "연천군": [3, 0], "동두천시": [5, 0], "포천시": [6, 0],
+        "김포시": [1, 1], "고양시": [2, 1], "의정부시": [3, 1], "양주시": [4, 1], "구리시": [5, 1], "남양주시": [6, 1], "가평군": [7, 1],
+        "부천시": [2, 2], "광명시": [3, 2], "과천시": [4, 2], "성남시": [5, 2], "하남시": [6, 2], "양평군": [7, 2],
+        "시흥시": [2, 3], "안양시": [3, 3], "광주시": [6, 3],
+        "안산시": [2, 4], "군포시": [3, 4], "의왕시": [4, 4], "용인시": [5, 4], "이천시": [6, 4], "여주시": [7, 4],
+        "화성시": [3, 5], "수원시": [4, 5],
+        "오산시": [4, 6], "안성시": [5, 6],
+        "평택시": [3, 7],
+    },
+};
+/* "수원시 장안구" → "수원시" (시·군 단위 집계 키) */
+const cityOf = (region) => {
+    const m = String(region || "").match(/^(.+?(시|군))\s+.+$/);
+    return m ? m[1] : String(region || "");
+};
 /* 시도 전체 명칭 → 축약 키 (충청북도→충북, 전북특별자치도→전북 등) */
 const sidoKey = (name) => {
     const n = String(name || "");
@@ -1013,26 +1040,29 @@ const tileColor = (v, min, max) => {
     return { bg: `rgb(${c[0]},${c[1]},${c[2]})`, dark: t > 0.55 };
 };
 /* ── 낙찰가율 타일 지도 (탭하면 월별 추이) ── */
-function TileMap({ rows, layout, onPick, selected }) {
-    const tiles = layout === "seoul" ? SEOUL_TILES : KOREA_TILES;
-    const keyOf = (region) => layout === "seoul" ? region : sidoKey(region);
+function TileMap({ rows, layout, tiles: tilesProp, onPick, selected }) {
+    const tiles = tilesProp || (layout === "seoul" ? SEOUL_TILES : KOREA_TILES);
+    const keyOf = (region) => tilesProp ? region : (layout === "seoul" ? region : sidoKey(region));
     const items = rows.filter((r) => tiles[keyOf(r.region)]);
     if (items.length === 0)
         return null;
     const vals = items.map((r) => r.priceRate);
     const min = Math.min(...vals), max = Math.max(...vals);
     const SZ = 52, GAP = 5;
-    const cols = Math.max(...items.map((r) => tiles[keyOf(r.region)][0])) + 1;
-    const rowsN = Math.max(...items.map((r) => tiles[keyOf(r.region)][1])) + 1;
+    const cxs = items.map((r) => tiles[keyOf(r.region)][0]), cys = items.map((r) => tiles[keyOf(r.region)][1]);
+    const minCx = Math.min(...cxs), minCy = Math.min(...cys); // 좌표 정규화 — 사용 중인 칸만큼만 그리기
+    const cols = Math.max(...cxs) - minCx + 1;
+    const rowsN = Math.max(...cys) - minCy + 1;
     const W = cols * (SZ + GAP) + GAP, H = rowsN * (SZ + GAP) + GAP;
     return (React.createElement("div", null,
         React.createElement("div", { style: { display: "flex", justifyContent: "center" } },
             React.createElement("svg", { viewBox: `0 0 ${W} ${H}`, width: "100%", role: "img", "aria-label": "\uB099\uCC30\uAC00\uC728 \uC9C0\uB3C4", style: { display: "block", maxWidth: W, height: "auto" } }, items.map((r) => {
                 const [cx, cy] = tiles[keyOf(r.region)];
-                const x = GAP + cx * (SZ + GAP), y = GAP + cy * (SZ + GAP);
+                const x = GAP + (cx - minCx) * (SZ + GAP), y = GAP + (cy - minCy) * (SZ + GAP);
                 const c = tileColor(r.priceRate, min, max);
                 const isSel = selected === r.region;
-                const label = layout === "seoul" ? r.region.replace(/구$/, "") : keyOf(r.region);
+                const label = tilesProp ? r.region.replace(/(시|군|구)$/, "")
+                    : (layout === "seoul" ? r.region.replace(/구$/, "") : keyOf(r.region));
                 return (React.createElement("g", { key: r.region, onClick: () => onPick && onPick(r.region), style: { cursor: onPick ? "pointer" : "default" } },
                     React.createElement("rect", { x: x, y: y, width: SZ, height: SZ, rx: "11", fill: c.bg, stroke: isSel ? "#35C9A8" : "rgba(28,35,51,.08)", strokeWidth: isSel ? 2.5 : 1 }),
                     React.createElement("text", { x: x + SZ / 2, y: y + SZ / 2 - 5, textAnchor: "middle", fontSize: label.length > 3 ? 9.5 : 11, fontWeight: "800", fill: c.dark ? "#fff" : "#1C2333", fontFamily: "inherit" }, label),
@@ -1045,6 +1075,45 @@ function TileMap({ rows, layout, onPick, selected }) {
             React.createElement("span", { style: { width: 110, height: 8, borderRadius: 999, background: "linear-gradient(90deg,#DFF6EC,#6F7BE0)", display: "inline-block" } }),
             React.createElement("span", { style: { fontSize: 10.5, fontWeight: 700, color: T.sub } }, "\uB192\uC74C"),
             React.createElement("span", { style: { fontSize: 10.5, color: T.sub } }, "\u00B7 \uD0C0\uC77C\uC744 \uD0ED\uD558\uBA74 \uC6D4\uBCC4 \uCD94\uC774"))));
+}
+/* ── 자동 배열 타일 보드 — 지리 배치표가 없는 지역용 (낙찰가율 순 정렬 · 서울 지도와 같은 타일 디자인) ── */
+function AutoTileGrid({ rows, onPick, selected }) {
+    const items = rows.filter((r) => r.region !== "전체");
+    if (items.length < 4)
+        return null;
+    const vals = items.map((r) => r.priceRate);
+    const min = Math.min(...vals), max = Math.max(...vals);
+    const SZ = 52, GAP = 5;
+    const cols = Math.min(Math.max(Math.ceil(Math.sqrt(items.length * 1.4)), 4), 7);
+    const rowsN = Math.ceil(items.length / cols);
+    const W = cols * (SZ + GAP) + GAP, H = rowsN * (SZ + GAP) + GAP;
+    const lbl = (name) => {
+        const n = String(name).replace(/\s+/g, "");
+        const m = n.match(/^(.+?)(시|군)(.+?)(구|군)$/); // 부천시소사구 → 부천소사
+        if (m)
+            return m[1].slice(0, 2) + m[3].slice(0, 2);
+        const base = n.replace(/(특별자치)?(시|군|구)$/, "");
+        return (base || n).slice(0, 4);
+    };
+    return (React.createElement("div", null,
+        React.createElement("div", { style: { display: "flex", justifyContent: "center" } },
+            React.createElement("svg", { viewBox: `0 0 ${W} ${H}`, width: "100%", role: "img", "aria-label": "\uB099\uCC30\uAC00\uC728 \uD0C0\uC77C \uBCF4\uB4DC", style: { display: "block", maxWidth: W, height: "auto" } }, items.map((r, i) => {
+                const x = GAP + (i % cols) * (SZ + GAP), y = GAP + Math.floor(i / cols) * (SZ + GAP);
+                const c = tileColor(r.priceRate, min, max);
+                const isSel = selected === r.region;
+                const label = lbl(r.region);
+                return (React.createElement("g", { key: r.region, onClick: () => onPick && onPick(r.region), style: { cursor: onPick ? "pointer" : "default" } },
+                    React.createElement("rect", { x: x, y: y, width: SZ, height: SZ, rx: "11", fill: c.bg, stroke: isSel ? "#35C9A8" : "rgba(28,35,51,.08)", strokeWidth: isSel ? 2.5 : 1 }),
+                    React.createElement("text", { x: x + SZ / 2, y: y + SZ / 2 - 5, textAnchor: "middle", fontSize: label.length > 3 ? 9 : 11, fontWeight: "800", fill: c.dark ? "#fff" : "#1C2333", fontFamily: "inherit" }, label),
+                    React.createElement("text", { x: x + SZ / 2, y: y + SZ / 2 + 12, textAnchor: "middle", fontSize: "10.5", fontWeight: "800", fill: c.dark ? "rgba(255,255,255,.92)" : "#6B7486", fontFamily: "inherit", style: { fontVariantNumeric: "tabular-nums" } },
+                        Math.round(r.priceRate),
+                        "%")));
+            }))),
+        React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, marginTop: 8, justifyContent: "center", flexWrap: "wrap" } },
+            React.createElement("span", { style: { fontSize: 10.5, fontWeight: 700, color: T.sub } }, "\uB0AE\uC74C"),
+            React.createElement("span", { style: { width: 110, height: 8, borderRadius: 999, background: "linear-gradient(90deg,#DFF6EC,#6F7BE0)", display: "inline-block" } }),
+            React.createElement("span", { style: { fontSize: 10.5, fontWeight: 700, color: T.sub } }, "\uB192\uC74C"),
+            React.createElement("span", { style: { fontSize: 10.5, color: T.sub } }, "\u00B7 \uB099\uCC30\uAC00\uC728 \uC21C \uBC30\uC5F4 \u00B7 \uD0C0\uC77C\uC744 \uD0ED\uD558\uBA74 \uC6D4\uBCC4 \uCD94\uC774"))));
 }
 /* 경쟁 온도 배지 — 매각률·매각가율 조합 (참고용 지표) */
 const heatOf = (saleRate, priceRate) => {
@@ -1190,7 +1259,17 @@ function HomeLiveStats({ austats, onGo }) {
                         React.createElement("div", { style: { fontSize: 9, fontWeight: 700, opacity: 0.8, textAlign: "center", marginTop: 3 } }, s.sido ? `${s.sido} 위치` : "전국 낙찰가율"))))))));
 }
 /* ── 멤버 페이지: 경매 통계 대시보드 — 전국 지도 내비게이션(지역별·법원별 토글) + 시도 상세 ── */
-function AuctionStatsTab({ stats }) {
+function AuctionStatsTab({ stats: statsRaw }) {
+    /* 방어 필터 — 동일 (월·구분·용도·지역) 중복 행은 최신 id 하나만 사용 (수집 충돌 잔여 데이터 대비) */
+    const stats = (() => {
+        const m = {};
+        (statsRaw || []).forEach((r) => {
+            const k = [r.month, r.scope || "지역별", r.usage || "전체", r.region].join("|");
+            if (!m[k] || (r.id || 0) > (m[k].id || 0))
+                m[k] = r;
+        });
+        return Object.values(m);
+    })();
     const scopes = [...new Set(stats.map((r) => r.scope || "지역별"))];
     const regionScopes = scopes.filter((s) => !isCourtScope(s));
     const courtScope = scopes.filter(isCourtScope)[0] || null;
@@ -1200,8 +1279,9 @@ function AuctionStatsTab({ stats }) {
     const [mode, setMode] = useState("region"); // region(지역별) | court(법원별)
     const [sido, setSido] = useState(() => (sidoToScope["서울"] ? "서울" : null));
     const [sel, setSel] = useState(null); // 월별 추이 보기 대상 지역·법원
-    const pickMode = (m) => { setMode(m); setSido(m === "region" && sidoToScope["서울"] ? "서울" : null); setSel(null); };
-    const pickSido = (k) => { setSido(sido === k ? null : k); setSel(null); };
+    const [cityFilter, setCityFilter] = useState(null); // 시 단위 지도에서 고른 시 (산하 구만 모아보기)
+    const pickMode = (m) => { setMode(m); setSido(m === "region" && sidoToScope["서울"] ? "서울" : null); setSel(null); setCityFilter(null); };
+    const pickSido = (k) => { setSido(sido === k ? null : k); setSel(null); setCityFilter(null); };
     /* 유효 데이터 구분 — 지역 모드: 지도에서 고른 시도의 스코프 · 법원 모드: 법원별 스코프 */
     const effScope = mode === "court" ? courtScope : (sido ? sidoToScope[sido] : null);
     const rowsS = effScope ? stats.filter((r) => (r.scope || "지역별") === effScope) : [];
@@ -1224,6 +1304,35 @@ function AuctionStatsTab({ stats }) {
     const todayLabel = `${now.getFullYear()}.${String(now.getMonth() + 1).padStart(2, "0")}.${String(now.getDate()).padStart(2, "0")}`;
     const regionCount = [...new Set(rowsU.map((r) => r.region))].filter((r) => r !== "전체").length;
     const totalDiff = total && prev ? (() => { const pv = rowsU.find((r) => r.month === prev && r.region === "전체"); return pv ? total.priceRate - pv.priceRate : null; })() : null;
+    /* ── 시·군 단위 지리 지도 (경기·인천 등 배치표 보유 시도) — 구 단위 데이터는 시로 가중 집계 ── */
+    const cityTiles = mode === "region" && sido ? CITY_TILE_LAYOUTS[sido] || null : null;
+    const cityRows = cityTiles ? (() => {
+        const g = {};
+        cur.forEach((r) => { const c = cityOf(r.region); (g[c] = g[c] || []).push(r); });
+        return Object.keys(g).map((c) => {
+            const L = g[c];
+            if (L.length === 1 && L[0].region === c)
+                return { ...L[0] };
+            const w = L.reduce((a, r) => a + (r.sold || 0), 0);
+            const pr = w > 0 ? L.reduce((a, r) => a + r.priceRate * (r.sold || 0), 0) / w
+                : L.reduce((a, r) => a + r.priceRate, 0) / L.length;
+            return { region: c, priceRate: Math.round(pr * 10) / 10,
+                saleRate: Math.round((L.reduce((a, r) => a + (r.saleRate || 0), 0) / L.length) * 10) / 10,
+                cases: L.reduce((a, r) => a + (r.cases || 0), 0), sold: w, bidders: 0, month: L[0].month };
+        });
+    })() : [];
+    const pickCity = (nm) => {
+        const subs = cur.filter((r) => cityOf(r.region) === nm);
+        if (subs.length === 1) {
+            setSel(sel === subs[0].region ? null : subs[0].region);
+            setCityFilter(null);
+        }
+        else {
+            setCityFilter(cityFilter === nm ? null : nm);
+            setSel(null);
+        }
+    };
+    const curShown = cityFilter ? cur.filter((r) => cityOf(r.region) === cityFilter) : cur; // 시 필터 적용된 상세 목록
     /* ── 전국 지도 데이터 (모드별) ── */
     const latestTotalOf = (scope) => {
         const ts = stats.filter((r) => (r.scope || "지역별") === scope && r.region === "전체");
@@ -1348,27 +1457,43 @@ function AuctionStatsTab({ stats }) {
                     moLabel(latest),
                     ")"),
                 React.createElement(Sparkline, { values: histOf("전체"), height: 48 }))))),
-        effScope && usages.length > 1 && (React.createElement("div", { style: { display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 } }, usages.map((u) => (React.createElement("button", { key: u, onClick: () => { setUsage(u); setSel(null); }, style: { cursor: "pointer", borderRadius: 999, padding: "6px 13px", fontSize: 12, fontWeight: 800, fontFamily: "inherit",
+        effScope && usages.length > 1 && (React.createElement("div", { style: { display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 } }, usages.map((u) => (React.createElement("button", { key: u, onClick: () => { setUsage(u); setSel(null); setCityFilter(null); }, style: { cursor: "pointer", borderRadius: 999, padding: "6px 13px", fontSize: 12, fontWeight: 800, fontFamily: "inherit",
                 border: effUsage === u ? `1.5px solid ${T.mint}` : `1.5px solid ${T.line}`,
                 background: effUsage === u ? T.gradSoft : "#fff", color: effUsage === u ? T.ink : T.sub } }, u))))),
-        effScope && (() => {
+        effScope && cur.length >= 4 && (() => {
             const layout = matchTileLayout(cur.map((r) => r.region));
-            return layout === "seoul" && (React.createElement(Card, { pad: 16, style: { marginBottom: 14 } },
+            return (React.createElement(Card, { pad: 16, style: { marginBottom: 14 } },
                 React.createElement("div", { style: { fontWeight: 800, fontSize: 14, marginBottom: 10 } },
                     "\uD83D\uDDFA\uFE0F ",
                     moLabel(latest),
-                    " \u00B7 \uB099\uCC30\uAC00\uC728 \uC9C0\uB3C4"),
-                React.createElement(TileMap, { rows: cur, layout: layout, selected: sel, onPick: (rg) => setSel(sel === rg ? null : rg) })));
+                    " \u00B7 \uB099\uCC30\uAC00\uC728 ",
+                    layout === "seoul" || cityTiles ? "지도" : "타일 보드"),
+                layout === "seoul"
+                    ? React.createElement(TileMap, { rows: cur, layout: layout, selected: sel, onPick: (rg) => setSel(sel === rg ? null : rg) })
+                    : cityTiles && cityRows.length >= 4
+                        ? React.createElement(React.Fragment, null,
+                            React.createElement(TileMap, { rows: cityRows, tiles: cityTiles, selected: cityFilter || sel, onPick: pickCity }),
+                            React.createElement("div", { style: { fontSize: 11, color: T.sub, textAlign: "center", marginTop: 6 } }, "\uAD6C \uB2E8\uC704 \uB370\uC774\uD130\uB294 \uC2DC\uB85C \uBB36\uC5B4 \uD45C\uAE30(\uB9E4\uAC01\uAC74\uC218 \uAC00\uC911) \u00B7 \uC2DC\uB97C \uD0ED\uD558\uBA74 \uC0B0\uD558 \uAD6C\uB9CC \uBAA8\uC544 \uBD10\uC694"))
+                        : React.createElement(AutoTileGrid, { rows: cur, selected: sel, onPick: (rg) => setSel(sel === rg ? null : rg) })));
         })(),
-        effScope && cur.length >= 2 && (React.createElement(Card, { pad: 16, style: { marginBottom: 14 } },
+        cityFilter && (React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 10 } },
+            React.createElement(Pill, { tone: "grad", style: { fontSize: 12 } },
+                "\uD83D\uDCCD ",
+                cityFilter,
+                " \uC0C1\uC138"),
+            React.createElement("button", { onClick: () => setCityFilter(null), style: { cursor: "pointer", border: `1px solid ${T.line}`, background: "#fff", color: T.sub,
+                    borderRadius: 999, padding: "5px 11px", fontSize: 11.5, fontWeight: 800, fontFamily: "inherit" } },
+                sido,
+                " \uC804\uCCB4 \uBCF4\uAE30"))),
+        effScope && curShown.length >= 2 && (React.createElement(Card, { pad: 16, style: { marginBottom: 14 } },
             React.createElement("div", { style: { fontWeight: 800, fontSize: 14, marginBottom: 10 } },
                 "\uD83D\uDCCA ",
                 moLabel(latest),
                 " \u00B7 ",
-                mode === "court" ? (sido ? `${sido} 법원별` : "법원별") : "지역별",
+                mode === "court" ? (sido ? `${sido} 법원별` : "법원별") : (cityFilter ? `${cityFilter} 구별` : "지역별"),
                 " \uBE44\uAD50"),
-            React.createElement(RegionBarChart, { rows: cur, selected: sel, onPick: (rg) => setSel(sel === rg ? null : rg) }))),
-        effScope && (React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(150px,1fr))", gap: 10, marginBottom: 14 } }, cur.map((r) => {
+            React.createElement(RegionBarChart, { rows: curShown, selected: sel, onPick: (rg) => setSel(sel === rg ? null : rg) }))),
+        effScope && (React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(150px,1fr))", gap: 10, marginBottom: 14 } }, curShown.map((r) => {
             const pv = prevOf(r.region);
             const diff = pv ? r.priceRate - pv.priceRate : null;
             const heat = heatOf(r.saleRate, r.priceRate);
