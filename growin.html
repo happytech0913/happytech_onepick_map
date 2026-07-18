@@ -2994,11 +2994,8 @@ function ProfitCalc({ cfg }) {
     return (React.createElement("div", null,
         React.createElement(Card, { pad: 0, style: { overflow: "hidden", marginBottom: 14 } },
             React.createElement("div", { style: { background: T.grad, padding: "16px 18px", color: "#fff" } },
-                React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" } },
-                    React.createElement("div", null,
-                        React.createElement("div", { style: { fontSize: 11, fontWeight: 800, letterSpacing: "0.12em", opacity: 0.9 } }, "GROW IN TOOLS"),
-                        React.createElement("div", { style: { fontSize: 18, fontWeight: 800, letterSpacing: "-0.02em", marginTop: 2 } }, "\uD83E\uDDEE \uACBD\uACF5\uB9E4 \uC218\uC775\uB960 \uACC4\uC0B0\uAE30")),
-                    React.createElement(Pill, { style: { background: "rgba(255,255,255,.2)", fontSize: 11 } }, "Made by \uC368\uB2C8 \u00B7 \uADF8\uB85C\uC778 \uBA64\uBC84"))),
+                React.createElement("div", { style: { fontSize: 11, fontWeight: 800, letterSpacing: "0.12em", opacity: 0.9 } }, "GROW IN TOOLS"),
+                React.createElement("div", { style: { fontSize: 18, fontWeight: 800, letterSpacing: "-0.02em", marginTop: 2 } }, "\uD83E\uDDEE \uACBD\uACF5\uB9E4 \uC218\uC775\uB960 \uACC4\uC0B0\uAE30")),
             React.createElement("div", { style: { padding: 18 } },
                 React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 12 } },
                     React.createElement(ToolNum, { label: "\uAC10\uC815\uAC00", value: v.appraisal, onChange: set("appraisal") }),
@@ -3770,7 +3767,7 @@ function PublicPage({ members, ledger, log, insights, lectures, settings, certs,
         const toolCfg = effToolCfg(settings);
         const [tool, setTool] = useState(null);
         const ARCHIVE_TOOLS = [
-            { k: "calc", icon: "🧮", name: "경공매 수익률 계산기", by: "Made by 써니", desc: "낙찰가·비용·세금을 넣으면 단타/2년 보유/전세·월세 세팅별 수익률을 계산해요." },
+            { k: "calc", icon: "🧮", name: "경공매 수익률 계산기", by: "경공매 수익률·세금 시뮬레이터", desc: "낙찰가·비용·세금을 넣으면 단타/2년 보유/전세·월세 세팅별 수익률을 계산해요." },
             { k: "loan", icon: "🏦", name: "대출 판독기", by: toolCfg.asOf, desc: "지역·주택수·소득을 고르면 현행 규제(LTV·DSR·한도 상한)를 반영해 대출 가능액을 판독해요." },
         ];
         if (tool)
