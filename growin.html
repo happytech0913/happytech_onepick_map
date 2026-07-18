@@ -72,6 +72,7 @@ const DEFAULT_SETTINGS = {
     lv5Pts: 30,
     insightCats: null, // null = 기본 분류(INSIGHT_CATS) 사용 · 관리자가 수정하면 배열 저장
     lectureCats: null,
+    loanCfg: null, // 자료실 도구 설정(대출 판독기·계산기 요율) — null이면 기본값 사용
     /* 그로인 랭킹 계산 수식 — 활동 1회당 점수 (0 입력 시 해당 활동 제외) */
     ptsAuctions: 5,
     ptsBids: 1,
@@ -2815,6 +2816,518 @@ function CertBoard({ certs, cmts, members, me, onAddCert, onAddCmt }) {
                     React.createElement(CommentThread, { post: c, cmts: cmts, me: me, members: members, onAddCmt: onAddCmt })));
             }))));
 }
+/* ═════════════════════════════════════════════
+   📚 자료실 — 커뮤니티 도구 모음
+   ① 경공매 수익률 계산기 (Made by 써니)
+   ② 대출 판독기 (규제지역·주택수·소득 기반 LTV/DSR)
+   규제·세율 수치는 관리자 '자료실' 탭에서 수정 → 설정 시트(loanCfg)에 저장
+   ═════════════════════════════════════════════ */
+const TOOL_CFG_DEFAULT = {
+    asOf: "10.15 대책 + 스트레스 DSR 3단계 (2026-07 조사 기준)",
+    updatedAt: "",
+    regulatedNote: "규제지역(조정대상·투기과열): 서울 25개 구 전역 · 경기 12곳(과천, 광명, 성남 분당·수정·중원, 수원 영통·장안·팔달, 안양 동안, 용인 수지, 의왕, 하남)",
+    /* 지역 × 보유상황별 LTV (%) — 0 = 구입목적 주담대 불가 */
+    ltv: {
+        reg: { first: 80, none: 40, oneSell: 40, oneKeep: 0, multi: 0 },
+        metro: { first: 80, none: 70, oneSell: 70, oneKeep: 0, multi: 0 },
+        etc: { first: 80, none: 70, oneSell: 70, oneKeep: 60, multi: 60 },
+    },
+    /* 수도권·규제지역 시가별 주담대 한도 상한 (만원 · upTo 0 = 초과 구간) */
+    capTiers: [
+        { upTo: 150000, cap: 60000 },
+        { upTo: 250000, cap: 40000 },
+        { upTo: 0, cap: 20000 },
+    ],
+    firstCap: 60000, // 생애최초 한도 상한 (만원)
+    dsr: { bank: 40, nonbank: 50 }, // DSR 비율 (%)
+    stress: { reg: 3.0, metro: 3.0, etc: 1.5 }, // 스트레스 금리 (%p)
+    stressRatio: { var: 100, mix: 80, fix5: 40, fix: 0 }, // 금리유형별 반영비율 (%)
+    cardRatio: 45, // 카드사용액→연소득 환산비율 (%)
+    moveInMonths: 6, // 규제지역 전입 의무 (개월)
+    sellMonths: 6, // 처분조건부 기존주택 처분 기한 (개월)
+    /* 수익률 계산기 기본 요율 (%) — Made by 써니 엑셀 기준 */
+    calc: {
+        depositPct: 10, // 입찰보증금 (최저가 대비)
+        acqTax: 1.1, // 취득세(+농특·교육세)
+        legal: 0.5, // 법무비 (낙찰가 대비)
+        broker: 0.44, // 중개비 (매도가 대비)
+        loanRatio: 70, // 경락대금대출 비율
+        loanRate: 5, // 대출 금리 (연)
+        earlyFee: 0.5, // 중도상환수수료
+        shortTax: 77, // 1년 미만 단타 양도세율 (지방소득세 포함)
+        localAdd: 10, // 지방소득세 (산출세액 대비)
+    },
+    /* 기본세율 구간 — 과표 상한(만원 · 0 = 무제한) / 세율(%) / 누진공제(만원) */
+    brackets: [
+        { upTo: 1400, rate: 6, ded: 0 },
+        { upTo: 5000, rate: 15, ded: 126 },
+        { upTo: 8800, rate: 24, ded: 576 },
+        { upTo: 15000, rate: 35, ded: 1544 },
+        { upTo: 30000, rate: 38, ded: 1994 },
+        { upTo: 50000, rate: 40, ded: 2594 },
+        { upTo: 100000, rate: 42, ded: 3594 },
+        { upTo: 0, rate: 45, ded: 6594 },
+    ],
+};
+/* 설정 시트에 저장된 값(loanCfg)과 기본값을 안전하게 합침 — 누락 키는 기본값 유지 */
+const mergeToolCfg = (saved) => {
+    const d = TOOL_CFG_DEFAULT;
+    if (!saved || typeof saved !== "object")
+        return d;
+    const o = { ...d, ...saved };
+    o.ltv = { reg: { ...d.ltv.reg, ...(saved.ltv || {}).reg }, metro: { ...d.ltv.metro, ...(saved.ltv || {}).metro }, etc: { ...d.ltv.etc, ...(saved.ltv || {}).etc } };
+    o.dsr = { ...d.dsr, ...saved.dsr };
+    o.stress = { ...d.stress, ...saved.stress };
+    o.stressRatio = { ...d.stressRatio, ...saved.stressRatio };
+    o.calc = { ...d.calc, ...saved.calc };
+    o.capTiers = Array.isArray(saved.capTiers) && saved.capTiers.length ? saved.capTiers : d.capTiers;
+    o.brackets = Array.isArray(saved.brackets) && saved.brackets.length ? saved.brackets : d.brackets;
+    return o;
+};
+const effToolCfg = (settings) => mergeToolCfg(settings && settings.loanCfg);
+/* 만원 단위 숫자 → "12억 5,000만원" */
+const fmtMan = (m) => {
+    const n = Math.round(Number(m) || 0);
+    const neg = n < 0;
+    const a = Math.abs(n);
+    const eok = Math.floor(a / 10000), man = a % 10000;
+    let s = "";
+    if (eok > 0)
+        s += eok.toLocaleString() + "억";
+    if (man > 0)
+        s += (eok > 0 ? " " : "") + man.toLocaleString() + "만";
+    if (!s)
+        s = "0";
+    return (neg ? "-" : "") + s + "원";
+};
+const pctStr = (v) => (isFinite(v) ? (Math.round(v * 10) / 10).toLocaleString() + "%" : "—");
+/* 기본세율 누진 계산 — 과표(만원) → 세액(만원) */
+const basicTaxOf = (base, brackets) => {
+    if (!(base > 0))
+        return 0;
+    const bs = brackets || TOOL_CFG_DEFAULT.brackets;
+    let b = bs[bs.length - 1];
+    for (let i = 0; i < bs.length; i++) {
+        if (bs[i].upTo > 0 && base <= bs[i].upTo) {
+            b = bs[i];
+            break;
+        }
+    }
+    return Math.max(base * b.rate / 100 - b.ded, 0);
+};
+/* 원리금균등: 월 상환가능액 → 대출가능원금 / 원금 → 월 상환액 */
+const pvAnnuity = (pmt, r, n) => (r <= 0 ? pmt * n : pmt * (1 - Math.pow(1 + r, -n)) / r);
+const pmtOf = (L, r, n) => (r <= 0 ? L / n : L * r / (1 - Math.pow(1 + r, -n)));
+/* 자료실 공용 숫자 입력 — 만원 단위 + 한국식 금액 미리보기 */
+const ToolNum = ({ label, value, onChange, unit = "만원", hint, money = true, step }) => (React.createElement("label", { style: { display: "block" } },
+    React.createElement("div", { style: { fontSize: 11.5, fontWeight: 800, color: T.sub, marginBottom: 4 } }, label),
+    React.createElement("div", { style: { position: "relative" } },
+        React.createElement(Input, { type: "number", inputMode: "decimal", value: value === 0 || value ? value : "", step: step, onChange: (e) => onChange(e.target.value === "" ? "" : Number(e.target.value)), style: { width: "100%", boxSizing: "border-box", paddingRight: 46, fontVariantNumeric: "tabular-nums", fontWeight: 700 } }),
+        React.createElement("span", { style: { position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", fontSize: 11.5, color: T.sub, fontWeight: 700 } }, unit)),
+    money && Number(value) > 0 && React.createElement("div", { style: { fontSize: 11, color: T.mint, fontWeight: 800, marginTop: 3 } }, fmtMan(value)),
+    hint && React.createElement("div", { style: { fontSize: 10.5, color: T.sub, marginTop: 3, lineHeight: 1.5 } }, hint)));
+/* 자료실 공용 칩 선택 */
+const ToolChips = ({ label, opts, value, onChange, hint }) => (React.createElement("div", null,
+    label && React.createElement("div", { style: { fontSize: 11.5, fontWeight: 800, color: T.sub, marginBottom: 6 } }, label),
+    React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 6 } }, opts.map(([k, lb]) => (React.createElement("button", { key: k, onClick: () => onChange(k), style: { cursor: "pointer", fontFamily: "inherit", fontWeight: 800, fontSize: 12, padding: "8px 12px", borderRadius: 999,
+            border: value === k ? `1.5px solid ${T.mint}` : `1.5px solid ${T.line}`,
+            background: value === k ? T.gradSoft : "#fff", color: value === k ? T.ink : T.sub, transition: "all .15s ease" } }, lb)))),
+    hint && React.createElement("div", { style: { fontSize: 10.5, color: T.sub, marginTop: 5, lineHeight: 1.5 } }, hint)));
+/* 결과 행 (라벨 · 금액 · 강조) */
+const ToolRow = ({ label, value, strong, tone, sub }) => (React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10, padding: "7px 0", borderBottom: `1px dashed ${T.line}` } },
+    React.createElement("div", { style: { fontSize: 12.5, color: strong ? T.ink : T.sub, fontWeight: strong ? 800 : 600 } },
+        label,
+        sub && React.createElement("span", { style: { fontSize: 10.5, color: T.sub, fontWeight: 600, marginLeft: 5 } }, sub)),
+    React.createElement("div", { style: { fontSize: strong ? 15 : 13, fontWeight: 800, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap",
+            color: tone === "coral" ? T.coral : tone === "mint" ? T.mint : T.ink } }, value)));
+/* ── ① 경공매 수익률 계산기 (Made by 써니) ── */
+function ProfitCalc({ cfg }) {
+    const C = cfg.calc;
+    const [v, setV] = useState({ appraisal: "", lowest: "", bid: "", sell: "", evict: "", unpaid: "", repair: "", jeonse: "", depo: "", rent: "" });
+    const [r, setR] = useState({ acqTax: C.acqTax, legal: C.legal, broker: C.broker, loanRatio: C.loanRatio, loanRate: C.loanRate, earlyFee: C.earlyFee, shortTax: C.shortTax });
+    const [showR, setShowR] = useState(false);
+    const [scen, setScen] = useState("sell");
+    const set = (k) => (val) => setV((s) => ({ ...s, [k]: val }));
+    const setRate = (k) => (val) => setR((s) => ({ ...s, [k]: val }));
+    const n = (k) => Number(v[k]) || 0;
+    const out = useMemo(() => {
+        const bid = n("bid"), sell = n("sell"), lowest = n("lowest"), appraisal = n("appraisal");
+        const deposit = lowest * C.depositPct / 100;
+        const loan = bid * r.loanRatio / 100;
+        const acq = bid * r.acqTax / 100, legal = bid * r.legal / 100, broker = sell * r.broker / 100;
+        const interest = loan * r.loanRate / 100; // 12개월
+        const early = loan * r.earlyFee / 100;
+        const cost = acq + legal + broker + n("evict") + n("unpaid") + interest + early + n("repair");
+        const gain = sell - bid; // 양도차익
+        const cash = bid + cost - loan; // 현금투입
+        const total = bid + cost; // 총투자금
+        /* 단타 (1년 미만) */
+        const taxBaseS = Math.max(gain - acq - legal - broker - n("unpaid"), 0);
+        const taxShort = taxBaseS * r.shortTax / 100;
+        const netShort = gain - cost - taxShort;
+        /* 2년 후 개인 (기본세율 + 지방소득세) */
+        const taxBasic = basicTaxOf(taxBaseS, cfg.brackets);
+        const taxLong = taxBasic * (1 + C.localAdd / 100);
+        const netLong = gain - cost - taxLong;
+        /* 매매사업자 (종소세 기본세율 + 지방소득세, 수익 기준) */
+        const profit = gain - cost;
+        const bizIncome = basicTaxOf(Math.max(profit, 0), cfg.brackets);
+        const taxBiz = bizIncome * (1 + C.localAdd / 100);
+        const netBiz = profit - taxBiz;
+        /* 전세 세팅 */
+        const jeonse = n("jeonse");
+        const jInvest = total - jeonse;
+        /* 월세 세팅 */
+        const mInterest = interest / 12;
+        const mNet = n("rent") - mInterest;
+        const yNet = mNet * 12;
+        const realCash = cash - n("depo");
+        return { deposit, loan, acq, legal, broker, interest, early, cost, gain, cash, total,
+            bidRate: appraisal > 0 ? bid / appraisal * 100 : NaN,
+            taxShort, netShort, taxLong, netLong, taxBiz, netBiz, profit,
+            jInvest, jeonse, mInterest, mNet, yNet, realCash };
+    }, [v, r, cfg]);
+    const rateFields = [
+        ["acqTax", "취득세율"], ["legal", "법무비율"], ["broker", "중개비율"],
+        ["loanRatio", "대출비율"], ["loanRate", "대출금리(연)"], ["earlyFee", "중도상환수수료"], ["shortTax", "단타 양도세율"],
+    ];
+    return (React.createElement("div", null,
+        React.createElement(Card, { pad: 0, style: { overflow: "hidden", marginBottom: 14 } },
+            React.createElement("div", { style: { background: T.grad, padding: "16px 18px", color: "#fff" } },
+                React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" } },
+                    React.createElement("div", null,
+                        React.createElement("div", { style: { fontSize: 11, fontWeight: 800, letterSpacing: "0.12em", opacity: 0.9 } }, "GROW IN TOOLS"),
+                        React.createElement("div", { style: { fontSize: 18, fontWeight: 800, letterSpacing: "-0.02em", marginTop: 2 } }, "\uD83E\uDDEE \uACBD\uACF5\uB9E4 \uC218\uC775\uB960 \uACC4\uC0B0\uAE30")),
+                    React.createElement(Pill, { style: { background: "rgba(255,255,255,.2)", fontSize: 11 } }, "Made by \uC368\uB2C8 \u00B7 \uADF8\uB85C\uC778 \uBA64\uBC84"))),
+            React.createElement("div", { style: { padding: 18 } },
+                React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 12 } },
+                    React.createElement(ToolNum, { label: "\uAC10\uC815\uAC00", value: v.appraisal, onChange: set("appraisal") }),
+                    React.createElement(ToolNum, { label: "\uCD5C\uC800\uAC00", value: v.lowest, onChange: set("lowest") }),
+                    React.createElement(ToolNum, { label: "\uC785\uCC30\uAC00 (\uB099\uCC30\uAC00)", value: v.bid, onChange: set("bid") }),
+                    React.createElement(ToolNum, { label: "\uC608\uC0C1 \uB9E4\uB3C4\uAC00", value: v.sell, onChange: set("sell") }),
+                    React.createElement(ToolNum, { label: "\uBA85\uB3C4\uBE44", value: v.evict, onChange: set("evict") }),
+                    React.createElement(ToolNum, { label: "\uBBF8\uB0A9\uAD00\uB9AC\uBE44", value: v.unpaid, onChange: set("unpaid") }),
+                    React.createElement(ToolNum, { label: "\uC218\uB9AC\uBE44 \uBC0F \uAE30\uD0C0", value: v.repair, onChange: set("repair") })),
+                React.createElement("button", { onClick: () => setShowR(!showR), style: { marginTop: 14, cursor: "pointer", border: `1.5px solid ${T.line}`, background: "#FAFCFB", borderRadius: 999,
+                        padding: "7px 14px", fontSize: 12, fontWeight: 800, fontFamily: "inherit", color: T.sub } },
+                    "\u2699\uFE0F \uC138\uC728\u00B7\uC218\uC218\uB8CC \uC870\uC815 ",
+                    showR ? "접기 ▲" : "펼치기 ▼"),
+                showR && (React.createElement("div", { style: { marginTop: 10, background: "#FAFCFB", border: `1px solid ${T.line}`, borderRadius: 14, padding: 14 } },
+                    React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(120px, 1fr))", gap: 10 } }, rateFields.map(([k, lb]) => (React.createElement(ToolNum, { key: k, label: lb, value: r[k], onChange: setRate(k), unit: "%", money: false, step: "0.01" })))),
+                    React.createElement("div", { style: { fontSize: 10.5, color: T.sub, marginTop: 8, lineHeight: 1.6 } }, "\uCDE8\uB4DD\uC138\uB294 \uC8FC\uD0DD\uC218\u00B7\uADDC\uC81C\uC9C0\uC5ED\u00B7\uAC00\uACA9\uC5D0 \uB530\uB77C 1.1~13.4%\uAE4C\uC9C0 \uB2EC\uB77C\uC838\uC694. \uBCF8\uC778 \uC870\uAC74\uC5D0 \uB9DE\uAC8C \uC870\uC815\uD574\uC11C \uACC4\uC0B0\uD558\uC138\uC694."))))),
+        n("bid") > 0 && (React.createElement(React.Fragment, null,
+            React.createElement(Card, { pad: 16, style: { marginBottom: 12 } },
+                React.createElement("div", { style: { fontWeight: 800, fontSize: 13.5, marginBottom: 6 } }, "\uD83D\uDCBC \uD22C\uC790 \uAC1C\uC694"),
+                React.createElement(ToolRow, { label: "\uC785\uCC30\uBCF4\uC99D\uAE08", sub: `최저가 × ${C.depositPct}%`, value: fmtMan(out.deposit) }),
+                isFinite(out.bidRate) && React.createElement(ToolRow, { label: "\uB099\uCC30\uAC00\uC728", sub: "\uC785\uCC30\uAC00 \u00F7 \uAC10\uC815\uAC00", value: pctStr(out.bidRate) }),
+                React.createElement(ToolRow, { label: "\uACBD\uB77D\uB300\uAE08\uB300\uCD9C", sub: `낙찰가 × ${r.loanRatio}%`, value: fmtMan(out.loan) }),
+                React.createElement(ToolRow, { label: "\uBE44\uC6A9\uCD1D\uC561", sub: "\uCDE8\uB4DD\uC138\u00B7\uBC95\uBB34\u00B7\uC911\uAC1C\u00B7\uBA85\uB3C4\u00B7\uC774\uC790 \uB4F1", value: fmtMan(out.cost), tone: "coral" }),
+                React.createElement(ToolRow, { label: "\uD604\uAE08\uD22C\uC785", sub: "\uB099\uCC30\uAC00 + \uBE44\uC6A9 \u2212 \uB300\uCD9C", value: fmtMan(out.cash), strong: true }),
+                React.createElement(ToolRow, { label: "\uCD1D\uD22C\uC790\uAE08", sub: "\uB300\uCD9C \uC5C6\uC744 \uC2DC", value: fmtMan(out.total) })),
+            React.createElement("div", { style: { display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" } }, [["sell", "🏷 매도 시나리오"], ["jeonse", "🔑 전세 세팅"], ["rent", "🏠 월세 세팅"]].map(([k, lb]) => (React.createElement("button", { key: k, onClick: () => setScen(k), style: { cursor: "pointer", fontFamily: "inherit", fontWeight: 800, fontSize: 12.5, padding: "9px 14px", borderRadius: 999,
+                    border: "none", background: scen === k ? T.grad : "#fff", color: scen === k ? "#fff" : T.sub,
+                    boxShadow: scen === k ? "none" : `inset 0 0 0 1.5px ${T.line}` } }, lb)))),
+            scen === "sell" && (React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10, marginBottom: 12 } },
+                React.createElement(Card, { pad: 16 },
+                    React.createElement(Pill, { tone: "coral", style: { fontSize: 10.5 } }, "\uB2E8\uD0C0 \u00B7 1\uB144 \uBBF8\uB9CC"),
+                    React.createElement(ToolRow, { label: "\uC591\uB3C4\uCC28\uC775", value: fmtMan(out.gain) }),
+                    React.createElement(ToolRow, { label: "\uC591\uB3C4\uC18C\uB4DD\uC138", sub: `${r.shortTax}%`, value: fmtMan(out.taxShort), tone: "coral" }),
+                    React.createElement(ToolRow, { label: "\uC21C\uC218\uC775", value: fmtMan(out.netShort), strong: true, tone: out.netShort >= 0 ? "mint" : "coral" }),
+                    React.createElement(ToolRow, { label: "\uC218\uC775\uB960", sub: "\uC21C\uC218\uC775 \u00F7 \uD604\uAE08\uD22C\uC785", value: out.cash > 0 ? pctStr(out.netShort / out.cash * 100) : "—", strong: true })),
+                React.createElement(Card, { pad: 16 },
+                    React.createElement(Pill, { tone: "grad", style: { fontSize: 10.5 } }, "\uAC1C\uC778 \u00B7 2\uB144 \uD6C4 \uB9E4\uB3C4"),
+                    React.createElement(ToolRow, { label: "\uC591\uB3C4\uCC28\uC775", value: fmtMan(out.gain) }),
+                    React.createElement(ToolRow, { label: "\uC591\uB3C4\uC18C\uB4DD\uC138", sub: "\uAE30\uBCF8\uC138\uC728 + \uC9C0\uBC29\uC18C\uB4DD\uC138", value: fmtMan(out.taxLong), tone: "coral" }),
+                    React.createElement(ToolRow, { label: "\uC21C\uC218\uC775", value: fmtMan(out.netLong), strong: true, tone: out.netLong >= 0 ? "mint" : "coral" }),
+                    React.createElement(ToolRow, { label: "\uC218\uC775\uB960", sub: "\uC21C\uC218\uC775 \u00F7 \uD604\uAE08\uD22C\uC785", value: out.cash > 0 ? pctStr(out.netLong / out.cash * 100) : "—", strong: true })),
+                React.createElement(Card, { pad: 16 },
+                    React.createElement(Pill, { tone: "gold", style: { fontSize: 10.5 } }, "\uB9E4\uB9E4\uC0AC\uC5C5\uC790"),
+                    React.createElement(ToolRow, { label: "\uC138\uC804\uC218\uC775", value: fmtMan(out.profit) }),
+                    React.createElement(ToolRow, { label: "\uC18C\uB4DD\uC138+\uC8FC\uBBFC\uC138", sub: "\uAE30\uBCF8\uC138\uC728 + \uC9C0\uBC29\uC18C\uB4DD\uC138", value: fmtMan(out.taxBiz), tone: "coral" }),
+                    React.createElement(ToolRow, { label: "\uC21C\uC218\uC775", value: fmtMan(out.netBiz), strong: true, tone: out.netBiz >= 0 ? "mint" : "coral" }),
+                    React.createElement(ToolRow, { label: "\uC218\uC775\uB960", sub: "\uC21C\uC218\uC775 \u00F7 \uD604\uAE08\uD22C\uC785", value: out.cash > 0 ? pctStr(out.netBiz / out.cash * 100) : "—", strong: true })))),
+            scen === "jeonse" && (React.createElement(Card, { pad: 16, style: { marginBottom: 12 } },
+                React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 12, marginBottom: 10 } },
+                    React.createElement(ToolNum, { label: "\uC804\uC138\uAC00", value: v.jeonse, onChange: set("jeonse") })),
+                React.createElement(ToolRow, { label: "\uD22C\uC790\uAE08", sub: "\uCD1D\uD22C\uC790\uAE08 \u2212 \uC804\uC138\uAC00", value: fmtMan(out.jInvest), strong: true, tone: out.jInvest <= 0 ? "mint" : undefined }),
+                out.jInvest <= 0 && n("jeonse") > 0 && (React.createElement("div", { style: { fontSize: 12, fontWeight: 800, color: T.mint, margin: "8px 0" } }, "\uD83C\uDF89 \uBB34\uD53C/\uD50C\uD53C \uC138\uD305! \uC804\uC138\uAC00\uAC00 \uCD1D\uD22C\uC790\uAE08\uC744 \uB118\uC5B4\uC694.")),
+                React.createElement(ToolRow, { label: "2\uB144 \uD6C4 \uB9E4\uB3C4\uC218\uC775", sub: "\uAE30\uBCF8\uC138\uC728 \uB9E4\uB3C4 \uAE30\uC900", value: fmtMan(out.netLong) }),
+                React.createElement(ToolRow, { label: "\uC218\uC775\uB960", sub: "\uB9E4\uB3C4\uC218\uC775 \u00F7 \uD22C\uC790\uAE08", value: out.jInvest > 0 ? pctStr(out.netLong / out.jInvest * 100) : "—", strong: true }),
+                React.createElement("div", { style: { fontSize: 10.5, color: T.sub, marginTop: 8 } }, "\uC804\uC138 \uC138\uD305 \uC2DC \uB300\uCD9C \uC0C1\uD658\uC744 \uAC00\uC815\uD569\uB2C8\uB2E4. \uC5ED\uC804\uC138 \uB9AC\uC2A4\uD06C\uB294 \uBCC4\uB3C4\uB85C \uAC80\uD1A0\uD558\uC138\uC694."))),
+            scen === "rent" && (React.createElement(Card, { pad: 16, style: { marginBottom: 12 } },
+                React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 12, marginBottom: 10 } },
+                    React.createElement(ToolNum, { label: "\uBCF4\uC99D\uAE08", value: v.depo, onChange: set("depo") }),
+                    React.createElement(ToolNum, { label: "\uC6D4\uC138", value: v.rent, onChange: set("rent") })),
+                React.createElement(ToolRow, { label: "\uC6D4 \uC774\uC790", sub: `대출 × ${r.loanRate}% ÷ 12`, value: fmtMan(out.mInterest), tone: "coral" }),
+                React.createElement(ToolRow, { label: "\uC6D4 \uC218\uC775", sub: "\uC6D4\uC138 \u2212 \uC774\uC790", value: fmtMan(out.mNet), tone: out.mNet >= 0 ? "mint" : "coral" }),
+                React.createElement(ToolRow, { label: "\uC5F0 \uC218\uC785", value: fmtMan(out.yNet) }),
+                React.createElement(ToolRow, { label: "\uC2E4\uD22C\uC790\uAE08", sub: "\uD604\uAE08\uD22C\uC785 \u2212 \uBCF4\uC99D\uAE08", value: fmtMan(out.realCash), strong: true }),
+                React.createElement(ToolRow, { label: "\uC5F0 \uC218\uC775\uB960", sub: "\uC5F0 \uC218\uC785 \u00F7 \uC2E4\uD22C\uC790\uAE08", value: out.realCash > 0 ? pctStr(out.yNet / out.realCash * 100) : "—", strong: true }))))),
+        React.createElement(Card, { pad: 14, style: { background: T.gradSoft, border: "none" } },
+            React.createElement("div", { style: { fontSize: 11.5, color: T.sub, lineHeight: 1.7 } }, "\u26A0\uFE0F \uC138\uC728\u00B7\uAE08\uB9AC \uB4F1\uC740 \uAC1C\uC778 \uC870\uAC74\uC5D0 \uB530\uB77C \uB2EC\uB77C\uC9C0\uB2C8 \uBC18\uB4DC\uC2DC \uD655\uC778 \uD6C4 \uC0AC\uC6A9\uD558\uC138\uC694. \uD3B8\uC758\uB97C \uC704\uD574 \uC81C\uACF5\uB418\uB294 \uCC38\uACE0\uC6A9 \uB3C4\uAD6C\uC774\uBA70, \uACC4\uC0B0 \uACB0\uACFC\uB294 \uBCF8\uC778 \uCC45\uC784\uD558\uC5D0 \uD655\uC778\uD574\uC57C \uD569\uB2C8\uB2E4. \uADF8 \uC5B4\uB5A4 \uCC45\uC784\uB3C4 \uC9C0\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4."))));
+}
+/* ── ② 대출 판독기 — 규제지역·주택수·소득 기반 LTV/DSR 한도 ── */
+const LOAN_REGION_OPTS = [["reg", "🚨 규제지역"], ["metro", "🏙 수도권 비규제"], ["etc", "🌄 그 외 지방"]];
+const LOAN_HOUSE_OPTS = [["first", "생애최초"], ["none", "무주택"], ["oneSell", "1주택 · 처분조건"], ["oneKeep", "1주택 유지 + 추가구입"], ["multi", "2주택 이상"]];
+const LOAN_RATE_OPTS = [["var", "변동금리"], ["mix", "혼합형(5년 고정)"], ["fix5", "주기형"], ["fix", "순수 고정"]];
+function LoanReader({ cfg }) {
+    const [region, setRegion] = useState("reg");
+    const [house, setHouse] = useState("none");
+    const [sector, setSector] = useState("bank");
+    const [rateType, setRateType] = useState("var");
+    const [incomeMode, setIncomeMode] = useState("income");
+    const [price, setPrice] = useState("");
+    const [income, setIncome] = useState("");
+    const [card, setCard] = useState("");
+    const [existing, setExisting] = useState("");
+    const [rate, setRate] = useState(4.2);
+    const [years, setYears] = useState(30);
+    const out = useMemo(() => {
+        const P = Number(price) || 0;
+        const effIncome = incomeMode === "income" ? (Number(income) || 0) : (Number(card) || 0) / (cfg.cardRatio / 100);
+        const ltvPct = (cfg.ltv[region] || {})[house] || 0;
+        const notes = [];
+        if (ltvPct <= 0) {
+            if (region !== "etc")
+                notes.push(house === "oneKeep"
+                    ? "수도권·규제지역에서 1주택 보유 상태의 추가 구입 주담대는 금지돼요. 기존 주택 처분조건(1주택·처분조건)으로 다시 계산해보세요."
+                    : "수도권·규제지역에서 2주택 이상 보유자의 구입목적 주담대는 금지돼요.");
+            return { banned: true, notes, effIncome };
+        }
+        const ltvLimit = P * ltvPct / 100;
+        /* 수도권·규제지역 시가별 한도 상한 */
+        let cap = null;
+        if (region !== "etc" && P > 0) {
+            let t = null;
+            for (let i = 0; i < cfg.capTiers.length; i++) {
+                const c = cfg.capTiers[i];
+                if (!c.upTo || P <= c.upTo) {
+                    t = c;
+                    break;
+                }
+            }
+            cap = t ? t.cap : null;
+            if (house === "first" && cfg.firstCap)
+                cap = cap == null ? cfg.firstCap : Math.min(cap, cfg.firstCap);
+        }
+        /* DSR — 스트레스 금리 반영 심사금리 */
+        const stress = (cfg.stress[region] || 0) * ((cfg.stressRatio[rateType] || 0) / 100);
+        const evalRate = (Number(rate) || 0) + stress;
+        const dsrPct = cfg.dsr[sector] || 40;
+        const annualAvail = Math.max(effIncome * dsrPct / 100 - (Number(existing) || 0), 0);
+        const nMon = (Number(years) || 30) * 12;
+        const dsrLimit = pvAnnuity(annualAvail / 12, evalRate / 100 / 12, nMon);
+        const candidates = [
+            { k: "ltv", label: `LTV 한도 (${ltvPct}%)`, v: ltvLimit },
+            ...(cap != null ? [{ k: "cap", label: "주담대 한도 상한", v: cap }] : []),
+            { k: "dsr", label: `DSR 한도 (${dsrPct}%)`, v: dsrLimit },
+        ];
+        const final = Math.max(Math.min.apply(null, candidates.map((c) => c.v)), 0);
+        const binding = candidates.reduce((a, b) => (b.v < a.v ? b : a), candidates[0]);
+        const monthly = final > 0 ? pmtOf(final, (Number(rate) || 0) / 100 / 12, nMon) : 0;
+        if (region === "reg")
+            notes.push(`규제지역 주담대는 ${cfg.moveInMonths}개월 내 전입 의무가 있어요.`);
+        if (house === "oneSell")
+            notes.push(`기존 주택은 ${cfg.sellMonths}개월 내 처분 조건이에요.`);
+        if (house === "first")
+            notes.push(`생애최초는 LTV가 우대되지만 한도 상한(${fmtMan(cfg.firstCap)})은 그대로 적용돼요.`);
+        if (incomeMode === "card")
+            notes.push(`카드사용액 기반 환산소득은 은행별 인정 방식이 달라 실제 한도와 차이 날 수 있어요.`);
+        return { banned: false, ltvPct, ltvLimit, cap, stress, evalRate, dsrPct, annualAvail, dsrLimit, candidates, final, binding, monthly, effIncome, notes };
+    }, [region, house, sector, rateType, incomeMode, price, income, card, existing, rate, years, cfg]);
+    const ready = (Number(price) || 0) > 0 && out.effIncome > 0;
+    return (React.createElement("div", null,
+        React.createElement(Card, { pad: 0, style: { overflow: "hidden", marginBottom: 14 } },
+            React.createElement("div", { style: { background: T.grad, padding: "16px 18px", color: "#fff" } },
+                React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" } },
+                    React.createElement("div", null,
+                        React.createElement("div", { style: { fontSize: 11, fontWeight: 800, letterSpacing: "0.12em", opacity: 0.9 } }, "GROW IN TOOLS"),
+                        React.createElement("div", { style: { fontSize: 18, fontWeight: 800, letterSpacing: "-0.02em", marginTop: 2 } }, "\uD83C\uDFE6 \uB300\uCD9C \uD310\uB3C5\uAE30")),
+                    React.createElement(Pill, { style: { background: "rgba(255,255,255,.2)", fontSize: 11 } },
+                        "\uD83D\uDCC5 ",
+                        cfg.asOf,
+                        cfg.updatedAt ? ` · ${cfg.updatedAt} 갱신` : ""))),
+            React.createElement("div", { style: { padding: 18, display: "flex", flexDirection: "column", gap: 14 } },
+                React.createElement(ToolChips, { label: "\u2460 \uC9C0\uC5ED", opts: LOAN_REGION_OPTS, value: region, onChange: setRegion, hint: cfg.regulatedNote }),
+                React.createElement(ToolChips, { label: "\u2461 \uC8FC\uD0DD \uBCF4\uC720 \uC0C1\uD669", opts: LOAN_HOUSE_OPTS, value: house, onChange: setHouse }),
+                React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 12 } },
+                    React.createElement(ToolNum, { label: "\u2462 \uC8FC\uD0DD \uAC00\uACA9 (\uC2DC\uAC00)", value: price, onChange: setPrice }),
+                    React.createElement("div", null,
+                        React.createElement("div", { style: { display: "flex", gap: 4, marginBottom: 4 } }, [["income", "연소득"], ["card", "카드사용액(연)"]].map(([k, lb]) => (React.createElement("button", { key: k, onClick: () => setIncomeMode(k), style: { cursor: "pointer", fontFamily: "inherit", border: "none", fontWeight: 800, fontSize: 10.5, padding: "3px 9px", borderRadius: 999,
+                                background: incomeMode === k ? T.grad : "#EFF3F2", color: incomeMode === k ? "#fff" : T.sub } }, lb)))),
+                        incomeMode === "income"
+                            ? React.createElement(ToolNum, { label: "", value: income, onChange: setIncome })
+                            : React.createElement(ToolNum, { label: "", value: card, onChange: setCard, hint: `환산 연소득 ≈ ${fmtMan((Number(card) || 0) / (cfg.cardRatio / 100))} (÷ ${cfg.cardRatio}%)` })),
+                    React.createElement(ToolNum, { label: "\uAE30\uC874 \uB300\uCD9C \uC5F0 \uC6D0\uB9AC\uAE08", value: existing, onChange: setExisting, hint: "\uC8FC\uB2F4\uB300\u00B7\uC2E0\uC6A9\u00B7\uD560\uBD80 \uB4F1 \uC5F0\uAC04 \uC0C1\uD658\uC561 \uD569\uACC4" }),
+                    React.createElement(ToolNum, { label: "\uB300\uCD9C \uAE08\uB9AC", value: rate, onChange: setRate, unit: "%", money: false, step: "0.1" }),
+                    React.createElement(ToolNum, { label: "\uB9CC\uAE30", value: years, onChange: setYears, unit: "\uB144", money: false })),
+                React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 } },
+                    React.createElement(ToolChips, { label: "\u2463 \uAE08\uB9AC \uC720\uD615 (\uC2A4\uD2B8\uB808\uC2A4 DSR)", opts: LOAN_RATE_OPTS, value: rateType, onChange: setRateType }),
+                    React.createElement(ToolChips, { label: "\u2464 \uAE08\uC735\uAD8C", opts: [["bank", `은행권 (DSR ${cfg.dsr.bank}%)`], ["nonbank", `2금융권 (DSR ${cfg.dsr.nonbank}%)`]], value: sector, onChange: setSector })))),
+        out.banned ? (React.createElement(Card, { pad: 0, style: { overflow: "hidden", marginBottom: 12 } },
+            React.createElement("div", { style: { background: T.coral, color: "#fff", padding: "16px 18px" } },
+                React.createElement("div", { style: { fontSize: 11, fontWeight: 800, letterSpacing: "0.1em", opacity: 0.9 } }, "\uD310\uB3C5 \uACB0\uACFC"),
+                React.createElement("div", { style: { fontSize: 19, fontWeight: 800, marginTop: 2 } }, "\u26D4 \uAD6C\uC785\uBAA9\uC801 \uC8FC\uB2F4\uB300 \uBD88\uAC00")),
+            React.createElement("div", { style: { padding: 16 } }, out.notes.map((nt, i) => React.createElement("div", { key: i, style: { fontSize: 12.5, color: T.ink, lineHeight: 1.7 } },
+                "\u00B7 ",
+                nt))))) : ready ? (React.createElement(Card, { pad: 0, style: { overflow: "hidden", marginBottom: 12 } },
+            React.createElement("div", { style: { background: T.grad, color: "#fff", padding: "18px 20px" } },
+                React.createElement("div", { style: { fontSize: 11, fontWeight: 800, letterSpacing: "0.1em", opacity: 0.9 } }, "\uD310\uB3C5 \uACB0\uACFC \u00B7 \uC608\uC0C1 \uB300\uCD9C \uAC00\uB2A5\uC561"),
+                React.createElement("div", { style: { fontSize: 26, fontWeight: 800, letterSpacing: "-0.02em", marginTop: 3 } }, fmtMan(out.final)),
+                React.createElement("div", { style: { fontSize: 12, opacity: 0.92, marginTop: 4 } },
+                    "\uC6D4 \uC0C1\uD658 \uC57D ",
+                    fmtMan(out.monthly),
+                    " \u00B7 \uC2EC\uC0AC\uAE08\uB9AC ",
+                    pctStr(out.evalRate),
+                    " (\uAE08\uB9AC ",
+                    pctStr(Number(rate) || 0),
+                    " + \uC2A4\uD2B8\uB808\uC2A4 ",
+                    pctStr(out.stress),
+                    ")")),
+            React.createElement("div", { style: { padding: 16 } },
+                out.candidates.map((c) => (React.createElement("div", { key: c.k, style: { display: "flex", alignItems: "center", gap: 8, padding: "8px 0", borderBottom: `1px dashed ${T.line}` } },
+                    React.createElement("div", { style: { flex: 1, fontSize: 12.5, fontWeight: 700, color: c.k === out.binding.k ? T.ink : T.sub } }, c.label),
+                    c.k === out.binding.k && React.createElement(Pill, { tone: "coral", style: { fontSize: 10 } }, "\uC801\uC6A9 \uD55C\uB3C4"),
+                    React.createElement("div", { style: { fontWeight: 800, fontSize: 13.5, fontVariantNumeric: "tabular-nums", color: c.k === out.binding.k ? T.coral : T.ink } }, fmtMan(c.v))))),
+                React.createElement("div", { style: { fontSize: 11.5, color: T.sub, marginTop: 10, lineHeight: 1.7 } },
+                    "DSR \uC5EC\uB825: \uC5F0 \uC0C1\uD658\uAC00\uB2A5 ",
+                    fmtMan(out.annualAvail),
+                    " (\uC5F0\uC18C\uB4DD ",
+                    fmtMan(out.effIncome),
+                    " \u00D7 ",
+                    out.dsrPct,
+                    "% \u2212 \uAE30\uC874 \uC0C1\uD658\uC561)"),
+                out.notes.length > 0 && (React.createElement("div", { style: { marginTop: 10, background: "#FAFCFB", border: `1px solid ${T.line}`, borderRadius: 12, padding: 12 } }, out.notes.map((nt, i) => React.createElement("div", { key: i, style: { fontSize: 11.5, color: T.sub, lineHeight: 1.7 } },
+                    "\u00B7 ",
+                    nt))))))) : (React.createElement(Card, { pad: 16, style: { marginBottom: 12, textAlign: "center" } },
+            React.createElement("div", { style: { fontSize: 28 } }, "\uD83D\uDD0E"),
+            React.createElement("div", { style: { fontSize: 13, color: T.sub, marginTop: 6 } }, "\uC8FC\uD0DD \uAC00\uACA9\uACFC \uC18C\uB4DD\uC744 \uC785\uB825\uD558\uBA74 \uC608\uC0C1 \uD55C\uB3C4\uB97C \uD310\uB3C5\uD574\uB4DC\uB824\uC694."))),
+        React.createElement(Card, { pad: 14, style: { background: T.gradSoft, border: "none" } },
+            React.createElement("div", { style: { fontSize: 11.5, color: T.sub, lineHeight: 1.7 } }, "\u26A0\uFE0F \uADDC\uC81C\u00B7\uC2A4\uD2B8\uB808\uC2A4 \uAE08\uB9AC\uB294 \uC218\uC2DC\uB85C \uBCC0\uACBD\uB418\uBA70, \uC2E4\uC81C \uD55C\uB3C4\uB294 \uC740\uD589 \uC2EC\uC0AC(\uC18C\uB4DD \uC778\uC815, \uAE30\uC874 \uBD80\uCC44 \uC0B0\uC815 \uBC29\uC2DD \uB4F1)\uC5D0 \uB530\uB77C \uB2EC\uB77C\uC838\uC694. \uBC18\uB4DC\uC2DC \uB300\uCD9C \uC2E4\uD589 \uC804 \uAE08\uC735\uAE30\uAD00\uC5D0\uC11C \uCD5C\uC885 \uD655\uC778\uD558\uC138\uC694. \uCC38\uACE0\uC6A9 \uB3C4\uAD6C\uB85C \uC5B4\uB5A4 \uCC45\uC784\uB3C4 \uC9C0\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4."))));
+}
+/* ── 관리자 · 자료실 도구 설정 (규제 수치 리뉴얼) ── */
+function ToolsAdmin({ settings, onSave }) {
+    const [draft, setDraft] = useState(() => JSON.parse(JSON.stringify(effToolCfg(settings))));
+    const [dirty, setDirty] = useState(false);
+    const up = (fn) => setDraft((d) => { const nd = JSON.parse(JSON.stringify(d)); fn(nd); return nd; }) || setDirty(true);
+    const num = (v) => (v === "" ? 0 : Number(v) || 0);
+    const MiniNum = ({ value, onChange, w = 74, unit }) => (React.createElement("span", { style: { position: "relative", display: "inline-block" } },
+        React.createElement(Input, { type: "number", inputMode: "decimal", value: value, step: "0.01", onChange: (e) => { onChange(num(e.target.value)); setDirty(true); }, style: { width: w, padding: "7px 8px", fontSize: 12.5, fontWeight: 700, textAlign: "right", fontVariantNumeric: "tabular-nums", paddingRight: unit ? 26 : 8 } }),
+        unit && React.createElement("span", { style: { position: "absolute", right: 7, top: "50%", transform: "translateY(-50%)", fontSize: 10, color: T.sub, fontWeight: 700 } }, unit)));
+    const HOUSE_COLS = [["first", "생애최초"], ["none", "무주택"], ["oneSell", "1주택·처분"], ["oneKeep", "1주택 유지"], ["multi", "2주택+"]];
+    const REGION_ROWS = [["reg", "규제지역"], ["metro", "수도권 비규제"], ["etc", "그 외 지방"]];
+    const save = () => {
+        const cfg = JSON.parse(JSON.stringify(draft));
+        cfg.updatedAt = new Date().toISOString().slice(0, 10);
+        onSave(cfg);
+        setDraft(cfg);
+        setDirty(false);
+    };
+    const loadDefault = () => { setDraft(JSON.parse(JSON.stringify(TOOL_CFG_DEFAULT))); setDirty(true); };
+    return (React.createElement("div", null,
+        React.createElement(SectionTitle, { eyebrow: "TOOLS ADMIN", title: "\uD83D\uDCDA \uC790\uB8CC\uC2E4 \uB3C4\uAD6C \uC124\uC815", right: React.createElement(Pill, { tone: "line" }, draft.updatedAt ? `${draft.updatedAt} 갱신` : "미갱신") }),
+        React.createElement(Card, { pad: 16, style: { marginBottom: 14, background: T.gradSoft, border: "none" } },
+            React.createElement("div", { style: { fontWeight: 800, fontSize: 13.5, marginBottom: 6 } }, "\uD83D\uDD01 \uADDC\uC81C \uB9AC\uB274\uC5BC \uCCB4\uD06C\uB9AC\uC2A4\uD2B8"),
+            React.createElement("div", { style: { fontSize: 12, color: T.sub, lineHeight: 1.8 } },
+                "\uC815\uBD80 \uB300\uCC45 \uBC1C\uD45C \uB54C\uB9C8\uB2E4 \uC544\uB798\uB97C \uD655\uC778\uD558\uACE0 \uC218\uCE58\uB97C \uAC31\uC2E0\uD558\uC138\uC694. \uC800\uC7A5\uD558\uBA74 \uBA64\uBC84 \uD654\uBA74\uC758 \uB300\uCD9C \uD310\uB3C5\uAE30\u00B7\uACC4\uC0B0\uAE30\uC5D0 \uC989\uC2DC \uBC18\uC601\uB3FC\uC694.",
+                React.createElement("br", null),
+                "\u2460 \uADDC\uC81C\uC9C0\uC5ED \uC9C0\uC815\u00B7\uD574\uC81C (\uAD6D\uD1A0\uAD50\uD1B5\uBD80 \uBCF4\uB3C4\uC790\uB8CC) \u2192 \uC9C0\uC5ED \uBA54\uBAA8 \uC218\uC815",
+                React.createElement("br", null),
+                "\u2461 LTV\u00B7\uC8FC\uB2F4\uB300 \uD55C\uB3C4 \uC0C1\uD55C\u00B7DSR (\uAE08\uC735\uC704\uC6D0\uD68C \uBCF4\uB3C4\uC790\uB8CC)",
+                React.createElement("br", null),
+                "\u2462 \uC2A4\uD2B8\uB808\uC2A4 \uAE08\uB9AC\u00B7\uBC18\uC601\uBE44\uC728 (\uC740\uD589\uC5F0\uD569\uD68C \uACF5\uC2DC, \uB9E4\uB144 5\uC6D4\u00B711\uC6D4 \uC0B0\uC815)",
+                React.createElement("br", null),
+                "\u2463 \uCDE8\uB4DD\uC138\u00B7\uC591\uB3C4\uC138\uC728 (\uD589\uC815\uC548\uC804\uBD80\u00B7\uAE30\uD68D\uC7AC\uC815\uBD80)")),
+        React.createElement(Card, { pad: 16, style: { marginBottom: 12 } },
+            React.createElement("div", { style: { fontWeight: 800, fontSize: 13.5, marginBottom: 10 } }, "\uAE30\uC900 \uD45C\uAE30"),
+            React.createElement("div", { style: { display: "grid", gap: 10 } },
+                React.createElement("label", null,
+                    React.createElement("div", { style: { fontSize: 11.5, fontWeight: 800, color: T.sub, marginBottom: 4 } }, "\uAE30\uC900 \uB77C\uBCA8 (\uBA64\uBC84 \uD654\uBA74 \uBC30\uC9C0\uC5D0 \uD45C\uC2DC)"),
+                    React.createElement(Input, { value: draft.asOf, onChange: (e) => { const v = e.target.value; up((d) => { d.asOf = v; }); }, style: { width: "100%", boxSizing: "border-box" } })),
+                React.createElement("label", null,
+                    React.createElement("div", { style: { fontSize: 11.5, fontWeight: 800, color: T.sub, marginBottom: 4 } }, "\uADDC\uC81C\uC9C0\uC5ED \uBA54\uBAA8"),
+                    React.createElement("textarea", { value: draft.regulatedNote, onChange: (e) => { const v = e.target.value; up((d) => { d.regulatedNote = v; }); }, rows: 2, style: { width: "100%", boxSizing: "border-box", fontFamily: "inherit", fontSize: 13, padding: 10, borderRadius: 12, border: `1.5px solid ${T.line}`, resize: "vertical" } })))),
+        React.createElement(Card, { pad: 16, style: { marginBottom: 12 } },
+            React.createElement("div", { style: { fontWeight: 800, fontSize: 13.5, marginBottom: 4 } }, "LTV (%) \u2014 0 \uC785\uB825 \uC2DC \uB300\uCD9C \uBD88\uAC00 \uCC98\uB9AC"),
+            React.createElement("div", { style: { overflowX: "auto" } },
+                React.createElement("table", { style: { borderCollapse: "collapse", fontSize: 12, minWidth: 520 } },
+                    React.createElement("thead", null,
+                        React.createElement("tr", null,
+                            React.createElement("th", { style: { textAlign: "left", padding: "6px 8px", color: T.sub, fontSize: 11 } }, "\uC9C0\uC5ED"),
+                            HOUSE_COLS.map(([k, lb]) => React.createElement("th", { key: k, style: { padding: "6px 4px", color: T.sub, fontSize: 11, fontWeight: 800 } }, lb)))),
+                    React.createElement("tbody", null, REGION_ROWS.map(([rk, rlb]) => (React.createElement("tr", { key: rk },
+                        React.createElement("td", { style: { padding: "5px 8px", fontWeight: 800, whiteSpace: "nowrap" } }, rlb),
+                        HOUSE_COLS.map(([hk]) => (React.createElement("td", { key: hk, style: { padding: "3px 4px", textAlign: "center" } },
+                            React.createElement(MiniNum, { value: draft.ltv[rk][hk], onChange: (v) => up((d) => { d.ltv[rk][hk] = v; }), w: 62, unit: "%" }))))))))))),
+        React.createElement(Card, { pad: 16, style: { marginBottom: 12 } },
+            React.createElement("div", { style: { fontWeight: 800, fontSize: 13.5, marginBottom: 8 } }, "\uC218\uB3C4\uAD8C\u00B7\uADDC\uC81C\uC9C0\uC5ED \uC8FC\uB2F4\uB300 \uD55C\uB3C4 \uC0C1\uD55C (\uB9CC\uC6D0)"),
+            draft.capTiers.map((t, i) => (React.createElement("div", { key: i, style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" } },
+                React.createElement("span", { style: { fontSize: 12, color: T.sub, fontWeight: 700 } }, "\uC2DC\uAC00"),
+                t.upTo ? React.createElement(React.Fragment, null,
+                    React.createElement(MiniNum, { value: t.upTo, onChange: (v) => up((d) => { d.capTiers[i].upTo = v; }), w: 92 }),
+                    React.createElement("span", { style: { fontSize: 12, color: T.sub, fontWeight: 700 } }, "\uB9CC\uC6D0 \uC774\uD558 \u2192")) : React.createElement("span", { style: { fontSize: 12, color: T.sub, fontWeight: 700 } }, "\uADF8 \uCD08\uACFC \u2192"),
+                React.createElement("span", { style: { fontSize: 12, fontWeight: 800 } }, "\uD55C\uB3C4"),
+                React.createElement(MiniNum, { value: t.cap, onChange: (v) => up((d) => { d.capTiers[i].cap = v; }), w: 92 }),
+                React.createElement("span", { style: { fontSize: 11, color: T.mint, fontWeight: 800 } }, fmtMan(t.cap))))),
+            React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, marginTop: 8 } },
+                React.createElement("span", { style: { fontSize: 12, fontWeight: 800 } }, "\uC0DD\uC560\uCD5C\uCD08 \uC0C1\uD55C"),
+                React.createElement(MiniNum, { value: draft.firstCap, onChange: (v) => up((d) => { d.firstCap = v; }), w: 92 }),
+                React.createElement("span", { style: { fontSize: 11, color: T.mint, fontWeight: 800 } }, fmtMan(draft.firstCap)))),
+        React.createElement(Card, { pad: 16, style: { marginBottom: 12 } },
+            React.createElement("div", { style: { fontWeight: 800, fontSize: 13.5, marginBottom: 8 } }, "DSR \u00B7 \uC2A4\uD2B8\uB808\uC2A4 \uAE08\uB9AC"),
+            React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: "10px 18px", fontSize: 12, fontWeight: 700, alignItems: "center" } },
+                React.createElement("span", null,
+                    "\uC740\uD589\uAD8C DSR ",
+                    React.createElement(MiniNum, { value: draft.dsr.bank, onChange: (v) => up((d) => { d.dsr.bank = v; }), w: 58, unit: "%" })),
+                React.createElement("span", null,
+                    "2\uAE08\uC735\uAD8C DSR ",
+                    React.createElement(MiniNum, { value: draft.dsr.nonbank, onChange: (v) => up((d) => { d.dsr.nonbank = v; }), w: 58, unit: "%" })),
+                React.createElement("span", null,
+                    "\uCE74\uB4DC\uC0AC\uC6A9\uC561 \uD658\uC0B0\uBE44\uC728 ",
+                    React.createElement(MiniNum, { value: draft.cardRatio, onChange: (v) => up((d) => { d.cardRatio = v; }), w: 58, unit: "%" }))),
+            React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: "10px 18px", fontSize: 12, fontWeight: 700, alignItems: "center", marginTop: 10 } },
+                React.createElement("span", null,
+                    "\uC2A4\uD2B8\uB808\uC2A4 \u00B7 \uADDC\uC81C ",
+                    React.createElement(MiniNum, { value: draft.stress.reg, onChange: (v) => up((d) => { d.stress.reg = v; }), w: 58, unit: "%p" })),
+                React.createElement("span", null,
+                    "\uC218\uB3C4\uAD8C ",
+                    React.createElement(MiniNum, { value: draft.stress.metro, onChange: (v) => up((d) => { d.stress.metro = v; }), w: 58, unit: "%p" })),
+                React.createElement("span", null,
+                    "\uC9C0\uBC29 ",
+                    React.createElement(MiniNum, { value: draft.stress.etc, onChange: (v) => up((d) => { d.stress.etc = v; }), w: 58, unit: "%p" }))),
+            React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: "10px 18px", fontSize: 12, fontWeight: 700, alignItems: "center", marginTop: 10 } },
+                React.createElement("span", null,
+                    "\uBC18\uC601 \u00B7 \uBCC0\uB3D9 ",
+                    React.createElement(MiniNum, { value: draft.stressRatio.var, onChange: (v) => up((d) => { d.stressRatio.var = v; }), w: 58, unit: "%" })),
+                React.createElement("span", null,
+                    "\uD63C\uD569\uD615 ",
+                    React.createElement(MiniNum, { value: draft.stressRatio.mix, onChange: (v) => up((d) => { d.stressRatio.mix = v; }), w: 58, unit: "%" })),
+                React.createElement("span", null,
+                    "\uC8FC\uAE30\uD615 ",
+                    React.createElement(MiniNum, { value: draft.stressRatio.fix5, onChange: (v) => up((d) => { d.stressRatio.fix5 = v; }), w: 58, unit: "%" })),
+                React.createElement("span", null,
+                    "\uC21C\uC218\uACE0\uC815 ",
+                    React.createElement(MiniNum, { value: draft.stressRatio.fix, onChange: (v) => up((d) => { d.stressRatio.fix = v; }), w: 58, unit: "%" }))),
+            React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: "10px 18px", fontSize: 12, fontWeight: 700, alignItems: "center", marginTop: 10 } },
+                React.createElement("span", null,
+                    "\uC804\uC785 \uC758\uBB34 ",
+                    React.createElement(MiniNum, { value: draft.moveInMonths, onChange: (v) => up((d) => { d.moveInMonths = v; }), w: 54, unit: "\uAC1C\uC6D4" })),
+                React.createElement("span", null,
+                    "\uCC98\uBD84 \uAE30\uD55C ",
+                    React.createElement(MiniNum, { value: draft.sellMonths, onChange: (v) => up((d) => { d.sellMonths = v; }), w: 54, unit: "\uAC1C\uC6D4" })))),
+        React.createElement(Card, { pad: 16, style: { marginBottom: 12 } },
+            React.createElement("div", { style: { fontWeight: 800, fontSize: 13.5, marginBottom: 8 } }, "\uC218\uC775\uB960 \uACC4\uC0B0\uAE30 \uAE30\uBCF8 \uC694\uC728 (%)"),
+            React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: "10px 18px", fontSize: 12, fontWeight: 700, alignItems: "center" } }, [["depositPct", "입찰보증금"], ["acqTax", "취득세율"], ["legal", "법무비율"], ["broker", "중개비율"],
+                ["loanRatio", "대출비율"], ["loanRate", "대출금리"], ["earlyFee", "중도상환"], ["shortTax", "단타 양도세"], ["localAdd", "지방소득세"]].map(([k, lb]) => (React.createElement("span", { key: k },
+                lb,
+                " ",
+                React.createElement(MiniNum, { value: draft.calc[k], onChange: (v) => up((d) => { d.calc[k] = v; }), w: 62, unit: "%" }))))),
+            React.createElement("div", { style: { fontSize: 11, color: T.sub, marginTop: 8, lineHeight: 1.6 } }, "\uAE30\uBCF8\uC138\uC728 \uAD6C\uAC04(\uB204\uC9C4\uACF5\uC81C \uD3EC\uD568)\uC740 \uC138\uBC95 \uAC1C\uC815 \uC2DC \uAC1C\uBC1C\uC790\uC5D0\uAC8C \uC694\uCCAD\uD574 \uC218\uC815\uD558\uAC70\uB098, \uC124\uC815 \uC2DC\uD2B8\uC758 loanCfg JSON\uC5D0\uC11C brackets \uBC30\uC5F4\uC744 \uC9C1\uC811 \uC218\uC815\uD560 \uC218 \uC788\uC5B4\uC694.")),
+        React.createElement("div", { style: { display: "flex", gap: 8, flexWrap: "wrap" } },
+            React.createElement(Btn, { onClick: save, disabled: !dirty }, "\uD83D\uDCBE \uC800\uC7A5\uD558\uACE0 \uBA64\uBC84 \uD654\uBA74\uC5D0 \uBC18\uC601"),
+            React.createElement(Btn, { tone: "ghost", onClick: loadDefault }, "\uAE30\uBCF8\uAC12 \uBD88\uB7EC\uC624\uAE30")),
+        dirty && React.createElement("div", { style: { fontSize: 11.5, color: T.coral, fontWeight: 800, marginTop: 8 } }, "\uC800\uC7A5\uD558\uC9C0 \uC54A\uC740 \uBCC0\uACBD \uC0AC\uD56D\uC774 \uC788\uC5B4\uC694.")));
+}
 /* ── 공개 조회 페이지 (탭 대시보드) ── */
 function PublicPage({ members, ledger, log, insights, lectures, settings, certs, cmts, austats, onAddCert, onAddCmt, viewer, onLogin, onLogout, onChangePw }) {
     const [ptab, setPtab] = useState("home");
@@ -2841,6 +3354,7 @@ function PublicPage({ members, ledger, log, insights, lectures, settings, certs,
         ["onepick", "원픽 지도", "📍"],
         ["cert", "임장·입찰", "🚩"],
         ["stats", "경매 통계", "📊"],
+        ["archive", "자료실", "📚"],
         ["lectures", "강의", "🎬"],
         ["insights", "인사이트", "💡"],
         ["guide", "안내", "📢"],
@@ -3251,6 +3765,33 @@ function PublicPage({ members, ledger, log, insights, lectures, settings, certs,
                     React.createElement(InsightContent, { body: i.body, imgs: imgsOf(i), yt: i.yt, hl: q })))))));
     };
     /* ── 크레딧 안내 ── */
+    /* 📚 자료실 — 도구 목록 · 앞으로 도구가 늘어나면 ARCHIVE_TOOLS에 추가 */
+    const ArchiveTab = () => {
+        const toolCfg = effToolCfg(settings);
+        const [tool, setTool] = useState(null);
+        const ARCHIVE_TOOLS = [
+            { k: "calc", icon: "🧮", name: "경공매 수익률 계산기", by: "Made by 써니", desc: "낙찰가·비용·세금을 넣으면 단타/2년 보유/전세·월세 세팅별 수익률을 계산해요." },
+            { k: "loan", icon: "🏦", name: "대출 판독기", by: toolCfg.asOf, desc: "지역·주택수·소득을 고르면 현행 규제(LTV·DSR·한도 상한)를 반영해 대출 가능액을 판독해요." },
+        ];
+        if (tool)
+            return (React.createElement("div", null,
+                React.createElement("button", { onClick: () => setTool(null), style: { cursor: "pointer", border: "none", background: "transparent", fontFamily: "inherit", fontWeight: 800,
+                        fontSize: 13, color: T.sub, padding: "2px 2px 12px", display: "flex", alignItems: "center", gap: 4 } }, "\u2190 \uC790\uB8CC\uC2E4 \uBAA9\uB85D"),
+                tool === "calc" && React.createElement(ProfitCalc, { cfg: toolCfg }),
+                tool === "loan" && React.createElement(LoanReader, { cfg: toolCfg })));
+        return (React.createElement("div", null,
+            React.createElement(SectionTitle, { eyebrow: "GROW IN ARCHIVE", title: "\uD83D\uDCDA \uC790\uB8CC\uC2E4", right: React.createElement(Pill, { tone: "line" }, "\uADF8\uB85C\uC778 \uBA64\uBC84 \uC804\uC6A9 \uB3C4\uAD6C") }),
+            React.createElement("div", { style: { display: "grid", gap: 10 } }, ARCHIVE_TOOLS.map((t) => (React.createElement(Card, { key: t.k, pad: 0, style: { overflow: "hidden", cursor: "pointer" } },
+                React.createElement("div", { onClick: () => setTool(t.k), style: { display: "flex", alignItems: "center", gap: 14, padding: 16 } },
+                    React.createElement("div", { style: { width: 52, height: 52, borderRadius: 16, background: T.gradSoft, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26, flexShrink: 0 } }, t.icon),
+                    React.createElement("div", { style: { flex: 1, minWidth: 0 } },
+                        React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" } },
+                            React.createElement("div", { style: { fontWeight: 800, fontSize: 15, letterSpacing: "-0.01em" } }, t.name),
+                            React.createElement(Pill, { tone: "line", style: { fontSize: 10 } }, t.by)),
+                        React.createElement("div", { style: { fontSize: 12, color: T.sub, marginTop: 3, lineHeight: 1.6, wordBreak: "keep-all" } }, t.desc)),
+                    React.createElement("div", { style: { color: T.sub, fontWeight: 800 } }, "\u203A")))))),
+            React.createElement("div", { style: { fontSize: 11.5, color: T.sub, marginTop: 14, textAlign: "center", lineHeight: 1.7 } }, "\uC720\uC6A9\uD55C \uB3C4\uAD6C\uAC00 \uACC4\uC18D \uCD94\uAC00\uB420 \uC608\uC815\uC774\uC5D0\uC694 \u00B7 \uB9CC\uB4E4\uACE0 \uC2F6\uC740 \uB3C4\uAD6C\uAC00 \uC788\uB2E4\uBA74 \uD1A1\uBC29\uC5D0\uC11C \uD574\uD53C\uD14C\uD06C\uC5D0\uAC8C!")));
+    };
     const GuideTab = () => (React.createElement("div", null,
         React.createElement(SectionTitle, { title: "\uD06C\uB808\uB527 \uC548\uB0B4" }),
         React.createElement(Card, { pad: 0, style: { overflow: "hidden", marginBottom: 16 } },
@@ -3367,6 +3908,7 @@ function PublicPage({ members, ledger, log, insights, lectures, settings, certs,
             ptab === "onepick" && React.createElement(OnePickTab, null),
             ptab === "cert" && React.createElement(CertBoard, { certs: certs, cmts: cmts, members: members, me: meMember, onAddCert: onAddCert, onAddCmt: onAddCmt }),
             ptab === "stats" && React.createElement(AuctionStatsTab, { stats: austats }),
+            ptab === "archive" && React.createElement(ArchiveTab, null),
             ptab === "lectures" && React.createElement(LecturesTab, null),
             ptab === "insights" && React.createElement(InsightsTab, null),
             ptab === "guide" && React.createElement(GuideTab, null),
@@ -4072,6 +4614,18 @@ function App() {
             fail(e);
         }
     };
+    /* ── 자료실 도구 설정(loanCfg) 저장 — 관리자·운영진 공용 ── */
+    const onSaveToolCfg = async (cfg) => {
+        try {
+            if (live)
+                await api("saveToolCfg", { adminKey, cfg });
+            setSettings((S0) => ({ ...S0, loanCfg: cfg }));
+            say("자료실 도구 설정을 저장했어요 — 멤버 화면에 바로 반영돼요");
+        }
+        catch (e) {
+            fail(e);
+        }
+    };
     const persistSettings = (s) => {
         setSettings(s);
         if (live)
@@ -4080,10 +4634,10 @@ function App() {
     const total = members.reduce((s, m) => s + m.credits, 0);
     const usable = members.filter((m) => canUse(m.credits, settings)).length;
     const isStaff = adminRole === "staff";
-    const STAFF_TABS = ["members", "insights", "lectures", "certs", "austats"]; // 운영진 허용 탭 (크레딧 관련 제외)
+    const STAFF_TABS = ["members", "insights", "lectures", "certs", "austats", "tools"]; // 운영진 허용 탭 (크레딧 관련 제외)
     const TABS = [
         ["board", "리더보드"], ["members", "멤버 관리"], ["events", "데일리 이벤트"],
-        ["mate", "그로인 메이트"], ["lectures", "강의"], ["insights", "인사이트"], ["certs", "인증 게시판"], ["austats", "경매 통계"], ["ranking", "그로인 랭킹"], ["awards", "시상식"], ["settings", "설정"],
+        ["mate", "그로인 메이트"], ["lectures", "강의"], ["insights", "인사이트"], ["certs", "인증 게시판"], ["austats", "경매 통계"], ["ranking", "그로인 랭킹"], ["awards", "시상식"], ["tools", "자료실"], ["settings", "설정"],
     ].filter(([k]) => !isStaff || STAFF_TABS.includes(k));
     const effTab = TABS.some(([k]) => k === tab) ? tab : TABS[0][0];
     const shellFont = { fontFamily: `-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Pretendard","Noto Sans KR","Malgun Gothic",sans-serif`, WebkitFontSmoothing: "antialiased" };
@@ -4152,6 +4706,7 @@ function App() {
                 effTab === "austats" && React.createElement(StatsAdmin, { stats: austats, onSave: onSaveStats, onDelete: onDeleteStats, auto: autoStats, onAutoSave: onAutoSave, onAutoRun: onAutoRun, onAutoTrigger: onAutoTrigger, isAdmin: !isStaff }),
                 effTab === "ranking" && React.createElement(RankingAdmin, { members: members, events: eventLog, ledger: ledger, acts: acts, visitlog: visitlog }),
                 effTab === "awards" && React.createElement(Awards, { members: members, settings: settings }),
+                effTab === "tools" && React.createElement(ToolsAdmin, { settings: settings, onSave: onSaveToolCfg }),
                 effTab === "settings" && React.createElement(Settings, { settings: settings, setSettings: persistSettings })))),
         pinPrompt && (React.createElement("div", { style: { position: "fixed", inset: 0, background: "rgba(28,35,51,.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 20 } },
             React.createElement("div", { style: { background: "#fff", borderRadius: 20, padding: 24, width: "100%", maxWidth: 320, boxShadow: "0 20px 50px rgba(28,35,51,.35)" } },
