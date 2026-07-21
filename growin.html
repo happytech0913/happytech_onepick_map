@@ -3137,8 +3137,6 @@ function LoanReader({ cfg }) {
             notes.push(`생애최초는 LTV가 우대되지만 한도 상한(${fmtMan(cfg.firstCap)})은 그대로 적용돼요.`);
         if (incomeMode === "card")
             notes.push(`카드사용액 기반 환산소득은 은행별 인정 방식이 달라 실제 한도와 차이 날 수 있어요.`);
-        if (incomeMode === "card" && cardCapped)
-            notes.push(`카드사용액 환산 소득은 연 ${fmtMan(ci.cap)}까지만 인정돼요 (원 환산 ${fmtMan(Math.round(rawFromCard))} → ${fmtMan(ci.cap)}로 반영).`);
         return { banned: false, ltvPct, ltvLimit, cap, stress, evalRate, dsrPct, annualAvail, dsrLimit, candidates, final, binding, monthly, effIncome, notes };
     }, [region, house, sector, rateType, incomeMode, price, income, card, existing, rate, years, cfg]);
     const ready = (Number(price) || 0) > 0 && out.effIncome > 0;
@@ -3167,10 +3165,7 @@ function LoanReader({ cfg }) {
                                 const ci = cfg.cardIncome || { divisor: 40.9, multiplier: 90, cap: 5000 };
                                 const raw = (Number(card) || 0) / (ci.divisor / 100) * (ci.multiplier / 100);
                                 const capped = Math.min(raw, ci.cap);
-                                const hint = raw > ci.cap
-                                    ? `환산 연소득 ${fmtMan(capped)} (원 환산 ${fmtMan(Math.round(raw))} · 최대 인정 ${fmtMan(ci.cap)})`
-                                    : `환산 연소득 ≈ ${fmtMan(capped)} (÷ ${ci.divisor}% × ${ci.multiplier}% · 최대 ${fmtMan(ci.cap)})`;
-                                return React.createElement(ToolNum, { label: "", value: card, onChange: setCard, hint: hint });
+                                return React.createElement(ToolNum, { label: "", value: card, onChange: setCard, hint: Number(card) > 0 ? `환산 연소득 ≈ ${fmtMan(capped)}` : "" });
                             })()),
                     React.createElement(ToolNum, { label: "\uAE30\uC874 \uB300\uCD9C \uC5F0 \uC6D0\uB9AC\uAE08", value: existing, onChange: setExisting, hint: "\uC8FC\uB2F4\uB300\u00B7\uC2E0\uC6A9\u00B7\uD560\uBD80 \uB4F1 \uC5F0\uAC04 \uC0C1\uD658\uC561 \uD569\uACC4" }),
                     React.createElement(ToolNum, { label: "\uB300\uCD9C \uAE08\uB9AC", value: rate, onChange: setRate, unit: "%", money: false, step: "0.1" }),
