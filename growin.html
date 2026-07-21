@@ -4127,6 +4127,13 @@ function App() {
     useEffect(() => {
         if (!live)
             return;
+        /* 서버 웜업 핑 — 사용자가 로그인 폼을 채우는 몇 초 동안 Apps Script 컨테이너를 미리 깨워둠
+           (이걸 안 하면 로그인 클릭이 콜드 스타트를 뒤집어써서 2-4초 손해)
+           fire-and-forget: 응답을 기다리지 않고 그냥 요청만 던짐 */
+        try {
+            fetch(CONFIG.API_URL, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ action: "ping" }) });
+        }
+        catch (e) { }
         /* 로그인 화면(Gate)은 커뮤니티 데이터를 사용하지 않으므로 로그인 성공 전까지 refresh()를 실행하지 않아요.
            ※ 예전엔 mount 즉시 api("all")로 모든 시트(멤버·인사이트·강의·인증글·댓글·경매통계 14개월치…)를
              긁어왔는데, payload가 커지면서 사용자가 이름·비번 입력하는 동안 이 요청이 서버 자원을 붙잡아
@@ -4176,7 +4183,11 @@ function App() {
             return { ok: false, error: members.some((m) => m.realName === name) ? "비밀번호가 등록 정보와 달라요. 처음 비밀번호는 전화번호 뒷 4자리예요." : "등록된 멤버가 아니에요. 운영진에게 등록을 요청해주세요." };
         }
         try {
+            const t0 = performance.now();
             const d = await api("login", { name, p4 });
+            const totalMs = Math.round(performance.now() - t0);
+            /* 로그인 지연 진단 — DevTools 콘솔에서 서버 vs 네트워크 시간 분리 확인 */
+            console.log(`[login] 총 ${totalMs}ms · 서버 ${d.serverMs || "?"}ms · 네트워크·redirect ${d.serverMs != null ? totalMs - d.serverMs : "?"}ms`);
             setViewer(d.memberId);
             setSessToken(d.token || null); // 인증 게시판 글·댓글 작성용
             setWelcome(welcomeMsg(d.lastSeenMs != null ? d.lastSeenMs : null, d.nowMs)); // 방문기록 시트 기준 경과 시간
