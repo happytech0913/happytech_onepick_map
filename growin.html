@@ -4160,7 +4160,10 @@ function App() {
         catch (e) { }
         setPhase("ready"); // Gate는 데이터 없이도 렌더 가능 — 스플래시로 대기하지 않음
     }, []);
-    /* ── 로그인 (공개 페이지) — 비밀번호: 직접 바꾼 4자리, 없으면 초기값(전화 뒷 4자리) ── */
+    /* ── 로그인 (공개 페이지) — 비밀번호: 직접 바꾼 4자리, 없으면 초기값(전화 뒷 4자리)
+       ※ 낙관적 렌더: 캐시된 멤버 목록에 이름이 존재하면 서버 응답을 기다리지 않고 홈으로 즉시 전환.
+          서버 검증은 백그라운드에서 진행하며, 인증 실패 시 자동으로 로그인 화면으로 복귀 + 오류 안내.
+          네트워크·redirect 왕복 2초를 감춰서 체감 대기가 거의 0에 가까움. ── */
     const onLogin = async (name, p4) => {
         if (!live) {
             const found = members.find((m) => m.realName === name && (m.pw || m.phone4) === p4);
@@ -4182,16 +4185,47 @@ function App() {
             }
             return { ok: false, error: members.some((m) => m.realName === name) ? "비밀번호가 등록 정보와 달라요. 처음 비밀번호는 전화번호 뒷 4자리예요." : "등록된 멤버가 아니에요. 운영진에게 등록을 요청해주세요." };
         }
+        const trimmedName = String(name || "").trim();
+        const cached = members.find((m) => m.realName === trimmedName);
+        const canOptimistic = cached && p4 && p4.length === 4;
+        if (canOptimistic) {
+            /* 1단계: 홈 즉시 렌더 (서버 응답 대기 없이) */
+            setViewer(cached.id);
+            setWelcome("다시 오셨네요! 오늘도 해피 그로인🍀"); // 중립적 메시지로 시작
+            /* 2단계: 서버 검증을 백그라운드로 */
+            (async () => {
+                try {
+                    const t0 = performance.now();
+                    const d = await api("login", { name, p4 });
+                    const totalMs = Math.round(performance.now() - t0);
+                    console.log(`[login] 총 ${totalMs}ms · 서버 ${d.serverMs || "?"}ms · 네트워크·redirect ${d.serverMs != null ? totalMs - d.serverMs : "?"}ms · 낙관적 렌더`);
+                    setSessToken(d.token || null);
+                    setViewer(d.memberId); // 이름 중복 등 예외 상황에서 실제 memberId로 보정
+                    /* 환영 메시지: 환영 오버레이가 아직 보이고 있으면 정확한 메시지로 자연스럽게 교체
+                       (오버레이가 이미 사라졌으면 건드리지 않아 새 오버레이가 뜨지 않도록 함) */
+                    setWelcome((current) => current ? welcomeMsg(d.lastSeenMs != null ? d.lastSeenMs : null, d.nowMs) : current);
+                    refresh(); // 최신 데이터 백그라운드 fetch
+                }
+                catch (e) {
+                    /* 서버 검증 실패 → 롤백: 홈 → 로그인 화면 · 오류 안내 */
+                    setViewer(null);
+                    setSessToken(null);
+                    setWelcome(null);
+                    say("⚠️ " + (e.message || "로그인에 실패했어요"));
+                }
+            })();
+            return { ok: true };
+        }
+        /* 캐시 미매칭 (첫 방문, 새 멤버 등) — 서버 검증 완료 후 홈 진입 */
         try {
             const t0 = performance.now();
             const d = await api("login", { name, p4 });
             const totalMs = Math.round(performance.now() - t0);
-            /* 로그인 지연 진단 — DevTools 콘솔에서 서버 vs 네트워크 시간 분리 확인 */
-            console.log(`[login] 총 ${totalMs}ms · 서버 ${d.serverMs || "?"}ms · 네트워크·redirect ${d.serverMs != null ? totalMs - d.serverMs : "?"}ms`);
+            console.log(`[login] 총 ${totalMs}ms · 서버 ${d.serverMs || "?"}ms · 네트워크·redirect ${d.serverMs != null ? totalMs - d.serverMs : "?"}ms · 서버 검증 대기`);
             setViewer(d.memberId);
-            setSessToken(d.token || null); // 인증 게시판 글·댓글 작성용
-            setWelcome(welcomeMsg(d.lastSeenMs != null ? d.lastSeenMs : null, d.nowMs)); // 방문기록 시트 기준 경과 시간
-            refresh(); // 로그인 성공 후 백그라운드로 최신 데이터 fetch (await 하지 않아 홈이 즉시 렌더됨)
+            setSessToken(d.token || null);
+            setWelcome(welcomeMsg(d.lastSeenMs != null ? d.lastSeenMs : null, d.nowMs));
+            refresh();
             return { ok: true };
         }
         catch (e) {
