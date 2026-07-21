@@ -2843,7 +2843,8 @@ const TOOL_CFG_DEFAULT = {
     dsr: { bank: 40, nonbank: 50 }, // DSR 비율 (%)
     stress: { reg: 3.0, metro: 3.0, etc: 1.5 }, // 스트레스 금리 (%p)
     stressRatio: { var: 100, mix: 80, fix5: 40, fix: 0 }, // 금리유형별 반영비율 (%)
-    cardRatio: 45, // 카드사용액→연소득 환산비율 (%)
+    cardIncome: { divisor: 40.9, multiplier: 90, cap: 5000 }, // 카드사용액→연소득 환산: (사용액 ÷ divisor%) × multiplier%, 최대 cap 만원
+    defaultRate: 5.0, // 판독기 기본 대출금리 (%) — 시장 여건에 맞춰 조정
     moveInMonths: 6, // 규제지역 전입 의무 (개월)
     sellMonths: 6, // 처분조건부 기존주택 처분 기한 (개월)
     /* 수익률 계산기 기본 요율 (%) — Made by 써니 엑셀 기준 */
@@ -2880,6 +2881,7 @@ const mergeToolCfg = (saved) => {
     o.dsr = { ...d.dsr, ...saved.dsr };
     o.stress = { ...d.stress, ...saved.stress };
     o.stressRatio = { ...d.stressRatio, ...saved.stressRatio };
+    o.cardIncome = { ...d.cardIncome, ...saved.cardIncome };
     o.calc = { ...d.calc, ...saved.calc };
     o.capTiers = Array.isArray(saved.capTiers) && saved.capTiers.length ? saved.capTiers : d.capTiers;
     o.brackets = Array.isArray(saved.brackets) && saved.brackets.length ? saved.brackets : d.brackets;
@@ -3078,11 +3080,15 @@ function LoanReader({ cfg }) {
     const [income, setIncome] = useState("");
     const [card, setCard] = useState("");
     const [existing, setExisting] = useState("");
-    const [rate, setRate] = useState(4.2);
+    const [rate, setRate] = useState(cfg.defaultRate != null ? cfg.defaultRate : 4.2);
     const [years, setYears] = useState(30);
     const out = useMemo(() => {
         const P = Number(price) || 0;
-        const effIncome = incomeMode === "income" ? (Number(income) || 0) : (Number(card) || 0) / (cfg.cardRatio / 100);
+        const ci = cfg.cardIncome || { divisor: 40.9, multiplier: 90, cap: 5000 };
+        const rawFromCard = (Number(card) || 0) / (ci.divisor / 100) * (ci.multiplier / 100);
+        const cardBasedIncome = Math.min(rawFromCard, ci.cap); // 카드 환산 소득은 cap(만원)까지만 인정
+        const cardCapped = rawFromCard > ci.cap;
+        const effIncome = incomeMode === "income" ? (Number(income) || 0) : cardBasedIncome;
         const ltvPct = (cfg.ltv[region] || {})[house] || 0;
         const notes = [];
         if (ltvPct <= 0) {
@@ -3131,6 +3137,8 @@ function LoanReader({ cfg }) {
             notes.push(`생애최초는 LTV가 우대되지만 한도 상한(${fmtMan(cfg.firstCap)})은 그대로 적용돼요.`);
         if (incomeMode === "card")
             notes.push(`카드사용액 기반 환산소득은 은행별 인정 방식이 달라 실제 한도와 차이 날 수 있어요.`);
+        if (incomeMode === "card" && cardCapped)
+            notes.push(`카드사용액 환산 소득은 연 ${fmtMan(ci.cap)}까지만 인정돼요 (원 환산 ${fmtMan(Math.round(rawFromCard))} → ${fmtMan(ci.cap)}로 반영).`);
         return { banned: false, ltvPct, ltvLimit, cap, stress, evalRate, dsrPct, annualAvail, dsrLimit, candidates, final, binding, monthly, effIncome, notes };
     }, [region, house, sector, rateType, incomeMode, price, income, card, existing, rate, years, cfg]);
     const ready = (Number(price) || 0) > 0 && out.effIncome > 0;
@@ -3155,7 +3163,15 @@ function LoanReader({ cfg }) {
                                 background: incomeMode === k ? T.grad : "#EFF3F2", color: incomeMode === k ? "#fff" : T.sub } }, lb)))),
                         incomeMode === "income"
                             ? React.createElement(ToolNum, { label: "", value: income, onChange: setIncome })
-                            : React.createElement(ToolNum, { label: "", value: card, onChange: setCard, hint: `환산 연소득 ≈ ${fmtMan((Number(card) || 0) / (cfg.cardRatio / 100))} (÷ ${cfg.cardRatio}%)` })),
+                            : (() => {
+                                const ci = cfg.cardIncome || { divisor: 40.9, multiplier: 90, cap: 5000 };
+                                const raw = (Number(card) || 0) / (ci.divisor / 100) * (ci.multiplier / 100);
+                                const capped = Math.min(raw, ci.cap);
+                                const hint = raw > ci.cap
+                                    ? `환산 연소득 ${fmtMan(capped)} (원 환산 ${fmtMan(Math.round(raw))} · 최대 인정 ${fmtMan(ci.cap)})`
+                                    : `환산 연소득 ≈ ${fmtMan(capped)} (÷ ${ci.divisor}% × ${ci.multiplier}% · 최대 ${fmtMan(ci.cap)})`;
+                                return React.createElement(ToolNum, { label: "", value: card, onChange: setCard, hint: hint });
+                            })()),
                     React.createElement(ToolNum, { label: "\uAE30\uC874 \uB300\uCD9C \uC5F0 \uC6D0\uB9AC\uAE08", value: existing, onChange: setExisting, hint: "\uC8FC\uB2F4\uB300\u00B7\uC2E0\uC6A9\u00B7\uD560\uBD80 \uB4F1 \uC5F0\uAC04 \uC0C1\uD658\uC561 \uD569\uACC4" }),
                     React.createElement(ToolNum, { label: "\uB300\uCD9C \uAE08\uB9AC", value: rate, onChange: setRate, unit: "%", money: false, step: "0.1" }),
                     React.createElement(ToolNum, { label: "\uB9CC\uAE30", value: years, onChange: setYears, unit: "\uB144", money: false })),
@@ -3281,8 +3297,19 @@ function ToolsAdmin({ settings, onSave }) {
                     "2\uAE08\uC735\uAD8C DSR ",
                     React.createElement(MiniNum, { value: draft.dsr.nonbank, onChange: (v) => up((d) => { d.dsr.nonbank = v; }), w: 58, unit: "%" })),
                 React.createElement("span", null,
-                    "\uCE74\uB4DC\uC0AC\uC6A9\uC561 \uD658\uC0B0\uBE44\uC728 ",
-                    React.createElement(MiniNum, { value: draft.cardRatio, onChange: (v) => up((d) => { d.cardRatio = v; }), w: 58, unit: "%" }))),
+                    "\uAE30\uBCF8 \uB300\uCD9C\uAE08\uB9AC ",
+                    React.createElement(MiniNum, { value: draft.defaultRate, onChange: (v) => up((d) => { d.defaultRate = v; }), w: 58, unit: "%" }))),
+            React.createElement("div", { style: { fontSize: 11, color: T.sub, marginTop: 8, marginBottom: 6, fontWeight: 800 } }, "\uCE74\uB4DC\uC0AC\uC6A9\uC561 \u2192 \uC5F0\uC18C\uB4DD \uD658\uC0B0 (\uC0AC\uC6A9\uC561 \u00F7 \uB098\uB217\uC148% \u00D7 \uACF1\uC148% \u00B7 \uCD5C\uB300 \uC778\uC815 \uC18C\uB4DD\uAE4C\uC9C0)"),
+            React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: "10px 18px", fontSize: 12, fontWeight: 700, alignItems: "center" } },
+                React.createElement("span", null,
+                    "\uB098\uB217\uC148 ",
+                    React.createElement(MiniNum, { value: draft.cardIncome.divisor, onChange: (v) => up((d) => { d.cardIncome.divisor = v; }), w: 62, unit: "%" })),
+                React.createElement("span", null,
+                    "\uACF1\uC148 ",
+                    React.createElement(MiniNum, { value: draft.cardIncome.multiplier, onChange: (v) => up((d) => { d.cardIncome.multiplier = v; }), w: 62, unit: "%" })),
+                React.createElement("span", null,
+                    "\uCD5C\uB300 \uC778\uC815 ",
+                    React.createElement(MiniNum, { value: draft.cardIncome.cap, onChange: (v) => up((d) => { d.cardIncome.cap = v; }), w: 78, unit: "\uB9CC\uC6D0" }))),
             React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: "10px 18px", fontSize: 12, fontWeight: 700, alignItems: "center", marginTop: 10 } },
                 React.createElement("span", null,
                     "\uC2A4\uD2B8\uB808\uC2A4 \u00B7 \uADDC\uC81C ",
