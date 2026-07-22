@@ -33,6 +33,47 @@
   </style>
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script>
+    /* ── 전역 오류 캐치 · 진단 계층 ──
+       흰 화면 크래시가 발생할 때 사용자가 상황을 캡처해 운영진에게 보낼 수 있도록
+       화면 하단에 오류 내용과 UA를 표시하는 안전망. React가 로드되기 전 오류도 잡음. */
+    window.__growinErrs = [];
+    window.__growinShowErr = function() { __growinShowErr(); };
+    function __growinShowErr() {
+      try {
+        var p = document.getElementById('gw-err');
+        if (!p) {
+          p = document.createElement('div');
+          p.id = 'gw-err';
+          p.style.cssText = 'position:fixed;left:0;right:0;bottom:0;max-height:55vh;overflow:auto;background:#FEF2F2;border-top:2px solid #DC2626;padding:14px 16px;font:12px/1.5 -apple-system,sans-serif;color:#7F1D1D;z-index:99999;-webkit-user-select:text;user-select:text';
+          p.innerHTML = '<div style="font-weight:800;font-size:13px;margin-bottom:6px">⚠️ 화면 오류가 감지됐어요</div>'
+            + '<div style="font-size:11.5px;margin-bottom:8px;line-height:1.6">아래 내용을 <b>꾹 눌러 복사</b>해서 운영진 채팅방에 보내주세요. 그러면 원인을 빠르게 찾을 수 있어요.</div>'
+            + '<pre id="gw-err-body" style="font:11px/1.4 monospace;background:#fff;padding:10px;border-radius:6px;border:1px solid #FCA5A5;white-space:pre-wrap;word-break:break-all;margin-bottom:10px;-webkit-user-select:text;user-select:text"></pre>'
+            + '<button id="gw-err-reset" style="cursor:pointer;padding:9px 14px;border-radius:999px;border:none;background:#DC2626;color:#fff;font-weight:800;font-size:12px;margin-right:8px">캐시 지우고 새로고침</button>'
+            + '<button id="gw-err-close" style="cursor:pointer;padding:9px 14px;border-radius:999px;border:1px solid #DC2626;background:#fff;color:#DC2626;font-weight:800;font-size:12px">닫기</button>';
+          document.body.appendChild(p);
+          document.getElementById('gw-err-reset').onclick = function() {
+            try { localStorage.clear(); } catch (e) {}
+            try { sessionStorage.clear(); } catch (e) {}
+            location.reload();
+          };
+          document.getElementById('gw-err-close').onclick = function() { p.style.display = 'none'; };
+        }
+        var body = document.getElementById('gw-err-body');
+        var payload = { ua: navigator.userAgent, url: location.href, ts: new Date().toISOString(), errors: window.__growinErrs };
+        if (body) body.textContent = JSON.stringify(payload, null, 2);
+      } catch (e) {}
+    }
+    window.addEventListener('error', function(e) {
+      window.__growinErrs.push({ kind: 'error', msg: String((e && e.message) || ''), src: String((e && e.filename) || ''), line: (e && e.lineno) || 0, col: (e && e.colno) || 0, stack: String((e && e.error && e.error.stack) || '') });
+      __growinShowErr();
+    });
+    window.addEventListener('unhandledrejection', function(e) {
+      var r = e && e.reason;
+      window.__growinErrs.push({ kind: 'rejection', msg: String((r && r.message) || r || ''), stack: String((r && r.stack) || '') });
+      __growinShowErr();
+    });
+  </script>
 </head>
 <body>
   <div id="root"></div>
@@ -1327,11 +1368,11 @@ function HomeLiveStats({ austats, onGo }) {
                             isCourtScope(s.scope) ? " (전국)" : ""),
                         React.createElement("div", { style: { display: "flex", alignItems: "baseline", gap: 8, marginTop: 3 } },
                             React.createElement("span", { style: { fontSize: 27, fontWeight: 800, letterSpacing: "-0.03em", fontVariantNumeric: "tabular-nums", lineHeight: 1 } },
-                                s.priceRate.toFixed(1),
+                                (Number(s.priceRate) || 0).toFixed(1),
                                 "%"),
-                            s.diff != null && (React.createElement("span", { style: { fontSize: 12, fontWeight: 800 } },
+                            s.diff != null && !isNaN(Number(s.diff)) && (React.createElement("span", { style: { fontSize: 12, fontWeight: 800 } },
                                 s.diff > 0 ? "▲" : s.diff < 0 ? "▼" : "—",
-                                Math.abs(s.diff).toFixed(1),
+                                Math.abs(Number(s.diff) || 0).toFixed(1),
                                 "%p"))),
                         React.createElement("div", { style: { fontSize: 10.5, fontWeight: 700, opacity: 0.9, marginTop: 3 } },
                             "\uB099\uCC30\uAC00\uC728",
@@ -4098,22 +4139,26 @@ function App() {
     async function refresh(key) {
         try {
             const d = await api("all", { adminKey: key || adminKey || undefined });
-            setMembers(d.members);
-            setLedger(d.ledger);
-            setEventLog(d.events);
-            setInsights(d.insights);
-            setLectures(d.lectures || []);
-            if (d.settings)
+            if (!d || typeof d !== "object")
+                throw new Error("서버 응답 형식이 올바르지 않아요");
+            /* 서버 응답에 필드가 누락된 경우 undefined가 state에 들어가 이후 .map/.find/.filter 에서 흰 화면 크래시로 이어짐
+               → 모든 배열/객체 setter에 방어적 기본값 (localStorage 로드 경로와 동일 규칙) */
+            setMembers(Array.isArray(d.members) ? d.members : []);
+            setLedger(Array.isArray(d.ledger) ? d.ledger : []);
+            setEventLog(Array.isArray(d.events) ? d.events : []);
+            setInsights(Array.isArray(d.insights) ? d.insights : []);
+            setLectures(Array.isArray(d.lectures) ? d.lectures : []);
+            setCerts(Array.isArray(d.certs) ? d.certs : []);
+            setCmts(Array.isArray(d.cmts) ? d.cmts : []);
+            setAustats(Array.isArray(d.austats) ? d.austats : []);
+            if (d.settings && typeof d.settings === "object")
                 setSettings({ ...DEFAULT_SETTINGS, ...d.settings });
-            setCerts(d.certs || []);
-            setCmts(d.cmts || []);
-            setAustats(d.austats || []);
-            if (d.acts)
+            if (Array.isArray(d.acts))
                 setActs(d.acts);
-            if (d.visitlog)
+            if (Array.isArray(d.visitlog))
                 setVisitlog(d.visitlog);
-            if (d.autoStats)
-                setAutoStats(d.autoStats); // 관리자 조회에만 포함
+            if (d.autoStats && typeof d.autoStats === "object")
+                setAutoStats(d.autoStats);
             setPhase("ready");
             /* 공개 데이터만 캐시 (관리자 키 조회 결과는 전화번호가 포함되므로 저장 안 함) */
             if (!key && !adminKey) {
@@ -4146,15 +4191,17 @@ function App() {
             const raw = localStorage.getItem("growin_cache_v2");
             if (raw) {
                 const { t, d } = JSON.parse(raw);
-                if (Date.now() - t < 1000 * 60 * 60 * 24 && d && d.members) {
+                if (Date.now() - t < 1000 * 60 * 60 * 24 && d && Array.isArray(d.members)) {
+                    /* 오래된 캐시에는 새 필드가 없을 수 있으므로 항상 안전한 기본값 사용
+                       (undefined를 setter에 넣으면 이후 .map/.find/.filter 에서 크래시 → 흰 화면) */
                     setMembers(d.members);
-                    setLedger(d.ledger);
-                    setEventLog(d.events);
-                    setInsights(d.insights);
-                    setLectures(d.lectures || []);
-                    setCerts(d.certs || []);
-                    setCmts(d.cmts || []);
-                    setAustats(d.austats || []);
+                    setLedger(Array.isArray(d.ledger) ? d.ledger : []);
+                    setEventLog(Array.isArray(d.events) ? d.events : []);
+                    setInsights(Array.isArray(d.insights) ? d.insights : []);
+                    setLectures(Array.isArray(d.lectures) ? d.lectures : []);
+                    setCerts(Array.isArray(d.certs) ? d.certs : []);
+                    setCmts(Array.isArray(d.cmts) ? d.cmts : []);
+                    setAustats(Array.isArray(d.austats) ? d.austats : []);
                     if (d.settings)
                         setSettings({ ...DEFAULT_SETTINGS, ...d.settings });
                 }
@@ -4817,8 +4864,45 @@ function App() {
         toast && (React.createElement("div", { style: { position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", background: T.ink, color: "#fff",
                 padding: "12px 22px", borderRadius: 999, fontWeight: 700, fontSize: 13.5, boxShadow: "0 12px 30px rgba(28,35,51,.3)", zIndex: 50, maxWidth: "90vw" } }, toast))));
 }
+/* ── React 에러 바운더리 · 렌더 도중 크래시가 나면 흰 화면 대신 복구 화면 표시
+     사용자가 캐시 초기화 또는 오류 캡처 후 운영진에게 전송할 수 있는 최소 UI ── */
+class ErrorBoundary extends React.Component {
+    constructor(props) { super(props); this.state = { error: null }; }
+    static getDerivedStateFromError(error) { return { error: error }; }
+    componentDidCatch(error, info) {
+        try {
+            if (window.__growinErrs) {
+                window.__growinErrs.push({ kind: 'react', msg: String((error && error.message) || error || ''), stack: String((error && error.stack) || ''), component: String((info && info.componentStack) || '') });
+                if (typeof window.__growinShowErr === 'function')
+                    window.__growinShowErr(); // 하단 오류 패널도 함께 노출
+            }
+        }
+        catch (e) { }
+    }
+    render() {
+        if (!this.state.error)
+            return this.props.children;
+        const msg = String((this.state.error && this.state.error.message) || this.state.error || '알 수 없는 오류');
+        return (React.createElement("div", { style: { minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 24, fontFamily: "'Apple SD Gothic Neo','Malgun Gothic',sans-serif", background: "#F7F9FB", color: "#0E1730" } },
+            React.createElement("div", { style: { fontSize: 48 } }, "\uD83D\uDE25"),
+            React.createElement("div", { style: { fontSize: 18, fontWeight: 800, marginTop: 16, letterSpacing: "-0.02em" } }, "\uD654\uBA74\uC744 \uBD88\uB7EC\uC624\uB2E4 \uBB38\uC81C\uAC00 \uC0DD\uACBC\uC5B4\uC694"),
+            React.createElement("div", { style: { fontSize: 12.5, color: "#5F6C86", marginTop: 8, textAlign: "center", lineHeight: 1.6, maxWidth: 320 } }, "\uB300\uBD80\uBD84 \uBE0C\uB77C\uC6B0\uC800\uC5D0 \uB0A8\uC544\uC788\uB294 \uC624\uB798\uB41C \uB370\uC774\uD130 \uB54C\uBB38\uC774\uC5D0\uC694. \uCE90\uC2DC\uB97C \uC9C0\uC6B0\uACE0 \uB2E4\uC2DC \uC5F4\uC5B4\uBCF4\uC138\uC694."),
+            React.createElement("pre", { style: { maxWidth: 340, marginTop: 18, padding: 12, background: "#fff", border: "1px solid #E5E9F1", borderRadius: 10, fontSize: 11, color: "#7F1D1D", whiteSpace: "pre-wrap", wordBreak: "break-all", WebkitUserSelect: "text", userSelect: "text" } }, msg),
+            React.createElement("button", { onClick: () => { try {
+                    localStorage.clear();
+                }
+                catch (e) { } try {
+                    sessionStorage.clear();
+                }
+                catch (e) { } location.reload(); }, style: { marginTop: 20, padding: "12px 22px", borderRadius: 999, border: "none", background: "linear-gradient(135deg, #35C9A8 0%, #7BA6E8 100%)", color: "#fff", fontWeight: 800, fontSize: 14, fontFamily: "inherit", cursor: "pointer" } }, "\uCE90\uC2DC \uC9C0\uC6B0\uACE0 \uC0C8\uB85C\uACE0\uCE68"),
+            React.createElement("div", { style: { fontSize: 10.5, color: "#94A0B6", marginTop: 14, textAlign: "center", lineHeight: 1.6 } },
+                "\uACC4\uC18D \uC774 \uD654\uBA74\uC774 \uB728\uBA74 \uC704 \uBE68\uAC04 \uC0C1\uC790\uC640 \uC544\uB798 \uC0C1\uC138 \uC624\uB958\uB97C",
+                React.createElement("br", null),
+                "\uCEA1\uCC98\uD574\uC11C \uC6B4\uC601\uC9C4\uC5D0\uAC8C \uBCF4\uB0B4\uC8FC\uC138\uC694")));
+    }
+}
 const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(React.createElement(App));
+root.render(React.createElement(ErrorBoundary, null, React.createElement(App)));
 </script>
 </body>
 </html>
