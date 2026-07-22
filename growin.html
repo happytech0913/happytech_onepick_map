@@ -558,7 +558,9 @@ function Members({ members, ledger, onAdjust, onAddMember, onBumpStat, onSetLeve
     const [reason, setReason] = useState("");
     const [newName, setNewName] = useState("");
     const [newP4, setNewP4] = useState("");
-    const list = members.filter((m) => m.name.includes(q));
+    const list = members
+        .filter((m) => m.name.includes(q))
+        .sort((a, b) => String(a.realName || a.name || "").localeCompare(String(b.realName || b.name || ""), "ko")); // 가나다순 정렬
     const selMember = members.find((m) => m.id === sel);
     const selLedger = ledger.filter((l) => l.m === sel);
     return (React.createElement("div", null,
@@ -715,7 +717,9 @@ function Events({ members, log, onLogEvent, settings }) {
             w[id] = 3000;
         setWinAmt(w);
     };
-    const filtered = members.filter((m) => m.realName.includes(filter) || m.name.includes(filter));
+    const filtered = members
+        .filter((m) => m.realName.includes(filter) || m.name.includes(filter))
+        .sort((a, b) => String(a.realName || "").localeCompare(String(b.realName || ""), "ko")); // 가나다순 정렬
     const selectAllFiltered = () => setParts([...new Set([...parts, ...filtered.map((m) => m.id)])]);
     const clearAll = () => { setParts([]); setWinAmt({}); };
     const winners = Object.entries(winAmt).map(([id, amount]) => ({ m: Number(id), amount: Number(amount) || 0 }));
