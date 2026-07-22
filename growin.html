@@ -239,17 +239,20 @@ const welcomeMsg = (lastSeenMs, nowMs) => {
     return `${Math.floor(hours / 24)}일 만에 다시 뵙네요! 오늘도 해피 그로인🍀`;
 };
 /* ── 입장 환영 오버레이 — 배경이 어두워지며 메시지가 은은한 빛처럼 나타났다 사라짐
-     전체 1.8초 (2초 이내) 후 자동 종료 · 터치를 막지 않아 즉시 입장 가능 ── */
-const WELCOME_MS = 1800;
-function WelcomeOverlay({ text, onDone }) {
+     기본 1.8초 (짧게 · 로그인 체감을 빠르게)
+     서버 응답 대기 필요 시 3초로 확장해 정확한 메시지 교체까지 커버 ── */
+const WELCOME_MS_SHORT = 1800;
+const WELCOME_MS_LONG = 3000;
+function WelcomeOverlay({ text, duration, onDone }) {
+    const ms = duration || WELCOME_MS_SHORT;
     useEffect(() => {
-        const t = setTimeout(onDone, WELCOME_MS);
+        const t = setTimeout(onDone, ms);
         return () => clearTimeout(t);
     }, []);
     return (React.createElement("div", { style: { position: "fixed", inset: 0, zIndex: 300, display: "flex", alignItems: "center", justifyContent: "center", padding: 24,
             background: "rgba(18,24,38,.6)", backdropFilter: "blur(2.5px)", WebkitBackdropFilter: "blur(2.5px)",
-            animation: `gwDim ${WELCOME_MS}ms ease forwards`, pointerEvents: "none" } },
-        React.createElement("div", { style: { textAlign: "center", color: "#fff", animation: `gwGlow ${WELCOME_MS}ms ease forwards`, wordBreak: "keep-all" } },
+            animation: `gwDim ${ms}ms ease forwards`, pointerEvents: "none" } },
+        React.createElement("div", { style: { textAlign: "center", color: "#fff", animation: `gwGlow ${ms}ms ease forwards`, wordBreak: "keep-all" } },
             React.createElement("div", { style: { fontSize: 40, lineHeight: 1 } }, "\uD83C\uDF40"),
             React.createElement("div", { style: { fontWeight: 800, fontSize: 18.5, letterSpacing: "-0.02em", marginTop: 12, lineHeight: 1.5 } }, text))));
 }
@@ -4074,7 +4077,7 @@ function App() {
     const [pinInput, setPinInput] = useState("");
     const [pinErr, setPinErr] = useState("");
     const [toast, setToast] = useState(null);
-    const [welcome, setWelcome] = useState(null); // 입장 환영 메시지 (1.8초 후 자동 종료)
+    const [welcome, setWelcome] = useState(null); // 입장 환영 메시지 {text, ms} · null이면 오버레이 미표시 (자동 종료 시 null로 리셋)
     const say = (msg) => { setToast(msg); setTimeout(() => setToast(null), 2800); };
     const today = new Date().toISOString().slice(5, 10);
     /* 등급 자동 업그레이드 기준을 설정값과 동기화 */
@@ -4180,7 +4183,7 @@ function App() {
                 catch (e) { }
                 setViewer(found.id);
                 setSessToken("demo");
-                setWelcome(welcomeMsg(lastSeenMs, nowMs));
+                setWelcome({ text: welcomeMsg(lastSeenMs, nowMs) });
                 return { ok: true };
             }
             return { ok: false, error: members.some((m) => m.realName === name) ? "비밀번호가 등록 정보와 달라요. 처음 비밀번호는 전화번호 뒷 4자리예요." : "등록된 멤버가 아니에요. 운영진에게 등록을 요청해주세요." };
@@ -4189,9 +4192,20 @@ function App() {
         const cached = members.find((m) => m.realName === trimmedName);
         const canOptimistic = cached && p4 && p4.length === 4;
         if (canOptimistic) {
-            /* 1단계: 홈 즉시 렌더 (서버 응답 대기 없이) */
+            /* 1단계: 홈 즉시 렌더 + 개인화된 환영 메시지
+               localStorage에 저장해둔 지난 방문 시각으로 "N시간 만에 다시 뵙네요" 를 즉시 계산.
+               (서버의 방문기록 시트와 다를 수 있지만 같은 기기 재방문 케이스에서는 정확 · 서버가 확인 후 보정) */
+            let cachedLastSeen = null;
+            try {
+                const v = localStorage.getItem("growin_seen_" + cached.id);
+                if (v)
+                    cachedLastSeen = Number(v) || null;
+            }
+            catch (e) { }
+            const nowMs = Date.now();
             setViewer(cached.id);
-            setWelcome("다시 오셨네요! 오늘도 해피 그로인🍀"); // 중립적 메시지로 시작
+            /* 캐시 시각이 있으면 이미 정확한 메시지 → 짧게 (빠른 체감), 없으면 서버 응답까지 커버 → 길게 */
+            setWelcome({ text: welcomeMsg(cachedLastSeen, nowMs), ms: cachedLastSeen != null ? WELCOME_MS_SHORT : WELCOME_MS_LONG });
             /* 2단계: 서버 검증을 백그라운드로 */
             (async () => {
                 try {
@@ -4201,9 +4215,14 @@ function App() {
                     console.log(`[login] 총 ${totalMs}ms · 서버 ${d.serverMs || "?"}ms · 네트워크·redirect ${d.serverMs != null ? totalMs - d.serverMs : "?"}ms · 낙관적 렌더`);
                     setSessToken(d.token || null);
                     setViewer(d.memberId); // 이름 중복 등 예외 상황에서 실제 memberId로 보정
-                    /* 환영 메시지: 환영 오버레이가 아직 보이고 있으면 정확한 메시지로 자연스럽게 교체
-                       (오버레이가 이미 사라졌으면 건드리지 않아 새 오버레이가 뜨지 않도록 함) */
-                    setWelcome((current) => current ? welcomeMsg(d.lastSeenMs != null ? d.lastSeenMs : null, d.nowMs) : current);
+                    /* 환영 오버레이가 아직 재생 중이면 서버의 정확한 시각으로 문구를 자연스럽게 교체
+                       (오버레이 지속시간은 유지 · 오버레이가 이미 사라졌으면 재출현하지 않도록 함) */
+                    setWelcome((current) => current ? { text: welcomeMsg(d.lastSeenMs != null ? d.lastSeenMs : null, d.nowMs), ms: current.ms } : current);
+                    /* 다음 방문 때 낙관적 렌더에 쓰도록 이번 방문 시각을 저장 (서버 nowMs 기준) */
+                    try {
+                        localStorage.setItem("growin_seen_" + d.memberId, String(d.nowMs || nowMs));
+                    }
+                    catch (e) { }
                     refresh(); // 최신 데이터 백그라운드 fetch
                 }
                 catch (e) {
@@ -4224,7 +4243,12 @@ function App() {
             console.log(`[login] 총 ${totalMs}ms · 서버 ${d.serverMs || "?"}ms · 네트워크·redirect ${d.serverMs != null ? totalMs - d.serverMs : "?"}ms · 서버 검증 대기`);
             setViewer(d.memberId);
             setSessToken(d.token || null);
-            setWelcome(welcomeMsg(d.lastSeenMs != null ? d.lastSeenMs : null, d.nowMs));
+            setWelcome({ text: welcomeMsg(d.lastSeenMs != null ? d.lastSeenMs : null, d.nowMs) });
+            /* 다음 방문의 낙관적 렌더용 시각 저장 */
+            try {
+                localStorage.setItem("growin_seen_" + d.memberId, String(d.nowMs || Date.now()));
+            }
+            catch (e) { }
             refresh();
             return { ok: true };
         }
@@ -4789,7 +4813,7 @@ function App() {
                 React.createElement("div", { style: { display: "flex", gap: 8, marginTop: 14 } },
                     React.createElement(Btn, { small: true, tone: "ghost", style: { flex: 1 }, onClick: () => setPinPrompt(false) }, "\uCDE8\uC18C"),
                     React.createElement(Btn, { small: true, style: { flex: 1 }, disabled: !pinInput, onClick: tryPin }, "\uD655\uC778"))))),
-        welcome && React.createElement(WelcomeOverlay, { text: welcome, onDone: () => setWelcome(null) }),
+        welcome && React.createElement(WelcomeOverlay, { text: welcome.text, duration: welcome.ms, onDone: () => setWelcome(null) }),
         toast && (React.createElement("div", { style: { position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", background: T.ink, color: "#fff",
                 padding: "12px 22px", borderRadius: 999, fontWeight: 700, fontSize: 13.5, boxShadow: "0 12px 30px rgba(28,35,51,.3)", zIndex: 50, maxWidth: "90vw" } }, toast))));
 }
