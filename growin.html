@@ -190,7 +190,7 @@ const GROWTH_RULES = [
 ];
 /* 실시간 가중치 — App 렌더 시 settings 값으로 갱신됨 (LEVEL_PTS와 같은 패턴) */
 let GROWTH_PTS = { auctions: 5, bids: 1, visits: 0.5, wins: 0.2, parts: 0.1 };
-const growthScore = (m) => GROWTH_RULES.reduce((s, r) => s + (m[r.k] || 0) * (GROWTH_PTS[r.k] != null ? GROWTH_PTS[r.k] : r.pts), 0);
+const growthScore = (m) => m ? GROWTH_RULES.reduce((s, r) => s + (m[r.k] || 0) * (GROWTH_PTS[r.k] != null ? GROWTH_PTS[r.k] : r.pts), 0) : 0;
 /* 현재 수식을 사람이 읽는 문장으로 (설정·랭킹 화면 안내용) */
 const growthFormulaText = () => GROWTH_RULES.map((r) => `${r.short} ${GROWTH_PTS[r.k]}`).join(" · ");
 const fmtScore = (n) => (Math.round(n * 10) / 10).toLocaleString("ko-KR", { minimumFractionDigits: 1 });
@@ -450,11 +450,21 @@ if (typeof window !== "undefined") {
     window.__growinPost = function (item) {
         if (!CONFIG.API_URL)
             return; // 데모 모드에서는 저장 없이 화면 표시만
+        var body = JSON.stringify({ action: "logClientError", item: item });
+        /* sendBeacon 우선 — 페이지가 크래시/이탈 중에도 전송이 보장됨 (fetch보다 견고), 실패 시 fetch로 폴백 */
+        try {
+            if (navigator.sendBeacon) {
+                var blob = new Blob([body], { type: "text/plain;charset=utf-8" });
+                if (navigator.sendBeacon(CONFIG.API_URL, blob))
+                    return;
+            }
+        }
+        catch (e) { }
         try {
             fetch(CONFIG.API_URL, {
                 method: "POST",
                 headers: { "Content-Type": "text/plain;charset=utf-8" },
-                body: JSON.stringify({ action: "logClientError", item: item }),
+                body: body,
                 keepalive: true, // 페이지 이탈 중이어도 요청 완료 보장
             }).catch(function () { }); // 실패해도 조용히 무시 (로그 실패가 다시 로그를 트리거하지 않도록)
         }
@@ -3576,9 +3586,17 @@ function PublicPage({ members, ledger, log, insights, lectures, settings, certs,
     }, [ptab, viewer]);
     if (!viewer)
         return React.createElement(Gate, { onLogin: onLogin, onChangePw: onChangePw });
+    const meMember = members.find((m) => m.id === viewer);
+    /* viewer는 설정됐지만 members에 아직 해당 멤버가 없는 순간(낙관적 로그인 직후 데이터 미로드,
+       또는 캐시에 없는 새 기기) meMember.id 접근에서 크래시가 나므로 로딩 화면으로 방어.
+       refresh()가 완료되면 members가 채워지며 정상 렌더됨. */
+    if (!meMember)
+        return (React.createElement("div", { style: { minHeight: "60vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 24, color: T.sub } },
+            React.createElement("div", { style: { fontSize: 34 } }, "\uD83C\uDF31"),
+            React.createElement("div", { style: { fontSize: 14, fontWeight: 800, marginTop: 12, color: T.ink } }, "\uBD88\uB7EC\uC624\uB294 \uC911\u2026"),
+            React.createElement("div", { style: { fontSize: 12, marginTop: 6, textAlign: "center", lineHeight: 1.6 } }, "\uC815\uBCF4\uB97C \uAC00\uC838\uC624\uACE0 \uC788\uC5B4\uC694. \uC7A0\uC2DC\uB9CC \uAE30\uB2E4\uB824\uC8FC\uC138\uC694.")));
     const ranked = [...members].sort((a, b) => b.credits - a.credits);
     const growthRanked = [...members].map((m) => ({ ...m, gs: growthScore(m) })).sort((a, b) => b.gs - a.gs);
-    const meMember = members.find((m) => m.id === viewer);
     const myRank = ranked.findIndex((m) => m.id === meMember.id) + 1;
     const myGrowthRank = growthRanked.findIndex((m) => m.id === meMember.id) + 1;
     const myGS = growthScore(meMember);
