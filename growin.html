@@ -36,8 +36,23 @@
   <script>
     /* ── 전역 오류 캐치 · 진단 계층 ──
        흰 화면 크래시가 발생할 때 사용자가 상황을 캡처해 운영진에게 보낼 수 있도록
-       화면 하단에 오류 내용과 UA를 표시하는 안전망. React가 로드되기 전 오류도 잡음. */
-    window.__growinErrs = [];
+       화면 하단에 오류 내용과 UA를 표시하는 안전망 + 서버 자동 리포트.
+       React가 로드되기 전 오류도 잡고, 리포트 함수는 React 초기화 후 주입됨 → 버퍼로 지연 전송. */
+    window.__growinErrs = [];                          // 화면 표시용 최근 오류 목록
+    window.__growinReportQueue = [];                   // React 로드 전 발생분을 임시 보관
+    window.__growinCtx = { phase: "boot", tab: null, memberId: null, name: null }; // React에서 지속적으로 갱신
+    window.__growinReport = function(item) {
+      try {
+        item.ts = new Date().toISOString();
+        item.ctx = { ...window.__growinCtx };
+        window.__growinErrs.push(item);
+        if (window.__growinErrs.length > 20) window.__growinErrs.shift(); // 화면 표시 상한
+        __growinShowErr();
+        /* React가 세팅해준 서버 전송 함수가 있으면 즉시, 없으면 버퍼에 대기 */
+        if (typeof window.__growinPost === "function") window.__growinPost(item);
+        else window.__growinReportQueue.push(item);
+      } catch (e) {}
+    };
     window.__growinShowErr = function() { __growinShowErr(); };
     function __growinShowErr() {
       try {
@@ -47,7 +62,7 @@
           p.id = 'gw-err';
           p.style.cssText = 'position:fixed;left:0;right:0;bottom:0;max-height:55vh;overflow:auto;background:#FEF2F2;border-top:2px solid #DC2626;padding:14px 16px;font:12px/1.5 -apple-system,sans-serif;color:#7F1D1D;z-index:99999;-webkit-user-select:text;user-select:text';
           p.innerHTML = '<div style="font-weight:800;font-size:13px;margin-bottom:6px">⚠️ 화면 오류가 감지됐어요</div>'
-            + '<div style="font-size:11.5px;margin-bottom:8px;line-height:1.6">아래 내용을 <b>꾹 눌러 복사</b>해서 운영진 채팅방에 보내주세요. 그러면 원인을 빠르게 찾을 수 있어요.</div>'
+            + '<div style="font-size:11.5px;margin-bottom:8px;line-height:1.6">이 오류는 자동으로 운영진에게 전달됐어요. 계속 문제가 있다면 아래 내용을 <b>꾹 눌러 복사</b>해서 채팅방에 보내주세요.</div>'
             + '<pre id="gw-err-body" style="font:11px/1.4 monospace;background:#fff;padding:10px;border-radius:6px;border:1px solid #FCA5A5;white-space:pre-wrap;word-break:break-all;margin-bottom:10px;-webkit-user-select:text;user-select:text"></pre>'
             + '<button id="gw-err-reset" style="cursor:pointer;padding:9px 14px;border-radius:999px;border:none;background:#DC2626;color:#fff;font-weight:800;font-size:12px;margin-right:8px">캐시 지우고 새로고침</button>'
             + '<button id="gw-err-close" style="cursor:pointer;padding:9px 14px;border-radius:999px;border:1px solid #DC2626;background:#fff;color:#DC2626;font-weight:800;font-size:12px">닫기</button>';
@@ -60,18 +75,16 @@
           document.getElementById('gw-err-close').onclick = function() { p.style.display = 'none'; };
         }
         var body = document.getElementById('gw-err-body');
-        var payload = { ua: navigator.userAgent, url: location.href, ts: new Date().toISOString(), errors: window.__growinErrs };
+        var payload = { ua: navigator.userAgent, url: location.href, ts: new Date().toISOString(), ctx: window.__growinCtx, errors: window.__growinErrs };
         if (body) body.textContent = JSON.stringify(payload, null, 2);
       } catch (e) {}
     }
     window.addEventListener('error', function(e) {
-      window.__growinErrs.push({ kind: 'error', msg: String((e && e.message) || ''), src: String((e && e.filename) || ''), line: (e && e.lineno) || 0, col: (e && e.colno) || 0, stack: String((e && e.error && e.error.stack) || '') });
-      __growinShowErr();
+      window.__growinReport({ kind: 'script', msg: String((e && e.message) || ''), src: String((e && e.filename) || ''), line: (e && e.lineno) || 0, col: (e && e.colno) || 0, stack: String((e && e.error && e.error.stack) || '') });
     });
     window.addEventListener('unhandledrejection', function(e) {
       var r = e && e.reason;
-      window.__growinErrs.push({ kind: 'rejection', msg: String((r && r.message) || r || ''), stack: String((r && r.stack) || '') });
-      __growinShowErr();
+      window.__growinReport({ kind: 'rejection', msg: String((r && r.message) || r || ''), stack: String((r && r.stack) || '') });
     });
   </script>
 </head>
@@ -431,16 +444,50 @@ const CONFIG = {
     API_URL: "https://script.google.com/macros/s/AKfycbz_TQCrc0dxcaKSS9LCCB84C22Kzt2qYgwRRMSJxYLzmAw3oHWZIdtDA9t8owkCch2s/exec",
 };
 const LIVE = () => !!CONFIG.API_URL;
+/* ── 서버로 오류 리포트 (fire-and-forget)
+     inline 스크립트에서 축적한 큐를 이곳에서 flush · React가 로드된 이후엔 즉시 전송 ── */
+if (typeof window !== "undefined") {
+    window.__growinPost = function (item) {
+        if (!CONFIG.API_URL)
+            return; // 데모 모드에서는 저장 없이 화면 표시만
+        try {
+            fetch(CONFIG.API_URL, {
+                method: "POST",
+                headers: { "Content-Type": "text/plain;charset=utf-8" },
+                body: JSON.stringify({ action: "logClientError", item: item }),
+                keepalive: true, // 페이지 이탈 중이어도 요청 완료 보장
+            }).catch(function () { }); // 실패해도 조용히 무시 (로그 실패가 다시 로그를 트리거하지 않도록)
+        }
+        catch (e) { }
+    };
+    /* 로드 전 발생한 오류가 있으면 지금 서버로 flush */
+    if (Array.isArray(window.__growinReportQueue) && window.__growinReportQueue.length) {
+        window.__growinReportQueue.forEach(window.__growinPost);
+        window.__growinReportQueue = [];
+    }
+}
 async function api(action, payload = {}) {
-    const res = await fetch(CONFIG.API_URL, {
-        method: "POST",
-        headers: { "Content-Type": "text/plain;charset=utf-8" },
-        body: JSON.stringify({ action, ...payload }),
-    });
-    const j = await res.json();
-    if (!j.ok)
-        throw new Error(j.error || "요청에 실패했어요");
-    return j.data;
+    try {
+        const res = await fetch(CONFIG.API_URL, {
+            method: "POST",
+            headers: { "Content-Type": "text/plain;charset=utf-8" },
+            body: JSON.stringify({ action, ...payload }),
+        });
+        const j = await res.json();
+        if (!j.ok)
+            throw new Error(j.error || "요청에 실패했어요");
+        return j.data;
+    }
+    catch (e) {
+        /* API 실패 자동 리포트 — 무한 루프 방지를 위해 logClientError 요청 자체는 리포트 대상에서 제외 */
+        if (action !== "logClientError" && action !== "ping" && typeof window !== "undefined" && typeof window.__growinReport === "function") {
+            try {
+                window.__growinReport({ kind: "api", msg: String((e && e.message) || e), src: "api:" + action, stack: String((e && e.stack) || "") });
+            }
+            catch (_) { }
+        }
+        throw e;
+    }
 }
 /* ── 리더보드 (관리자용) ── */
 function Leaderboard({ members, settings }) {
@@ -3258,6 +3305,128 @@ function LoanReader({ cfg }) {
         React.createElement(Card, { pad: 14, style: { background: T.gradSoft, border: "none" } },
             React.createElement("div", { style: { fontSize: 11.5, color: T.sub, lineHeight: 1.7 } }, "\u26A0\uFE0F \uADDC\uC81C\u00B7\uC2A4\uD2B8\uB808\uC2A4 \uAE08\uB9AC\uB294 \uC218\uC2DC\uB85C \uBCC0\uACBD\uB418\uBA70, \uC2E4\uC81C \uD55C\uB3C4\uB294 \uC740\uD589 \uC2EC\uC0AC(\uC18C\uB4DD \uC778\uC815, \uAE30\uC874 \uBD80\uCC44 \uC0B0\uC815 \uBC29\uC2DD \uB4F1)\uC5D0 \uB530\uB77C \uB2EC\uB77C\uC838\uC694. \uBC18\uB4DC\uC2DC \uB300\uCD9C \uC2E4\uD589 \uC804 \uAE08\uC735\uAE30\uAD00\uC5D0\uC11C \uCD5C\uC885 \uD655\uC778\uD558\uC138\uC694. \uCC38\uACE0\uC6A9 \uB3C4\uAD6C\uB85C \uC5B4\uB5A4 \uCC45\uC784\uB3C4 \uC9C0\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4."))));
 }
+/* ── 🐞 오류 로그 대시보드 (관리자 전용) ──
+   메시지 + 스택 첫 줄로 오류를 그룹핑해 발생 횟수/영향 사용자 수/최근·최초 발생 시각을 요약.
+   각 그룹을 펼치면 개별 발생 상세 (스택, UA, 컴포넌트 트리) 확인 가능. */
+function ErrorLogTab({ errors, onRefresh }) {
+    const [expanded, setExpanded] = useState({});
+    const [filterKind, setFilterKind] = useState("all");
+    const [filterBrowser, setFilterBrowser] = useState("all");
+    const filtered = useMemo(() => (errors || []).filter((e) => {
+        if (filterKind !== "all" && e.kind !== filterKind)
+            return false;
+        if (filterBrowser !== "all" && !e.browser.startsWith(filterBrowser))
+            return false;
+        return true;
+    }), [errors, filterKind, filterBrowser]);
+    const groups = useMemo(() => {
+        const g = new Map();
+        filtered.forEach((e) => {
+            /* 스택 첫 줄 + 메시지로 서명 (같은 원인의 반복 오류를 하나로 묶음) */
+            const stackFirstLine = (e.stack || "").split("\n").find((l) => l.trim()) || "";
+            const key = (e.msg || "(no message)") + "\n" + stackFirstLine.trim();
+            const cur = g.get(key) || { key, msg: e.msg, kind: e.kind, sample: e, items: [], users: new Set(), browsers: new Set(), first: e.ts, last: e.ts };
+            cur.items.push(e);
+            if (e.memberId != null)
+                cur.users.add(e.memberId);
+            if (e.browser)
+                cur.browsers.add(e.browser);
+            if (e.ts < cur.first)
+                cur.first = e.ts;
+            if (e.ts > cur.last)
+                cur.last = e.ts;
+            g.set(key, cur);
+        });
+        return Array.from(g.values()).sort((a, b) => b.items.length - a.items.length || (b.last > a.last ? 1 : -1));
+    }, [filtered]);
+    const browsersInLog = useMemo(() => {
+        const s = new Set();
+        (errors || []).forEach((e) => { if (e.browser)
+            s.add(e.browser.split(" ")[0]); });
+        return Array.from(s).sort();
+    }, [errors]);
+    const kindLabel = { script: "스크립트", rejection: "Promise", react: "React", api: "API" };
+    const relTime = (iso) => {
+        if (!iso)
+            return "-";
+        const ms = Date.now() - new Date(iso).getTime();
+        if (isNaN(ms))
+            return String(iso).slice(0, 16);
+        if (ms < 60000)
+            return "방금";
+        if (ms < 3600000)
+            return Math.floor(ms / 60000) + "분 전";
+        if (ms < 86400000)
+            return Math.floor(ms / 3600000) + "시간 전";
+        return Math.floor(ms / 86400000) + "일 전";
+    };
+    return (React.createElement("div", null,
+        React.createElement(SectionTitle, { eyebrow: "DIAGNOSTICS", title: "\uD83D\uDC1E \uC624\uB958 \uB85C\uADF8", right: React.createElement("div", { style: { display: "flex", gap: 6, alignItems: "center" } },
+                React.createElement(Pill, { tone: "line" },
+                    "\uCD1D ",
+                    errors.length,
+                    "\uAC74 \u00B7 ",
+                    groups.length,
+                    "\uC885\uB958"),
+                React.createElement(Btn, { small: true, tone: "ghost", onClick: onRefresh }, "\uC0C8\uB85C\uACE0\uCE68")) }),
+        React.createElement(Card, { pad: 14, style: { marginBottom: 12, background: T.gradSoft, border: "none" } },
+            React.createElement("div", { style: { fontSize: 11.5, color: T.sub, lineHeight: 1.7 } },
+                "\uD074\uB77C\uC774\uC5B8\uD2B8\uC5D0\uC11C \uBC1C\uC0DD\uD55C \uBAA8\uB4E0 \uC624\uB958\uAC00 \uC790\uB3D9\uC73C\uB85C \uAE30\uB85D\uB3FC\uC694. \uAC19\uC740 \uC6D0\uC778\uC758 \uBC18\uBCF5 \uC624\uB958\uB294 \uD558\uB098\uB85C \uBB36\uC5B4 \uD45C\uC2DC\uD558\uBA70, \uC601\uD5A5 \uC0AC\uC6A9\uC790\u00B7\uBE0C\uB77C\uC6B0\uC800\uB97C \uD568\uAED8 \uBCF4\uC5EC\uC90D\uB2C8\uB2E4. \uC2DC\uD2B8 ",
+                React.createElement("b", null, "\uC624\uB958\uB85C\uADF8"),
+                "\uC5D0\uB3C4 \uC6D0\uBCF8\uC774 \uC313\uC5EC\uC694 (\uCD5C\uB300 2,000\uD589, \uC790\uB3D9 \uC815\uB9AC).")),
+        React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12, alignItems: "center" } },
+            React.createElement("span", { style: { fontSize: 11, color: T.sub, fontWeight: 800, marginRight: 4 } }, "\uC885\uB958"),
+            [["all", "전체"], ["react", "React"], ["script", "스크립트"], ["rejection", "Promise"], ["api", "API"]].map(([k, lb]) => (React.createElement("button", { key: k, onClick: () => setFilterKind(k), style: { cursor: "pointer", fontFamily: "inherit", fontWeight: 800, fontSize: 11.5, padding: "5px 10px", borderRadius: 999,
+                    border: filterKind === k ? `1.5px solid ${T.mint}` : `1.5px solid ${T.line}`,
+                    background: filterKind === k ? T.gradSoft : "#fff", color: filterKind === k ? T.ink : T.sub } }, lb))),
+            browsersInLog.length > 1 && (React.createElement(React.Fragment, null,
+                React.createElement("span", { style: { fontSize: 11, color: T.sub, fontWeight: 800, marginLeft: 6, marginRight: 4 } }, "\uBE0C\uB77C\uC6B0\uC800"),
+                [["all", "전체"], ...browsersInLog.map((b) => [b, b])].map(([k, lb]) => (React.createElement("button", { key: k, onClick: () => setFilterBrowser(k), style: { cursor: "pointer", fontFamily: "inherit", fontWeight: 800, fontSize: 11.5, padding: "5px 10px", borderRadius: 999,
+                        border: filterBrowser === k ? `1.5px solid ${T.mint}` : `1.5px solid ${T.line}`,
+                        background: filterBrowser === k ? T.gradSoft : "#fff", color: filterBrowser === k ? T.ink : T.sub } }, lb)))))),
+        groups.length === 0 ? (React.createElement(Card, { pad: 24, style: { textAlign: "center" } },
+            React.createElement("div", { style: { fontSize: 32 } }, "\u2728"),
+            React.createElement("div", { style: { fontSize: 14, fontWeight: 800, marginTop: 8, color: T.mint } }, "\uAE30\uB85D\uB41C \uC624\uB958\uAC00 \uC5C6\uC5B4\uC694"),
+            React.createElement("div", { style: { fontSize: 11.5, color: T.sub, marginTop: 4 } }, "\uD544\uD130\uB97C \uC870\uC815\uD574\uBCF4\uAC70\uB098, \uC544\uC9C1 \uC544\uBB34\uB3C4 \uBB38\uC81C\uAC00 \uC5C6\uC5C8\uB2E4\uB294 \uB73B\uC77C \uC218\uB3C4 \uC788\uC5B4\uC694."))) : (React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 8 } }, groups.map((g, i) => {
+            const open = !!expanded[g.key];
+            return (React.createElement(Card, { key: i, pad: 0, style: { overflow: "hidden" } },
+                React.createElement("div", { onClick: () => setExpanded((s) => ({ ...s, [g.key]: !open })), style: { cursor: "pointer", padding: "12px 14px", display: "flex", alignItems: "flex-start", gap: 10 } },
+                    React.createElement("div", { style: { flexShrink: 0, minWidth: 46, textAlign: "center" } },
+                        React.createElement("div", { style: { fontSize: 20, fontWeight: 800, color: T.coral, lineHeight: 1, fontVariantNumeric: "tabular-nums" } }, g.items.length),
+                        React.createElement("div", { style: { fontSize: 9.5, color: T.sub, fontWeight: 700, marginTop: 2 } }, "\uD68C \uBC1C\uC0DD")),
+                    React.createElement("div", { style: { flex: 1, minWidth: 0 } },
+                        React.createElement("div", { style: { display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: 4 } },
+                            React.createElement(Pill, { tone: g.kind === "react" ? "coral" : "line", style: { fontSize: 10 } }, kindLabel[g.kind] || g.kind),
+                            React.createElement("span", { style: { fontSize: 11, color: T.sub, fontWeight: 700 } }, relTime(g.last)),
+                            g.users.size > 0 && React.createElement("span", { style: { fontSize: 11, color: T.sub, fontWeight: 700 } },
+                                "\u00B7 \uC0AC\uC6A9\uC790 ",
+                                g.users.size,
+                                "\uBA85")),
+                        React.createElement("div", { style: { fontSize: 13, fontWeight: 800, color: T.ink, wordBreak: "break-all", lineHeight: 1.4 } }, g.msg || "(메시지 없음)"),
+                        React.createElement("div", { style: { fontSize: 11, color: T.sub, marginTop: 4, wordBreak: "break-all" } }, Array.from(g.browsers).join(" · ") || "-")),
+                    React.createElement("div", { style: { color: T.sub, fontSize: 14, flexShrink: 0, fontWeight: 800 } }, open ? "▲" : "▼")),
+                open && (React.createElement("div", { style: { background: "#FAFCFB", borderTop: `1px solid ${T.line}`, padding: 14 } },
+                    React.createElement("div", { style: { fontSize: 11, fontWeight: 800, color: T.sub, marginBottom: 6 } }, "\uC2A4\uD0DD (\uC0D8\uD50C)"),
+                    React.createElement("pre", { style: { fontSize: 10.5, fontFamily: "monospace", background: "#fff", border: `1px solid ${T.line}`, borderRadius: 8, padding: 10, whiteSpace: "pre-wrap", wordBreak: "break-all", maxHeight: 200, overflowY: "auto" } }, g.sample.stack || "(스택 없음)"),
+                    g.sample.component && React.createElement(React.Fragment, null,
+                        React.createElement("div", { style: { fontSize: 11, fontWeight: 800, color: T.sub, marginTop: 10, marginBottom: 6 } }, "\uCEF4\uD3EC\uB10C\uD2B8 \uD2B8\uB9AC"),
+                        React.createElement("pre", { style: { fontSize: 10.5, fontFamily: "monospace", background: "#fff", border: `1px solid ${T.line}`, borderRadius: 8, padding: 10, whiteSpace: "pre-wrap", wordBreak: "break-all", maxHeight: 150, overflowY: "auto" } }, g.sample.component)),
+                    React.createElement("div", { style: { fontSize: 11, fontWeight: 800, color: T.sub, marginTop: 10, marginBottom: 6 } },
+                        "\uCD5C\uADFC \uBC1C\uC0DD (",
+                        Math.min(g.items.length, 8),
+                        "\uAC74)"),
+                    React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 5 } }, g.items.slice(0, 8).map((it, j) => (React.createElement("div", { key: j, style: { fontSize: 11, color: T.sub, background: "#fff", border: `1px solid ${T.line}`, borderRadius: 6, padding: "6px 8px", display: "flex", gap: 8, flexWrap: "wrap" } },
+                        React.createElement("span", { style: { fontVariantNumeric: "tabular-nums", color: T.ink, fontWeight: 700 } }, relTime(it.ts)),
+                        React.createElement("span", null, it.browser || "-"),
+                        it.name && React.createElement("span", { style: { color: T.mint, fontWeight: 700 } }, it.name),
+                        it.ctx && React.createElement("span", { style: { color: T.sub } },
+                            "\u00B7 ",
+                            it.ctx),
+                        it.url && React.createElement("span", { style: { color: T.sub, wordBreak: "break-all" } },
+                            "\u00B7 ",
+                            it.url.replace(/^https?:\/\//, "").slice(0, 40))))))))));
+        })))));
+}
 /* ── 관리자 · 자료실 도구 설정 (규제 수치 리뉴얼) ── */
 function ToolsAdmin({ settings, onSave }) {
     const [draft, setDraft] = useState(() => JSON.parse(JSON.stringify(effToolCfg(settings))));
@@ -4105,6 +4274,7 @@ function App() {
     const [lectures, setLectures] = useState(live ? [] : SEED_LECTURES);
     const [acts, setActs] = useState([]); // 활동기록 (관리자 응답에만 포함)
     const [visitlog, setVisitlog] = useState([]); // 방문기록 요약 (관리자 응답에만 포함)
+    const [errors, setErrors] = useState([]); // 오류 로그 (관리자 응답에만 포함)
     const [austats, setAustats] = useState([]); // 경매 매각통계 (법원경매정보 엑셀)
     const [autoStats, setAutoStats] = useState(null); // 자동 수집 상태 (관리자 응답에만 포함)
     const [certs, setCerts] = useState(live ? [] : SEED_CERTS); // 임장·입찰 인증 글
@@ -4119,6 +4289,20 @@ function App() {
     const [pinErr, setPinErr] = useState("");
     const [toast, setToast] = useState(null);
     const [welcome, setWelcome] = useState(null); // 입장 환영 메시지 {text, ms} · null이면 오버레이 미표시 (자동 종료 시 null로 리셋)
+    /* 오류 리포트에 현재 상태 컨텍스트를 실어 보내도록 window에 지속 반영 */
+    useEffect(() => {
+        if (typeof window === "undefined")
+            return;
+        const me = viewer != null ? members.find((x) => x.id === viewer) : null;
+        window.__growinCtx = {
+            phase: phase,
+            mode: mode,
+            tab: mode === "admin" ? tab : "public",
+            memberId: viewer,
+            name: me ? me.realName : null,
+            adminRole: adminRole,
+        };
+    }, [phase, mode, tab, viewer, members, adminRole]);
     const say = (msg) => { setToast(msg); setTimeout(() => setToast(null), 2800); };
     const today = new Date().toISOString().slice(5, 10);
     /* 등급 자동 업그레이드 기준을 설정값과 동기화 */
@@ -4157,6 +4341,8 @@ function App() {
                 setActs(d.acts);
             if (Array.isArray(d.visitlog))
                 setVisitlog(d.visitlog);
+            if (Array.isArray(d.errors))
+                setErrors(d.errors);
             if (d.autoStats && typeof d.autoStats === "object")
                 setAutoStats(d.autoStats);
             setPhase("ready");
@@ -4777,7 +4963,7 @@ function App() {
     const STAFF_TABS = ["members", "insights", "lectures", "certs", "austats", "tools"]; // 운영진 허용 탭 (크레딧 관련 제외)
     const TABS = [
         ["board", "리더보드"], ["members", "멤버 관리"], ["events", "데일리 이벤트"],
-        ["mate", "그로인 메이트"], ["lectures", "강의"], ["insights", "인사이트"], ["certs", "인증 게시판"], ["austats", "경매 통계"], ["ranking", "그로인 랭킹"], ["awards", "시상식"], ["tools", "자료실"], ["settings", "설정"],
+        ["mate", "그로인 메이트"], ["lectures", "강의"], ["insights", "인사이트"], ["certs", "인증 게시판"], ["austats", "경매 통계"], ["ranking", "그로인 랭킹"], ["awards", "시상식"], ["tools", "자료실"], ["errors", "🐞 오류 로그"], ["settings", "설정"],
     ].filter(([k]) => !isStaff || STAFF_TABS.includes(k));
     const effTab = TABS.some(([k]) => k === tab) ? tab : TABS[0][0];
     const shellFont = { fontFamily: `-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Pretendard","Noto Sans KR","Malgun Gothic",sans-serif`, WebkitFontSmoothing: "antialiased" };
@@ -4847,6 +5033,7 @@ function App() {
                 effTab === "ranking" && React.createElement(RankingAdmin, { members: members, events: eventLog, ledger: ledger, acts: acts, visitlog: visitlog }),
                 effTab === "awards" && React.createElement(Awards, { members: members, settings: settings }),
                 effTab === "tools" && React.createElement(ToolsAdmin, { settings: settings, onSave: onSaveToolCfg }),
+                effTab === "errors" && React.createElement(ErrorLogTab, { errors: errors, onRefresh: () => refresh(adminKey) }),
                 effTab === "settings" && React.createElement(Settings, { settings: settings, setSettings: persistSettings })))),
         pinPrompt && (React.createElement("div", { style: { position: "fixed", inset: 0, background: "rgba(28,35,51,.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 20 } },
             React.createElement("div", { style: { background: "#fff", borderRadius: 20, padding: 24, width: "100%", maxWidth: 320, boxShadow: "0 20px 50px rgba(28,35,51,.35)" } },
@@ -4871,10 +5058,14 @@ class ErrorBoundary extends React.Component {
     static getDerivedStateFromError(error) { return { error: error }; }
     componentDidCatch(error, info) {
         try {
-            if (window.__growinErrs) {
-                window.__growinErrs.push({ kind: 'react', msg: String((error && error.message) || error || ''), stack: String((error && error.stack) || ''), component: String((info && info.componentStack) || '') });
-                if (typeof window.__growinShowErr === 'function')
-                    window.__growinShowErr(); // 하단 오류 패널도 함께 노출
+            /* 통일된 리포터로 전달 — 화면 하단 표시 + 서버 전송을 한 번에 처리 */
+            if (typeof window.__growinReport === "function") {
+                window.__growinReport({
+                    kind: 'react',
+                    msg: String((error && error.message) || error || ''),
+                    stack: String((error && error.stack) || ''),
+                    component: String((info && info.componentStack) || ''),
+                });
             }
         }
         catch (e) { }
