@@ -2625,7 +2625,9 @@ function InsightBody({ body, clamp = 4, hl }) {
     const long = text.length > 180 || text.split("\n").length > clamp;
     const searching = !!String(hl || "").trim();
     const expanded = open || searching; // 검색 중엔 본문 속 매칭이 가려지지 않도록 펼침
-    return (React.createElement("div", null,
+    /* 접힌 상태에선 본문 터치만으로 펼침 · 접기는 버튼으로만 (InsightContent와 동일한 규칙) */
+    const tapToOpen = long && !searching && !open;
+    return (React.createElement("div", { onClick: tapToOpen ? () => setOpen(true) : undefined, role: tapToOpen ? "button" : undefined, style: tapToOpen ? { cursor: "pointer" } : undefined },
         React.createElement("div", { style: { fontSize: 13, color: T.ink, lineHeight: 1.7, marginTop: 8, whiteSpace: "pre-line", wordBreak: "keep-all",
                 ...(long && !expanded ? { display: "-webkit-box", WebkitLineClamp: clamp, WebkitBoxOrient: "vertical", overflow: "hidden" } : {}) } },
             React.createElement(RichText, { text: text, hl: searching ? hl.trim() : "" })),
@@ -2722,7 +2724,11 @@ function InsightContent({ body, imgs, yt, clamp = 4, hl }) {
     const textExpanded = open || searching;
     const showToggle = (longText && !searching) || list.length > 0;
     const vid = videoInfo(yt);
-    return (React.createElement("div", null,
+    /* 접힌 상태에선 본문 아무 곳이나 눌러도 펼쳐지게 (읽다가 무심코 터치하는 동작을 살림).
+       접기는 기존대로 '접기 ▲' 버튼으로만 — 실수로 글이 닫히는 일이 없도록 함.
+       링크·영상은 각자 stopPropagation 하므로 펼침이 트리거되지 않음. */
+    const tapToOpen = showToggle && !open;
+    return (React.createElement("div", { onClick: tapToOpen ? () => setOpen(true) : undefined, role: tapToOpen ? "button" : undefined, style: tapToOpen ? { cursor: "pointer" } : undefined },
         text !== "" && (React.createElement("div", { style: { fontSize: 13, color: T.ink, lineHeight: 1.7, marginTop: 8, whiteSpace: "pre-line", wordBreak: "keep-all",
                 ...(longText && !textExpanded ? { display: "-webkit-box", WebkitLineClamp: clamp, WebkitBoxOrient: "vertical", overflow: "hidden" } : {}) } },
             React.createElement(RichText, { text: text, hl: searching ? hl.trim() : "" }))),
@@ -2738,7 +2744,7 @@ function InsightContent({ body, imgs, yt, clamp = 4, hl }) {
                 list.length - 4)))),
         list.length > 0 && open && (React.createElement("div", { style: { marginTop: 10, display: "grid", gap: 8 } }, list.map((src, idx) => (React.createElement("a", { key: idx, href: src, target: "_blank", rel: "noopener noreferrer", title: "\uC6D0\uBCF8 \uD06C\uAC8C \uBCF4\uAE30" },
             React.createElement("img", { src: src, alt: `이미지 ${idx + 1}`, loading: "lazy", style: { width: "100%", height: "auto", borderRadius: 12, border: `1px solid ${T.line}`, display: "block", background: "#F3F6F5" } })))))),
-        vid && React.createElement("div", { style: { marginTop: 10 } },
+        vid && React.createElement("div", { style: { marginTop: 10 }, onClick: (e) => e.stopPropagation() },
             React.createElement(VideoEmbed, { yt: yt }))));
 }
 /* ══════════════ 임장·입찰 인증 게시판 ══════════════ */
