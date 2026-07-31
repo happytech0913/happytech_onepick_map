@@ -4348,9 +4348,11 @@ function App() {
         wins: numOr(settings.ptsWins, DEFAULT_SETTINGS.ptsWins),
         parts: numOr(settings.ptsParts, DEFAULT_SETTINGS.ptsParts),
     };
-    async function refresh(key) {
+    /* v47: 'all' 조회는 서버에서 인증 필수 (무인증 전체 조회 차단) — PIN 또는 멤버 세션 토큰 동봉.
+       tok 인자: 로그인 직후엔 setSessToken이 state 반영 전이라 토큰을 직접 넘겨받음 */
+    async function refresh(key, tok) {
         try {
-            const d = await api("all", { adminKey: key || adminKey || undefined });
+            const d = await api("all", { adminKey: key || adminKey || undefined, token: tok || sessToken || undefined });
             if (!d || typeof d !== "object")
                 throw new Error("서버 응답 형식이 올바르지 않아요");
             /* 서버 응답에 필드가 누락된 경우 undefined가 state에 들어가 이후 .map/.find/.filter 에서 흰 화면 크래시로 이어짐
@@ -4362,7 +4364,7 @@ function App() {
             setLectures(Array.isArray(d.lectures) ? d.lectures : []);
             setCerts(Array.isArray(d.certs) ? d.certs : []);
             setCmts(Array.isArray(d.cmts) ? d.cmts : []);
-            setAustats(Array.isArray(d.austats) ? d.austats : []);
+            /* v47: austats는 'all' 응답에서 분리 — loadAustats()가 별도 요청으로 채움 */
             if (d.settings && typeof d.settings === "object")
                 setSettings({ ...DEFAULT_SETTINGS, ...d.settings });
             if (Array.isArray(d.acts))
@@ -4381,9 +4383,31 @@ function App() {
                 }
                 catch (e) { }
             }
+            loadAustats(false, tok, key); // v47: 경매통계는 화면 표시를 막지 않게 백그라운드로 별도 로드
         }
         catch (e) {
             setPhase((p) => (p === "ready" ? p : "error"));
+        }
+    }
+    /* ── 경매통계 지연 로드 (v47) — 'all'에서 분리된 austats를 별도 요청으로 로드.
+       홈 카드(HomeLiveStats)도 쓰므로 탭 진입이 아니라 전체 조회 성공 직후 백그라운드 1회.
+       월 1회 갱신 데이터라 localStorage 24시간 캐시 병행 (서버 6시간 캐시, 쓰기 시 무효화) ── */
+    const austatsLoaded = React.useRef(false);
+    async function loadAustats(force, tok, key) {
+        if (austatsLoaded.current && !force)
+            return;
+        austatsLoaded.current = true;
+        try {
+            const d = await api("austats", { adminKey: key || adminKey || undefined, token: tok || sessToken || undefined });
+            const rows = Array.isArray(d && d.austats) ? d.austats : [];
+            setAustats(rows);
+            try {
+                localStorage.setItem("growin_austats_v1", JSON.stringify({ t: Date.now(), a: rows }));
+            }
+            catch (e) { }
+        }
+        catch (e) {
+            austatsLoaded.current = false; /* 실패 시 다음 refresh(동기화 버튼 등)에서 재시도 */
         }
     }
     useEffect(() => {
@@ -4415,10 +4439,20 @@ function App() {
                     setLectures(Array.isArray(d.lectures) ? d.lectures : []);
                     setCerts(Array.isArray(d.certs) ? d.certs : []);
                     setCmts(Array.isArray(d.cmts) ? d.cmts : []);
-                    setAustats(Array.isArray(d.austats) ? d.austats : []);
+                    setAustats(Array.isArray(d.austats) ? d.austats : []); // 구버전 캐시 호환 (v47 이후엔 아래 별도 키)
                     if (d.settings)
                         setSettings({ ...DEFAULT_SETTINGS, ...d.settings });
                 }
+            }
+        }
+        catch (e) { }
+        /* v47: 분리된 경매통계 캐시 복원 — 로그인 후 loadAustats()가 서버 최신값으로 교체 */
+        try {
+            const rawA = localStorage.getItem("growin_austats_v1");
+            if (rawA) {
+                const { t, a } = JSON.parse(rawA);
+                if (Date.now() - t < 1000 * 60 * 60 * 24 && Array.isArray(a))
+                    setAustats(a);
             }
         }
         catch (e) { }
@@ -4484,7 +4518,7 @@ function App() {
                         localStorage.setItem("growin_seen_" + d.memberId, String(d.nowMs || nowMs));
                     }
                     catch (e) { }
-                    refresh(); // 최신 데이터 백그라운드 fetch
+                    refresh(undefined, d.token); // 최신 데이터 백그라운드 fetch (v47: setSessToken 반영 전이라 토큰 직접 전달)
                 }
                 catch (e) {
                     /* 서버 검증 실패 → 롤백: 홈 → 로그인 화면 · 오류 안내 */
@@ -4510,7 +4544,7 @@ function App() {
                 localStorage.setItem("growin_seen_" + d.memberId, String(d.nowMs || Date.now()));
             }
             catch (e) { }
-            refresh();
+            refresh(undefined, d.token); // v47: setSessToken 반영 전이라 토큰 직접 전달
             return { ok: true };
         }
         catch (e) {
@@ -4933,7 +4967,8 @@ function App() {
             const d = await api("autoRun", { adminKey });
             const okN = d.results.filter((r) => r.ok).length;
             say(`${d.month} 수집 완료 — 성공 ${okN} / ${d.results.length}`);
-            await refresh(adminKey); // 통계·로그 새로고침
+            await refresh(adminKey); // 로그 새로고침
+            await loadAustats(true, undefined, adminKey); // v47: austats가 'all'에서 분리돼 강제 재로드 필요
         }
         catch (e) {
             fail(e);
