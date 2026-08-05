@@ -2956,6 +2956,10 @@ const TOOL_CFG_DEFAULT = {
     stressRatio: { var: 100, mix: 80, fix5: 40, fix: 0 }, // 금리유형별 반영비율 (%)
     cardIncome: { divisor: 40.9, multiplier: 90, cap: 5000 }, // 카드사용액→연소득 환산: (사용액 ÷ divisor%) × multiplier%, 최대 cap 만원
     defaultRate: 5.0, // 판독기 기본 대출금리 (%) — 시장 여건에 맞춰 조정
+    /* 예산 판독기 — 감정가·KB시세 기준 상품에서 낙찰가 대비 실행되는 비율(%) */
+    budgetUpperLtv: 85,
+    /* 예산 판독기 — 최저가 → 낙찰가 상승분 (%) · 지도는 최저가로 거르므로 그만큼 낮춰서 안내 */
+    budgetMargin: 10,
     moveInMonths: 6, // 규제지역 전입 의무 (개월)
     sellMonths: 6, // 처분조건부 기존주택 처분 기한 (개월)
     /* 수익률 계산기 기본 요율 (%) — Made by 써니 엑셀 기준 */
@@ -3447,6 +3451,136 @@ function ErrorLogTab({ errors, onRefresh }) {
                             it.url.replace(/^https?:\/\//, "").slice(0, 40))))))))));
         })))));
 }
+/* ── ③ 입찰 예산 판독기 — 현금·소득으로 훑어볼 물건 금액대 역산 ──────────
+   [철칙]
+   1. 이 도구는 1단계다. 정확한 금액이 아니라 "훑어볼 범위"만 답한다.
+      방공제·MCI·부대비용 계산은 대출 판독기와 수익률 계산기의 몫이다.
+   2. 답을 스스로 반박하지 않는다. 보수적 하한을 병기해 신뢰를 깎지 않는다.
+   3. 결과는 최저가 기준으로 통일한다. 원픽 지도가 최저가로 거르기 때문.
+   4. 다음 단계 안내에 유료 상품(코칭)을 직접 노출하지 않는다.
+   ※ 계산 방식: 필요현금(P) = P − 대출(P) 이 P에 단조증가 → 이분탐색으로 상한 역산 */
+const BUDGET_REGION_OPTS = [["reg", "🚨 규제지역"], ["metro", "🏙 수도권 비규제"], ["etc", "🌄 그 외 지방"]];
+const BUDGET_HOUSE_OPTS = [["first", "생애최초"], ["none", "무주택"], ["oneSell", "1주택 · 처분조건"], ["oneKeep", "1주택 유지"], ["multi", "2주택 이상"]];
+function BudgetReader({ cfg }) {
+    const [region, setRegion] = useState("metro");
+    const [house, setHouse] = useState("none");
+    const [cash, setCash] = useState("");
+    const [income, setIncome] = useState("");
+    const [more, setMore] = useState(false);
+    const [rate, setRate] = useState(cfg.defaultRate != null ? cfg.defaultRate : 5.0);
+    const [years, setYears] = useState(30);
+    const [existing, setExisting] = useState("");
+    const out = useMemo(() => {
+        const C = Number(cash) || 0;
+        const I = Number(income) || 0;
+        const ltvBase = (cfg.ltv[region] || {})[house] || 0;
+        if (ltvBase <= 0) {
+            return { banned: true, msg: house === "oneKeep"
+                    ? "수도권·규제지역에서는 기존 주택을 보유한 채 추가로 구입하는 주담대가 나오지 않아요. 처분조건으로 바꿔서 계산해보세요."
+                    : "수도권·규제지역에서는 2주택 이상 보유자의 구입목적 주담대가 나오지 않아요. 지역이나 보유 상황을 확인해보세요." };
+        }
+        const stress = (cfg.stress[region] || 0) * ((cfg.stressRatio.var || 0) / 100);
+        const evalRate = (Number(rate) || 0) + stress;
+        const dsrPct = cfg.dsr.bank;
+        const annualAvail = Math.max(I * dsrPct / 100 - (Number(existing) || 0), 0);
+        const dsrLimit = pvAnnuity(annualAvail / 12, evalRate / 100 / 12, (Number(years) || 30) * 12);
+        const solve = (ltvPct) => {
+            const loanOf = (P) => {
+                let cap = null;
+                if (region !== "etc" && P > 0) {
+                    let t = null;
+                    for (let i = 0; i < cfg.capTiers.length; i++) {
+                        const c = cfg.capTiers[i];
+                        if (!c.upTo || P <= c.upTo) {
+                            t = c;
+                            break;
+                        }
+                    }
+                    cap = t ? t.cap : null;
+                    if (house === "first" && cfg.firstCap)
+                        cap = cap == null ? cfg.firstCap : Math.min(cap, cfg.firstCap);
+                }
+                const cands = [{ k: "ltv", v: P * ltvPct / 100 }];
+                if (cap != null)
+                    cands.push({ k: "cap", v: cap });
+                cands.push({ k: "dsr", v: dsrLimit });
+                const v = Math.max(Math.min.apply(null, cands.map((c) => c.v)), 0);
+                return { v, binding: cands.reduce((a, b) => (b.v < a.v ? b : a), cands[0]).k };
+            };
+            let lo = 0, hi = 1000000;
+            for (let i = 0; i < 60; i++) {
+                const m = (lo + hi) / 2;
+                if (m - loanOf(m).v <= C)
+                    lo = m;
+                else
+                    hi = m;
+            }
+            const P = Math.floor(lo / 500) * 500; // 500만원 단위 — 범위 제시라 과한 정밀도는 오히려 오해를 부름
+            return { P, binding: loanOf(P).binding };
+        };
+        if (C <= 0 || I <= 0)
+            return { ready: false };
+        const lo = solve(ltvBase);
+        const hi = solve(Math.max((cfg.budgetUpperLtv != null ? cfg.budgetUpperLtv : 85), ltvBase));
+        const tight = hi.P - lo.P < lo.P * 0.05; // DSR·한도상한이 걸려 범위가 사실상 하나로 좁혀진 경우
+        const toMin = (p) => Math.floor(p * (1 - (cfg.budgetMargin != null ? cfg.budgetMargin : 10) / 100) / 500) * 500; // 낙찰가 → 최저가 환산
+        const mapMax = toMin(hi.P);
+        const mapLow = toMin(lo.P);
+        return { ready: true, banned: false, lo, hi, tight, mapMax, mapLow, ltvBase, upper: (cfg.budgetUpperLtv != null ? cfg.budgetUpperLtv : 85),
+            dsrLimit, dsrPct, evalRate, stress };
+    }, [region, house, cash, income, rate, years, existing, cfg]);
+    const bindLabel = { ltv: "LTV", cap: "주담대 한도 상한", dsr: "DSR(소득)" };
+    return (React.createElement("div", null,
+        React.createElement(SectionTitle, { eyebrow: "GROW IN ARCHIVE", title: "\uD83D\uDCB0 \uC785\uCC30 \uC608\uC0B0 \uD310\uB3C5\uAE30", right: React.createElement(Pill, { tone: "line" }, "1\uB2E8\uACC4 \uB3C4\uAD6C") }),
+        React.createElement(Card, { style: { marginBottom: 12 } },
+            React.createElement("div", { style: { display: "grid", gap: 14 } },
+                React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10 } },
+                    React.createElement(ToolNum, { label: "\uAC00\uC9C4 \uD604\uAE08", value: cash, onChange: setCash, hint: "\uC2E4\uC81C \uB3D9\uC6D0 \uAC00\uB2A5\uD55C \uB3C8" }),
+                    React.createElement(ToolNum, { label: "\uC5F0\uC18C\uB4DD", value: income, onChange: setIncome, hint: "\uC138\uC804 \u00B7 \uBD80\uBD80\uD569\uC0B0 \uAC00\uB2A5" })),
+                React.createElement(ToolChips, { label: "\uBB3C\uAC74 \uC9C0\uC5ED", opts: BUDGET_REGION_OPTS, value: region, onChange: setRegion }),
+                React.createElement(ToolChips, { label: "\uD604\uC7AC \uC8FC\uD0DD \uBCF4\uC720", opts: BUDGET_HOUSE_OPTS, value: house, onChange: setHouse }),
+                React.createElement("button", { onClick: () => setMore(!more), style: { cursor: "pointer", border: "none", background: "transparent",
+                        fontFamily: "inherit", fontWeight: 800, fontSize: 11.5, color: T.sub, textAlign: "left", padding: 0 } }, more ? "▲ 세부 조건 접기" : "▼ 세부 조건 (금리·기간·기존대출)"),
+                more && (React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(105px, 1fr))", gap: 10 } },
+                    React.createElement(ToolNum, { label: "\uB300\uCD9C\uAE08\uB9AC", value: rate, onChange: setRate, unit: "%" }),
+                    React.createElement(ToolNum, { label: "\uC0C1\uD658\uAE30\uAC04", value: years, onChange: setYears, unit: "\uB144" }),
+                    React.createElement(ToolNum, { label: "\uAE30\uC874 \uC5F0\uC0C1\uD658\uC561", value: existing, onChange: setExisting }))))),
+        out.banned && (React.createElement(Card, { style: { marginBottom: 12, borderLeft: `4px solid ${T.coral}` } },
+            React.createElement("div", { style: { fontWeight: 800, fontSize: 13.5, marginBottom: 5 } }, "\uC774 \uC870\uAC74\uC740 \uADDC\uC81C\uB85C \uB9C9\uD600 \uC788\uC5B4\uC694"),
+            React.createElement("div", { style: { fontSize: 12.5, lineHeight: 1.75, color: T.sub, wordBreak: "keep-all" } }, out.msg))),
+        !out.banned && !out.ready && (React.createElement(Card, { pad: 22, style: { marginBottom: 12, textAlign: "center", color: T.sub, fontSize: 13, lineHeight: 1.7 } },
+            "\uD604\uAE08\uACFC \uC5F0\uC18C\uB4DD\uC744 \uC785\uB825\uD558\uBA74",
+            React.createElement("br", null),
+            "\uD6D1\uC5B4\uBCFC \uB9CC\uD55C \uBB3C\uAC74 \uAE08\uC561\uB300\uB97C \uC54C\uB824\uB4DC\uB824\uC694.")),
+        out.ready && (React.createElement(React.Fragment, null,
+            React.createElement(Card, { pad: 0, style: { overflow: "hidden", marginBottom: 12 } },
+                React.createElement("div", { style: { background: T.grad, padding: "20px 20px 18px", color: "#fff" } },
+                    React.createElement("div", { style: { fontSize: 11.5, fontWeight: 800, letterSpacing: "0.12em", opacity: 0.9 } }, "\uD6D1\uC5B4\uBCFC \uB9CC\uD55C \uACBD\uB9E4 \uBB3C\uAC74"),
+                    React.createElement("div", { style: { display: "flex", alignItems: "baseline", flexWrap: "wrap", columnGap: 7, rowGap: 0, marginTop: 5 } },
+                        React.createElement("span", { style: { fontSize: "clamp(14px, 4vw, 17px)", fontWeight: 800, opacity: 0.9 } }, "\uCD5C\uC800\uAC00"),
+                        React.createElement("span", { style: { fontSize: "clamp(24px, 7.5vw, 32px)", fontWeight: 800, letterSpacing: "-0.03em", lineHeight: 1.2, whiteSpace: "nowrap" } }, fmtMan(out.mapMax)),
+                        React.createElement("span", { style: { fontSize: "clamp(15px, 4.5vw, 19px)", fontWeight: 800, opacity: 0.9 } }, "\uC774\uD558")),
+                    React.createElement("div", { style: { fontSize: 12.5, opacity: 0.93, marginTop: 8, lineHeight: 1.6, wordBreak: "keep-all" } }, out.tight
+                        ? `${bindLabel[out.lo.binding]}에서 한도가 걸린 금액이에요.`
+                        : "이 금액대 물건부터 살펴보세요.")),
+                React.createElement("div", { style: { padding: "14px 18px 16px", fontSize: 12, lineHeight: 1.8, color: T.sub, wordBreak: "keep-all" } },
+                    React.createElement("div", null, "\uC2E4\uC81C \uB099\uCC30\uAC00\uB294 \uCD5C\uC800\uAC00\uBCF4\uB2E4 \uB192\uAC8C \uD615\uC131\uB418\uB2C8 \uADF8\uB9CC\uD07C \uB0AE\uCDB0\uC11C \uC548\uB0B4\uB4DC\uB824\uC694."),
+                    React.createElement("div", { style: { marginTop: 4 } }, "\uC800\uB834\uD558\uAC8C \uB099\uCC30\uBC1B\uC744\uC218\uB85D \uB300\uCD9C\uC740 \uB354 \uB9CE\uC774 \uC2E4\uD589\uB418\uB294 \uACBD\uD5A5\uC774 \uC788\uC5B4\uC694. \uADF8\uAC8C \uACBD\uB9E4\uC758 \uB9E4\uB825\uC774\uAC70\uB4E0\uC694."))),
+            React.createElement(Card, { style: { marginBottom: 12 } },
+                React.createElement("div", { style: { fontWeight: 800, fontSize: 13.5, marginBottom: 10 } }, "\uC774\uC81C \uC774\uB807\uAC8C \uD574\uBCF4\uC138\uC694"),
+                React.createElement("div", { style: { display: "grid", gap: 8 } }, [
+                    ["📍", "원픽 지도에서 물건 훑어보기", `최저가 ${fmtMan(out.mapMax)} 이하로 걸러서 관심 물건을 골라보세요.`],
+                    ["🏦", "물건을 찾으면 대출 판독기로 확인", "그 물건 금액으로 실제 대출 가능액을 계산해보세요."],
+                    ["🧮", "수익률 계산기로 자금 계획 세우기", "취득세·법무비·명도비·인테리어까지 넣어 실제 필요 금액을 확인하세요."],
+                    ["📞", "대출 상담사에게 최종 확인", "상품과 조건에 따라 달라지니 입찰 전에 꼭 확인하세요."],
+                    ["💬", "그로인 톡방에서 의견 나누기", "같은 지역·비슷한 물건을 해본 분들의 경험이 제일 빨라요."],
+                ].map(([ic, t2, d], i) => (React.createElement("div", { key: i, style: { display: "flex", gap: 10, padding: "10px 12px", background: "#F7F9F9", borderRadius: 12 } },
+                    React.createElement("div", { style: { fontSize: 15, lineHeight: 1.4 } }, ic),
+                    React.createElement("div", { style: { flex: 1, minWidth: 0 } },
+                        React.createElement("div", { style: { fontSize: 12.5, fontWeight: 800, color: T.ink, lineHeight: 1.5, wordBreak: "keep-all" } }, t2),
+                        React.createElement("div", { style: { fontSize: 11.5, color: T.sub, lineHeight: 1.6, marginTop: 2, wordBreak: "keep-all" } }, d)))))),
+                React.createElement("div", { style: { marginTop: 12, fontSize: 11.5, color: T.sub, lineHeight: 1.7, wordBreak: "keep-all" } }, "\uCDE8\uB4DD\uC138\u00B7\uBC95\uBB34\uBE44\u00B7\uBA85\uB3C4\uBE44\u00B7\uC778\uD14C\uB9AC\uC5B4\uB294 \uC774 \uBC94\uC704\uC5D0 \uB4E4\uC5B4 \uC788\uC9C0 \uC54A\uC544\uC694. \uB099\uCC30\uAC00 \uC678\uC5D0 \uB530\uB85C \uC900\uBE44\uD558\uC154\uC57C \uD558\uB294 \uB3C8\uC774\uC5D0\uC694."))))));
+}
 /* ── 관리자 · 자료실 도구 설정 (규제 수치 리뉴얼) ── */
 function ToolsAdmin({ settings, onSave }) {
     const [draft, setDraft] = useState(() => JSON.parse(JSON.stringify(effToolCfg(settings))));
@@ -3516,6 +3650,24 @@ function ToolsAdmin({ settings, onSave }) {
                 React.createElement(MiniNum, { value: draft.firstCap, onChange: (v) => up((d) => { d.firstCap = v; }), w: 92 }),
                 React.createElement("span", { style: { fontSize: 11, color: T.mint, fontWeight: 800 } }, fmtMan(draft.firstCap)))),
         React.createElement(Card, { pad: 16, style: { marginBottom: 12 } },
+            React.createElement("div", { style: { fontWeight: 800, fontSize: 13.5, marginBottom: 4 } }, "\uD83D\uDCB0 \uC785\uCC30 \uC608\uC0B0 \uD310\uB3C5\uAE30"),
+            React.createElement("div", { style: { fontSize: 11, color: T.sub, marginBottom: 10, lineHeight: 1.6 } }, "\uD604\uAE08\u00B7\uC18C\uB4DD\uC73C\uB85C \uD6D1\uC5B4\uBCFC \uBB3C\uAC74 \uAE08\uC561\uB300\uB97C \uC5ED\uC0B0\uD574\uC694. LTV\u00B7DSR\u00B7\uD55C\uB3C4 \uC0C1\uD55C\uC740 \uC704 \uB300\uCD9C \uD310\uB3C5\uAE30 \uC124\uC815\uC744 \uADF8\uB300\uB85C \uC501\uB2C8\uB2E4."),
+            React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: "10px 18px", fontSize: 12, fontWeight: 700, alignItems: "center" } },
+                React.createElement("span", null,
+                    "\uC0C1\uB2E8 \uB300\uCD9C\uB960 ",
+                    React.createElement(MiniNum, { value: draft.budgetUpperLtv, onChange: (v) => up((d) => { d.budgetUpperLtv = v; }), w: 58, unit: "%" })),
+                React.createElement("span", null,
+                    "\uCD5C\uC800\uAC00 \uC5EC\uC720\uBD84 ",
+                    React.createElement(MiniNum, { value: draft.budgetMargin, onChange: (v) => up((d) => { d.budgetMargin = v; }), w: 58, unit: "%" }))),
+            React.createElement("div", { style: { fontSize: 11, color: T.sub, marginTop: 8, lineHeight: 1.7 } },
+                "\u00B7 ",
+                React.createElement("b", null, "\uC0C1\uB2E8 \uB300\uCD9C\uB960"),
+                " \u2014 \uAC10\uC815\uAC00\u00B7KB\uC2DC\uC138 \uAE30\uC900\uC73C\uB85C \uD55C\uB3C4\uB97C \uC7A1\uB294 \uC0C1\uD488\uC5D0\uC11C \uB099\uCC30\uAC00 \uB300\uBE44 \uC2E4\uD589\uB418\uB294 \uBE44\uC728. \uC62C\uB9AC\uBA74 \uC548\uB0B4 \uAE08\uC561\uC774 \uCEE4\uC838\uC694.",
+                React.createElement("br", null),
+                "\u00B7 ",
+                React.createElement("b", null, "\uCD5C\uC800\uAC00 \uC5EC\uC720\uBD84"),
+                " \u2014 \uC2E4\uC81C \uB099\uCC30\uAC00\uAC00 \uCD5C\uC800\uAC00\uBCF4\uB2E4 \uB192\uAC8C \uD615\uC131\uB418\uB294 \uB9CC\uD07C \uB0AE\uCDB0\uC11C \uC548\uB0B4\uD558\uB294 \uBE44\uC728. \uC62C\uB9AC\uBA74 \uB354 \uBCF4\uC218\uC801\uC73C\uB85C \uC548\uB0B4\uD574\uC694.")),
+        React.createElement(Card, { pad: 16, style: { marginBottom: 12 } },
             React.createElement("div", { style: { fontWeight: 800, fontSize: 13.5, marginBottom: 8 } }, "DSR \u00B7 \uC2A4\uD2B8\uB808\uC2A4 \uAE08\uB9AC"),
             React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: "10px 18px", fontSize: 12, fontWeight: 700, alignItems: "center" } },
                 React.createElement("span", null,
@@ -3584,6 +3736,8 @@ function ToolsAdmin({ settings, onSave }) {
 /* ── 공개 조회 페이지 (탭 대시보드) ── */
 function PublicPage({ members, ledger, log, insights, lectures, settings, certs, cmts, austats, onAddCert, onAddCmt, viewer, onLogin, onLogout, onChangePw }) {
     const [ptab, setPtab] = useState("home");
+    const [archiveTool, setArchiveTool] = useState(null); // 다른 탭에서 자료실 특정 도구로 바로 진입
+    const goTool = (k) => { setArchiveTool(k); setPtab("archive"); };
     /* 선택된 탭이 화면 밖에 있으면 탭바를 자동 스크롤해 보이게 함 */
     useEffect(() => {
         const el = document.getElementById("ptab-" + ptab);
@@ -3621,7 +3775,7 @@ function PublicPage({ members, ledger, log, insights, lectures, settings, certs,
         ["guide", "안내", "📢"],
     ];
     const TabBar = () => (React.createElement("div", { style: { display: "flex", gap: 4, background: "#fff", borderRadius: 14, padding: 4, border: `1px solid ${T.line}`,
-            boxShadow: "0 4px 16px rgba(28,35,51,.06)", marginBottom: 16, position: "sticky", top: 6, zIndex: 20, overflowX: "auto" } }, PTABS.map(([k, label, icon]) => (React.createElement("button", { key: k, id: "ptab-" + k, onClick: () => setPtab(k), style: { flex: "1 0 auto", border: "none", cursor: "pointer", padding: "10px 10px", borderRadius: 12,
+            boxShadow: "0 4px 16px rgba(28,35,51,.06)", marginBottom: 16, position: "sticky", top: 6, zIndex: 20, overflowX: "auto" } }, PTABS.map(([k, label, icon]) => (React.createElement("button", { key: k, id: "ptab-" + k, onClick: () => { setArchiveTool(null); setPtab(k); }, style: { flex: "1 0 auto", border: "none", cursor: "pointer", padding: "10px 10px", borderRadius: 12,
             fontWeight: 800, fontSize: 12.5, letterSpacing: "-0.01em", fontFamily: "inherit", whiteSpace: "nowrap",
             background: ptab === k ? T.grad : "transparent", color: ptab === k ? "#fff" : T.sub, transition: "all .15s ease" } },
         icon,
@@ -3695,6 +3849,14 @@ function PublicPage({ members, ledger, log, insights, lectures, settings, certs,
                             m.realName,
                             m.founder ? React.createElement("span", { style: { fontSize: 9, color: i === 0 ? "#F7EACB" : "#B08E3E", marginLeft: 3, verticalAlign: "1px" } }, "\u2726") : null))),
                         React.createElement("span", { style: { fontSize: 12, color: T.sub } }, "\uB099\uCC30 \u00B7 \uC785\uCC30 \u00B7 \uC784\uC7A5 \u00B7 \uC774\uBCA4\uD2B8 \uD65C\uB3D9 \uC885\uD569")))),
+            React.createElement("div", { onClick: () => goTool("budget"), style: { cursor: "pointer" } },
+                React.createElement(SectionTitle, { title: "\uC785\uCC30 \uC608\uC0B0 \uD310\uB3C5\uAE30", right: React.createElement(Pill, { tone: "line" }, "\uACC4\uC0B0\uD574 \uBCF4\uAE30 \u2192") }),
+                React.createElement(Card, { pad: 16, style: { marginBottom: 20, background: T.gradSoft, border: "none" } },
+                    React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 12 } },
+                        React.createElement("div", { style: { fontSize: 32 } }, "\uD83D\uDCB0"),
+                        React.createElement("div", { style: { minWidth: 0 } },
+                            React.createElement("div", { style: { fontWeight: 800, fontSize: 14.5, letterSpacing: "-0.01em", wordBreak: "keep-all" } }, "\uC5BC\uB9C8\uC9DC\uB9AC \uBB3C\uAC74\uC744 \uBD10\uC57C \uD560\uAE4C\uC694?"),
+                            React.createElement("div", { style: { fontSize: 12.5, color: T.sub, marginTop: 2, wordBreak: "keep-all" } }, "\uD604\uAE08\uACFC \uC18C\uB4DD\uB9CC \uB123\uC73C\uBA74 \uD6D1\uC5B4\uBCFC \uAE08\uC561\uB300\uB97C \uC54C\uB824\uB4DC\uB824\uC694"))))),
             React.createElement("div", { onClick: () => setPtab("onepick"), style: { cursor: "pointer" } },
                 React.createElement(SectionTitle, { title: "\uC6D0\uD53D \uACBD\uB9E4 \uC9C0\uB3C4", right: React.createElement(Pill, { tone: "line" }, "\uBCF4\uB7EC \uAC00\uAE30 \u2192") }),
                 React.createElement(Card, { pad: 16, style: { marginBottom: 20, background: T.gradSoft, border: "none" } },
@@ -3920,6 +4082,14 @@ function PublicPage({ members, ledger, log, insights, lectures, settings, certs,
     /* ── 원픽 경매 지도 ── */
     const OnePickTab = () => (React.createElement("div", null,
         React.createElement(SectionTitle, { eyebrow: "\uB9E4\uC6D4 \uC5C5\uB370\uC774\uD2B8", title: "\uC6D0\uD53D \uACBD\uB9E4 \uC9C0\uB3C4", right: React.createElement(Pill, { tone: "coral" }, "\uBA64\uBC84 \uC804\uC6A9") }),
+        React.createElement("div", { onClick: () => goTool("budget"), style: { cursor: "pointer", display: "flex", alignItems: "center", gap: 10,
+                padding: "11px 14px", marginBottom: 12, borderRadius: 14, background: T.gradSoft, border: `1px solid ${T.line}` } },
+            React.createElement("div", { style: { fontSize: 18 } }, "\uD83D\uDCB0"),
+            React.createElement("div", { style: { flex: 1, minWidth: 0, fontSize: 12.5, fontWeight: 800, color: T.ink, lineHeight: 1.55, wordBreak: "keep-all" } },
+                "\uC5BC\uB9C8\uC9DC\uB9AC \uBB3C\uAC74\uC744 \uBD10\uC57C \uD560\uC9C0 \uBAA8\uB974\uACA0\uB2E4\uBA74",
+                React.createElement("br", null),
+                React.createElement("span", { style: { color: T.sub, fontWeight: 700 } }, "\uC608\uC0B0 \uD310\uB3C5\uAE30\uB85C \uAE08\uC561\uB300\uBD80\uD130 \uD655\uC778\uD574\uBCF4\uC138\uC694")),
+            React.createElement("div", { style: { fontSize: 15, color: T.sub } }, "\u203A")),
         React.createElement(Card, { pad: 0, style: { overflow: "hidden", marginBottom: 14 } },
             React.createElement("div", { style: { background: T.grad, padding: "24px 22px", color: "#fff", position: "relative", overflow: "hidden" } },
                 React.createElement("div", { style: { position: "absolute", top: -50, right: -50, width: 180, height: 180, background: "rgba(255,255,255,.1)", borderRadius: "50%" } }),
@@ -4027,10 +4197,11 @@ function PublicPage({ members, ledger, log, insights, lectures, settings, certs,
     };
     /* ── 크레딧 안내 ── */
     /* 📚 자료실 — 도구 목록 · 앞으로 도구가 늘어나면 ARCHIVE_TOOLS에 추가 */
-    const ArchiveTab = () => {
+    const ArchiveTab = ({ initialTool }) => {
         const toolCfg = effToolCfg(settings);
-        const [tool, setTool] = useState(null);
+        const [tool, setTool] = useState(initialTool || null);
         const ARCHIVE_TOOLS = [
+            { k: "budget", icon: "💰", name: "입찰 예산 판독기", by: "1단계 · 얼마짜리 물건을 볼까", desc: "현금과 소득을 넣으면 훑어볼 만한 경매 물건 금액대를 알려줘요." },
             { k: "calc", icon: "🧮", name: "경공매 수익률 계산기", by: "경공매 수익률·세금 시뮬레이터", desc: "낙찰가·비용·세금을 넣으면 단타/2년 보유/전세·월세 세팅별 수익률을 계산해요." },
             { k: "loan", icon: "🏦", name: "대출 판독기", by: toolCfg.asOf, desc: "지역·주택수·소득을 고르면 현행 규제(LTV·DSR·한도 상한)를 반영해 대출 가능액을 판독해요." },
         ];
@@ -4038,6 +4209,7 @@ function PublicPage({ members, ledger, log, insights, lectures, settings, certs,
             return (React.createElement("div", null,
                 React.createElement("button", { onClick: () => setTool(null), style: { cursor: "pointer", border: "none", background: "transparent", fontFamily: "inherit", fontWeight: 800,
                         fontSize: 13, color: T.sub, padding: "2px 2px 12px", display: "flex", alignItems: "center", gap: 4 } }, "\u2190 \uC790\uB8CC\uC2E4 \uBAA9\uB85D"),
+                tool === "budget" && React.createElement(BudgetReader, { cfg: toolCfg }),
                 tool === "calc" && React.createElement(ProfitCalc, { cfg: toolCfg }),
                 tool === "loan" && React.createElement(LoanReader, { cfg: toolCfg })));
         return (React.createElement("div", null,
@@ -4169,7 +4341,7 @@ function PublicPage({ members, ledger, log, insights, lectures, settings, certs,
             ptab === "onepick" && React.createElement(OnePickTab, null),
             ptab === "cert" && React.createElement(CertBoard, { certs: certs, cmts: cmts, members: members, me: meMember, onAddCert: onAddCert, onAddCmt: onAddCmt }),
             ptab === "stats" && React.createElement(AuctionStatsTab, { stats: austats }),
-            ptab === "archive" && React.createElement(ArchiveTab, null),
+            ptab === "archive" && React.createElement(ArchiveTab, { key: archiveTool || "root", initialTool: archiveTool }),
             ptab === "lectures" && React.createElement(LecturesTab, null),
             ptab === "insights" && React.createElement(InsightsTab, null),
             ptab === "guide" && React.createElement(GuideTab, null),
@@ -4348,8 +4520,9 @@ function App() {
         wins: numOr(settings.ptsWins, DEFAULT_SETTINGS.ptsWins),
         parts: numOr(settings.ptsParts, DEFAULT_SETTINGS.ptsParts),
     };
-    /* v47: 'all' 조회는 서버에서 인증 필수 (무인증 전체 조회 차단) — PIN 또는 멤버 세션 토큰 동봉.
-       tok 인자: 로그인 직후엔 setSessToken이 state 반영 전이라 토큰을 직접 넘겨받음 */
+    /* v47: 'all' 조회는 서버에서 인증 필수가 됨 (무인증 전체 조회 차단) —
+       관리자·운영진은 adminKey(PIN), 멤버는 로그인 세션 토큰을 함께 보냄.
+       tok 인자: 로그인 직후엔 setSessToken이 아직 state에 반영되기 전이라 토큰을 직접 넘겨받음 */
     async function refresh(key, tok) {
         try {
             const d = await api("all", { adminKey: key || adminKey || undefined, token: tok || sessToken || undefined });
@@ -4364,7 +4537,7 @@ function App() {
             setLectures(Array.isArray(d.lectures) ? d.lectures : []);
             setCerts(Array.isArray(d.certs) ? d.certs : []);
             setCmts(Array.isArray(d.cmts) ? d.cmts : []);
-            /* v47: austats는 'all' 응답에서 분리 — loadAustats()가 별도 요청으로 채움 */
+            /* v47: austats는 'all' 응답에서 분리됨 — 아래 loadAustats()가 별도 요청으로 채움 */
             if (d.settings && typeof d.settings === "object")
                 setSettings({ ...DEFAULT_SETTINGS, ...d.settings });
             if (Array.isArray(d.acts))
@@ -4389,9 +4562,11 @@ function App() {
             setPhase((p) => (p === "ready" ? p : "error"));
         }
     }
-    /* ── 경매통계 지연 로드 (v47) — 'all'에서 분리된 austats를 별도 요청으로 로드.
-       홈 카드(HomeLiveStats)도 쓰므로 탭 진입이 아니라 전체 조회 성공 직후 백그라운드 1회.
-       월 1회 갱신 데이터라 localStorage 24시간 캐시 병행 (서버 6시간 캐시, 쓰기 시 무효화) ── */
+    /* ── 경매통계 지연 로드 (v47) ──
+       'all'에서 분리된 austats를 별도 요청으로 가져옴 (§4 처방: 전체 조회 응답 666.5KB → 분리).
+       홈 카드(HomeLiveStats)와 통계 탭이 함께 쓰므로 "탭 진입 시에만"이 아니라
+       전체 조회 성공 직후 백그라운드로 1회 로드 — 분리 목적(응답 경량화·캐시 복원)은 동일하게 달성.
+       월 1회 갱신 데이터라 localStorage 24시간 캐시 병행 (서버도 6시간 캐시, 쓰기 시 무효화) */
     const austatsLoaded = React.useRef(false);
     async function loadAustats(force, tok, key) {
         if (austatsLoaded.current && !force)
@@ -4439,7 +4614,7 @@ function App() {
                     setLectures(Array.isArray(d.lectures) ? d.lectures : []);
                     setCerts(Array.isArray(d.certs) ? d.certs : []);
                     setCmts(Array.isArray(d.cmts) ? d.cmts : []);
-                    setAustats(Array.isArray(d.austats) ? d.austats : []); // 구버전 캐시 호환 (v47 이후엔 아래 별도 키)
+                    setAustats(Array.isArray(d.austats) ? d.austats : []); // 구버전 캐시 호환 (v47 이후엔 아래 별도 키 사용)
                     if (d.settings)
                         setSettings({ ...DEFAULT_SETTINGS, ...d.settings });
                 }
