@@ -3447,6 +3447,270 @@ function ErrorLogTab({ errors, onRefresh }) {
                             it.url.replace(/^https?:\/\//, "").slice(0, 40))))))))));
         })))));
 }
+/* ── ③ 지역 경매 온도계 (v1 · 조회 전용) ──────────────────────
+   낙찰가율·매각률·평균응찰자 참고자료. 판단은 사용자가 한다.
+   [철칙]
+   1. "적정가"·"추천"·"권장"을 화면에 쓰지 않는다. 측정만 하고 처방하지 않는다.
+   2. 숫자 옆에 항상 표본 수를 붙인다. 표본이 부족하면 숫자를 숨긴다.
+   3. 상위 지역으로 폴백할 때 반드시 화면에 명시한다. 조용히 넓히지 않는다.
+   4. 이 데이터는 월평균 집계다. 개별 물건 분포처럼 보이는 UI를 만들지 않는다.
+   ※ austats는 PublicPage props → ArchiveTab 클로저에서 그대로 접근 */
+/* 표본 기준 — 매각건수(sold) 기준. priceRate가 매각된 물건에서만 나오는 값이라 cases가 아닌 sold를 본다 */
+const THERMO_MIN_SOLD = 30; // 이 아래면 숫자를 보여주지 않는다
+const THERMO_THIN_SOLD = 80; // 이 아래면 "표본이 얇다" 경고를 함께 띄운다
+const THERMO_MONTHS = 3; // 기본 조회 구간 (개월)
+const THERMO_TREND = 12; // 추이·범위 계산 구간 (개월)
+/* 가중평균 집계 — 월별 평균을 단순평균하면 건수 1건인 달과 500건인 달이 같은 무게가 된다 */
+function thermoAgg(rows) {
+    const sold = rows.reduce((a, r) => a + (r.sold || 0), 0);
+    const cases = rows.reduce((a, r) => a + (r.cases || 0), 0);
+    if (rows.length === 0)
+        return { sold: 0, cases: 0, priceRate: null, saleRate: null, bidders: null };
+    const wAvg = (field, weightField) => {
+        const w = rows.reduce((a, r) => a + (r[weightField] || 0), 0);
+        if (w > 0)
+            return rows.reduce((a, r) => a + (r[field] || 0) * (r[weightField] || 0), 0) / w;
+        const valid = rows.filter((r) => (r[field] || 0) > 0);
+        return valid.length ? valid.reduce((a, r) => a + r[field], 0) / valid.length : null;
+    };
+    return {
+        sold: sold, cases: cases,
+        priceRate: wAvg("priceRate", "sold"),
+        saleRate: cases > 0 ? (sold / cases) * 100 : wAvg("saleRate", "cases"),
+        bidders: wAvg("bidders", "sold"),
+    };
+}
+/* 사건번호에서 접수 연도만 뽑는다 — 스크래핑 없이 파싱만 (2024타경12345 → 2024) */
+function thermoCaseYear(s) {
+    const m = String(s || "").match(/(\d{4})\s*타?\s*경\s*\d+/);
+    if (!m)
+        return null;
+    const y = Number(m[1]);
+    const now = new Date().getFullYear();
+    return y >= 2000 && y <= now ? y : null;
+}
+/* 지표 카드 한 칸 */
+const ThermoStat = ({ label, value, sub, dim }) => (React.createElement("div", { style: { background: dim ? "#F7F9F9" : T.gradSoft, borderRadius: 14, padding: "12px 10px", textAlign: "center" } },
+    React.createElement("div", { style: { fontSize: 11, fontWeight: 800, color: T.sub } }, label),
+    React.createElement("div", { style: { fontSize: 21, fontWeight: 800, color: dim ? T.sub : T.ink, marginTop: 3, fontVariantNumeric: "tabular-nums", letterSpacing: "-0.02em" } }, value),
+    sub && React.createElement("div", { style: { fontSize: 10, color: T.sub, marginTop: 2, fontWeight: 700 } }, sub)));
+/* 경고 박스 — 톤: warn(주의) | info(설명) */
+const ThermoNote = ({ tone = "info", children }) => (React.createElement("div", { style: {
+        borderLeft: `3px solid ${tone === "warn" ? T.gold : T.line}`,
+        background: tone === "warn" ? "rgba(239,182,60,.09)" : "#F7F9F9",
+        padding: "9px 11px", fontSize: 11.5, lineHeight: 1.65, color: T.sub, wordBreak: "keep-all",
+    } }, children));
+function AuctionThermo({ stats: statsRaw }) {
+    /* 중복 방어 — 수집 충돌로 같은 (월·구분·용도·지역) 행이 남았으면 최신 id만 */
+    const stats = (() => {
+        const m = {};
+        (statsRaw || []).forEach((r) => {
+            const k = [r.month, r.scope || "지역별", r.usage || "전체", r.region].join("|");
+            if (!m[k] || (r.id || 0) > (m[k].id || 0))
+                m[k] = r;
+        });
+        return Object.values(m);
+    })();
+    /* 시도 → scope 매핑 (법원별 스코프는 v1에서 제외 — 지역 단위가 사용자 직관에 맞음) */
+    const sidoToScope = {};
+    [...new Set(stats.map((r) => r.scope || "지역별"))]
+        .filter((s) => !isCourtScope(s))
+        .forEach((s) => { const k = scopeSido(s); if (k && !sidoToScope[k])
+        sidoToScope[k] = s; });
+    const sidoList = Object.keys(sidoToScope);
+    const [sido, setSido] = useState(() => (sidoList.indexOf("인천") >= 0 ? "인천" : sidoList[0] || null));
+    const [region, setRegion] = useState("전체");
+    const [usage, setUsage] = useState("전체");
+    const [caseNo, setCaseNo] = useState("");
+    const [appraisal, setAppraisal] = useState("");
+    const [myBid, setMyBid] = useState("");
+    if (stats.length === 0 || sidoList.length === 0) {
+        return (React.createElement(Card, { pad: 24, style: { textAlign: "center", color: T.sub, fontSize: 13, lineHeight: 1.7 } },
+            "\uD83C\uDF21\uFE0F \uC544\uC9C1 \uC870\uD68C\uD560 \uD1B5\uACC4\uAC00 \uC5C6\uC5B4\uC694.",
+            React.createElement("br", null),
+            "\uC6B4\uC601\uC9C4\uC774 \uC6D4\uAC04 \uB9E4\uAC01\uD1B5\uACC4\uB97C \uC218\uC9D1\uD558\uBA74 \uC774\uC6A9\uD560 \uC218 \uC788\uC5B4\uC694."));
+    }
+    const scope = sidoToScope[sido];
+    const scopeRows = stats.filter((r) => (r.scope || "지역별") === scope);
+    /* 용도 — 실제 수집된 것만, AU_USAGES 순서 유지 */
+    const usages = AU_USAGES.filter((u) => scopeRows.some((r) => r.usage === u))
+        .concat([...new Set(scopeRows.map((r) => r.usage))].filter((u) => AU_USAGES.indexOf(u) < 0));
+    const effUsage = usages.indexOf(usage) >= 0 ? usage : (usages[0] || "전체");
+    const usageRows = scopeRows.filter((r) => r.usage === effUsage);
+    const regions = [...new Set(usageRows.map((r) => r.region))].filter((r) => r !== "전체").sort();
+    const effRegion = region === "전체" || regions.indexOf(region) >= 0 ? region : "전체";
+    const months = [...new Set(usageRows.map((r) => r.month))].sort();
+    const recent = months.slice(-THERMO_MONTHS);
+    const trendMonths = months.slice(-THERMO_TREND);
+    /* ── 표본 사다리: 선택 지역 → 부족하면 시도 전체 → 그래도 부족하면 거절 ── */
+    const pick = (rg, mos) => usageRows.filter((r) => r.region === rg && mos.indexOf(r.month) >= 0);
+    const primary = thermoAgg(pick(effRegion, recent));
+    const fellBack = effRegion !== "전체" && primary.sold < THERMO_MIN_SOLD;
+    const shownRegion = fellBack ? "전체" : effRegion;
+    const agg = fellBack ? thermoAgg(pick("전체", recent)) : primary;
+    const enough = agg.sold >= THERMO_MIN_SOLD;
+    const thin = enough && agg.sold < THERMO_THIN_SOLD;
+    const regionLabel = shownRegion === "전체" ? `${sido} 전체` : shownRegion;
+    /* ── 월별 추이 (최근 12개월 월평균 낙찰가율) ── */
+    const trend = trendMonths.map((mo) => {
+        const r = usageRows.find((x) => x.region === shownRegion && x.month === mo);
+        return { month: mo, v: r && r.priceRate > 0 ? r.priceRate : null };
+    });
+    const trendVals = trend.map((t) => t.v).filter((v) => v !== null);
+    const bandLo = trendVals.length ? Math.min(...trendVals) : null;
+    const bandHi = trendVals.length ? Math.max(...trendVals) : null;
+    /* ── 내 입찰가 위치 (판단 없이 위치만) ── */
+    const ap = Number(appraisal) || 0;
+    const bid = Number(myBid) || 0;
+    const myRate = ap > 0 && bid > 0 ? (bid / ap) * 100 : null;
+    const pos = (v) => {
+        if (bandLo === null || bandHi === null)
+            return null;
+        const lo = Math.min(bandLo, myRate || bandLo) - 3;
+        const hi = Math.max(bandHi, myRate || bandHi) + 3;
+        return hi > lo ? ((v - lo) / (hi - lo)) * 100 : 50;
+    };
+    const outOfBand = myRate !== null && bandLo !== null && (myRate < bandLo || myRate > bandHi);
+    const caseYear = thermoCaseYear(caseNo);
+    const caseAge = caseYear ? new Date().getFullYear() - caseYear : null;
+    const moLabel = (mo) => (/^\d{4}-\d{2}$/.test(mo || "") ? `${Number(mo.slice(5))}월` : String(mo || ""));
+    return (React.createElement("div", null,
+        React.createElement(SectionTitle, { eyebrow: "GROW IN ARCHIVE", title: "\uD83C\uDF21\uFE0F \uC9C0\uC5ED \uACBD\uB9E4 \uC628\uB3C4\uACC4", right: React.createElement(Pill, { tone: "line" }, "\uCC38\uACE0\uC790\uB8CC") }),
+        React.createElement(Card, { style: { marginBottom: 12 } },
+            React.createElement("div", { style: { display: "grid", gap: 14 } },
+                React.createElement(ToolChips, { label: "\u2460 \uC9C0\uC5ED", opts: sidoList.map((s) => [s, s]), value: sido, onChange: (v) => { setSido(v); setRegion("전체"); } }),
+                regions.length > 0 && (React.createElement("div", null,
+                    React.createElement("div", { style: { fontSize: 11.5, fontWeight: 800, color: T.sub, marginBottom: 6 } }, "\u2461 \uC2DC\u00B7\uAD70\u00B7\uAD6C"),
+                    React.createElement("select", { value: effRegion, onChange: (e) => setRegion(e.target.value), style: { width: "100%", boxSizing: "border-box", padding: "11px 12px", borderRadius: 12,
+                            border: `1.5px solid ${T.line}`, fontFamily: "inherit", fontWeight: 700, fontSize: 13, color: T.ink, background: "#fff" } },
+                        React.createElement("option", { value: "\uC804\uCCB4" },
+                            sido,
+                            " \uC804\uCCB4"),
+                        regions.map((r) => React.createElement("option", { key: r, value: r }, r))))),
+                React.createElement(ToolChips, { label: "\u2462 \uC6A9\uB3C4", opts: usages.map((u) => [u, u]), value: effUsage, onChange: setUsage }))),
+        React.createElement(Card, { style: { marginBottom: 12 } },
+            React.createElement("div", { style: { display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8, marginBottom: 10, flexWrap: "wrap" } },
+                React.createElement("div", { style: { fontWeight: 800, fontSize: 14.5, letterSpacing: "-0.01em" } },
+                    regionLabel,
+                    " \u00B7 ",
+                    effUsage),
+                React.createElement("div", { style: { fontSize: 11, color: T.sub, fontWeight: 700 } }, recent.length ? `${moLabel(recent[0])}~${moLabel(recent[recent.length - 1])} 평균` : "—")),
+            enough ? (React.createElement(React.Fragment, null,
+                React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 8 } },
+                    React.createElement(ThermoStat, { label: "\uB099\uCC30\uAC00\uC728", value: pctStr(agg.priceRate), sub: "\uAC10\uC815\uAC00 \uB300\uBE44" }),
+                    React.createElement(ThermoStat, { label: "\uB9E4\uAC01\uB960", value: pctStr(agg.saleRate), sub: `${agg.cases.toLocaleString()}건 중` }),
+                    React.createElement(ThermoStat, { label: "\uD3C9\uADE0 \uC751\uCC30", value: agg.bidders > 0 ? `${(Math.round(agg.bidders * 10) / 10)}명` : "—", sub: "\uACBD\uC7C1 \uC815\uB3C4" })),
+                React.createElement("div", { style: { marginTop: 10 } },
+                    React.createElement(ThermoNote, { tone: thin ? "warn" : "info" },
+                        "\uC774 \uC22B\uC790\uB294 ",
+                        React.createElement("b", null,
+                            regionLabel,
+                            " ",
+                            effUsage,
+                            " \uB9E4\uAC01 ",
+                            agg.sold.toLocaleString(),
+                            "\uAC74 \uC804\uCCB4\uC758 \uD3C9\uADE0"),
+                        "\uC774\uC5D0\uC694. \uC2E0\uCD95\u00B7\uAD6C\uCD95\u00B7\uD2B9\uC218\uBB3C\uAC74\uC774 \uBAA8\uB450 \uC11E\uC778 \uAC12\uC774\uB77C \uAC1C\uBCC4 \uBB3C\uAC74\uC758 \uAE30\uC900\uC774 \uB420 \uC218 \uC5C6\uC5B4\uC694.",
+                        thin && React.createElement(React.Fragment, null,
+                            React.createElement("br", null),
+                            "\uD45C\uBCF8\uC774 \uC587\uC740 \uD3B8\uC774\uB77C \uD55C\uB450 \uAC74\uC5D0 \uD3C9\uADE0\uC774 \uD06C\uAC8C \uD754\uB4E4\uB9B4 \uC218 \uC788\uC5B4\uC694."))),
+                fellBack && (React.createElement("div", { style: { marginTop: 8 } },
+                    React.createElement(ThermoNote, { tone: "warn" },
+                        React.createElement("b", null, effRegion),
+                        "\uB294 \uCD5C\uADFC ",
+                        THERMO_MONTHS,
+                        "\uAC1C\uC6D4 \uB9E4\uAC01\uC774 ",
+                        primary.sold,
+                        "\uAC74\uBFD0\uC774\uB77C",
+                        React.createElement("b", null,
+                            " ",
+                            sido,
+                            " \uC804\uCCB4"),
+                        "\uB85C \uB113\uD600\uC11C \uBCF4\uACE0 \uC788\uC5B4\uC694. \uC881\uC740 \uC9C0\uC5ED\uC758 \uC22B\uC790\uB97C \uADF8\uB300\uB85C \uC4F0\uBA74 \uC624\uD788\uB824 \uC624\uD574\uB97C \uB9CC\uB4E4\uC5B4\uC694."))))) : (React.createElement(ThermoNote, { tone: "warn" },
+                "\uC774 \uC870\uAC74\uC740 \uCD5C\uADFC ",
+                THERMO_MONTHS,
+                "\uAC1C\uC6D4 \uB9E4\uAC01\uC774 ",
+                React.createElement("b", null,
+                    agg.sold,
+                    "\uAC74"),
+                "\uBFD0\uC774\uB77C \uCC38\uACE0\uC790\uB8CC\uB97C \uC81C\uACF5\uD558\uC9C0 \uC54A\uC544\uC694. \uD45C\uBCF8 ",
+                THERMO_MIN_SOLD,
+                "\uAC74 \uBBF8\uB9CC\uC5D0\uC11C \uB098\uC628 \uD3C9\uADE0\uC740 \uCC38\uACE0\uAC00 \uC544\uB2C8\uB77C \uCC29\uAC01\uC5D0 \uAC00\uAE4C\uC6CC\uC694. \uC9C0\uC5ED\uC744 \uB113\uD788\uAC70\uB098 \uC6A9\uB3C4\uB97C \uBC14\uAFD4\uC11C \uC870\uD68C\uD574\uBCF4\uC138\uC694."))),
+        enough && trendVals.length >= 3 && (React.createElement(Card, { style: { marginBottom: 12 } },
+            React.createElement("div", { style: { fontWeight: 800, fontSize: 13.5, marginBottom: 10 } }, "\uC6D4\uBCC4 \uB099\uCC30\uAC00\uC728 \uD750\uB984"),
+            React.createElement("div", { style: { display: "flex", alignItems: "flex-end", gap: 3, height: 74 } }, trend.map((t) => {
+                const h = t.v === null ? 0 : ((t.v - bandLo) / Math.max(bandHi - bandLo, 1)) * 56 + 14;
+                return (React.createElement("div", { key: t.month, style: { flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 3 } },
+                    React.createElement("div", { style: { width: "100%", height: h, background: t.v === null ? T.line : T.grad, borderRadius: "4px 4px 0 0", opacity: t.v === null ? 0.35 : 1 } }),
+                    React.createElement("div", { style: { fontSize: 8.5, color: T.sub, fontWeight: 700 } }, moLabel(t.month))));
+            })),
+            React.createElement("div", { style: { fontSize: 11, color: T.sub, marginTop: 8, fontWeight: 700 } },
+                "\uCD5C\uADFC 12\uAC1C\uC6D4 \uC6D4\uD3C9\uADE0\uC740 ",
+                pctStr(bandLo),
+                " ~ ",
+                pctStr(bandHi),
+                " \uC0AC\uC774\uC5D0\uC11C \uC6C0\uC9C1\uC600\uC5B4\uC694."))),
+        enough && (React.createElement(Card, { style: { marginBottom: 12 } },
+            React.createElement("div", { style: { fontWeight: 800, fontSize: 13.5, marginBottom: 3 } }, "\uB0B4\uAC00 \uC815\uD55C \uC785\uCC30\uAC00\uB294 \uC5B4\uB514\uCBE4\uC77C\uAE4C"),
+            React.createElement("div", { style: { fontSize: 11.5, color: T.sub, marginBottom: 12, lineHeight: 1.6 } }, "\uC785\uCC30\uAC00\uB294 \uC9C1\uC811 \uC815\uD558\uC138\uC694. \uC774 \uB3C4\uAD6C\uB294 \uADF8 \uC22B\uC790\uAC00 \uACFC\uAC70 \uD1B5\uACC4 \uC5B4\uB514\uCBE4\uC778\uC9C0\uB9CC \uC54C\uB824\uC918\uC694."),
+            React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 } },
+                React.createElement(ToolNum, { label: "\uAC10\uC815\uAC00", value: appraisal, onChange: setAppraisal }),
+                React.createElement(ToolNum, { label: "\uB0B4 \uC785\uCC30\uAC00", value: myBid, onChange: setMyBid })),
+            myRate !== null && bandLo !== null && (React.createElement("div", { style: { marginTop: 16 } },
+                React.createElement("div", { style: { position: "relative", height: 8, background: "#F0F3F3", borderRadius: 4, margin: "20px 0 6px" } },
+                    React.createElement("div", { style: { position: "absolute", left: `${pos(bandLo)}%`, width: `${pos(bandHi) - pos(bandLo)}%`, height: 8, background: T.gradSoft, borderRadius: 4, border: `1px solid ${T.line}` } }),
+                    React.createElement("div", { style: { position: "absolute", left: `calc(${Math.max(0, Math.min(100, pos(myRate)))}% - 2px)`, top: -6, width: 4, height: 20, background: T.ink, borderRadius: 2 } })),
+                React.createElement("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 10.5, color: T.sub, fontWeight: 700 } },
+                    React.createElement("span", null, pctStr(bandLo)),
+                    React.createElement("span", null, "\uCD5C\uADFC 12\uAC1C\uC6D4 \uC6D4\uD3C9\uADE0 \uBC94\uC704"),
+                    React.createElement("span", null, pctStr(bandHi))),
+                React.createElement("div", { style: { fontSize: 12.5, color: T.sub, marginTop: 12, lineHeight: 1.7, wordBreak: "keep-all" } },
+                    "\uAC10\uC815\uAC00 \uB300\uBE44 ",
+                    React.createElement("b", { style: { color: T.ink } }, pctStr(myRate)),
+                    " \u2014",
+                    " ",
+                    outOfBand
+                        ? React.createElement(React.Fragment, null,
+                            "\uCD5C\uADFC 12\uAC1C\uC6D4 \uC6D4\uD3C9\uADE0\uC774 \uC624\uAC04 \uBC94\uC704 ",
+                            React.createElement("b", null, "\uBC16"),
+                            "\uC774\uC5D0\uC694. \uD2C0\uB838\uB2E4\uB294 \uB73B\uC774 \uC544\uB2C8\uB77C, \uC774 \uC9C0\uC5ED \uD3C9\uADE0\uACFC \uB2E4\uB978 \uD310\uB2E8\uC744 \uD558\uACE0 \uC788\uB2E4\uB294 \uB73B\uC774\uC5D0\uC694. \uADF8 \uADFC\uAC70\uB97C \uC2A4\uC2A4\uB85C \uC124\uBA85\uD560 \uC218 \uC788\uB294\uC9C0 \uD655\uC778\uD574\uBCF4\uC138\uC694.")
+                        : React.createElement(React.Fragment, null,
+                            "\uCD5C\uADFC 12\uAC1C\uC6D4 \uC6D4\uD3C9\uADE0\uC774 \uC624\uAC04 \uBC94\uC704 ",
+                            React.createElement("b", null, "\uC548"),
+                            "\uC774\uC5D0\uC694. \uC801\uC815\uD558\uB2E4\uB294 \uB73B\uC774 \uC544\uB2C8\uB77C ",
+                            React.createElement("b", null, "\uC804\uB840\uAC00 \uC788\uB2E4"),
+                            "\uB294 \uB73B\uC774\uC5D0\uC694.")),
+                React.createElement("div", { style: { marginTop: 10 } },
+                    React.createElement(ThermoNote, null,
+                        "\uC774 \uBC94\uC704\uB294 \uAC1C\uBCC4 \uB099\uCC30 \uC0AC\uB840\uC758 \uBD84\uD3EC\uAC00 \uC544\uB2C8\uB77C ",
+                        React.createElement("b", null, "\uC6D4\uD3C9\uADE0 12\uAC1C\uC758 \uCD5C\uC800~\uCD5C\uACE0"),
+                        "\uC608\uC694. \uC2E4\uC81C \uAC1C\uBCC4 \uBB3C\uAC74\uC740 \uC774\uBCF4\uB2E4 \uD6E8\uC52C \uB113\uAC8C \uD769\uC5B4\uC838 \uC788\uC5B4\uC694.")))))),
+        React.createElement(Card, { style: { marginBottom: 12 } },
+            React.createElement("div", { style: { fontWeight: 800, fontSize: 13.5, marginBottom: 3 } },
+                "\uC0AC\uAC74\uBC88\uD638\uB85C \uC2DC\uC810 \uD655\uC778 ",
+                React.createElement("span", { style: { fontSize: 11, color: T.sub, fontWeight: 700 } }, "\uC120\uD0DD")),
+            React.createElement("div", { style: { fontSize: 11.5, color: T.sub, marginBottom: 10, lineHeight: 1.6 } }, "\uBB3C\uAC74 \uC815\uBCF4\uB97C \uBD88\uB7EC\uC624\uC9C0\uB294 \uC54A\uC544\uC694. \uC811\uC218 \uC5F0\uB3C4\uB9CC \uC77D\uC5B4\uC11C \uAC10\uC815 \uC2DC\uC810\uC744 \uC9DA\uC5B4\uB4DC\uB824\uC694."),
+            React.createElement(Input, { value: caseNo, onChange: (e) => setCaseNo(e.target.value), placeholder: "2024\uD0C0\uACBD12345", style: { width: "100%", boxSizing: "border-box", fontWeight: 700 } }),
+            caseYear && (React.createElement("div", { style: { marginTop: 10 } },
+                React.createElement(ThermoNote, { tone: caseAge >= 1 ? "warn" : "info" },
+                    React.createElement("b", null,
+                        caseYear,
+                        "\uB144 \uC811\uC218"),
+                    " \uC0AC\uAC74\uC774\uC5D0\uC694. \uAC10\uC815\uD3C9\uAC00\uB294 \uC811\uC218\uBCF4\uB2E4 \uC55E\uC11C\uBBC0\uB85C \uC2E4\uC81C \uD3C9\uAC00 \uC2DC\uC810\uC740 \uCD5C\uC18C ",
+                    caseAge + 1,
+                    "\uB144 \uC804\uC77C \uC218 \uC788\uC5B4\uC694.",
+                    caseAge >= 1 && React.createElement(React.Fragment, null,
+                        React.createElement("br", null),
+                        "\uADF8 \uC0AC\uC774 \uC2DC\uC138\uAC00 \uC624\uB974\uB0B4\uB838\uB2E4\uBA74 \uB099\uCC30\uAC00\uC728 \uC22B\uC790 \uC790\uCCB4\uAC00 \uC758\uBBF8\uB97C \uC783\uC5B4\uC694. \uAC10\uC815\uAC00\uB97C \uBBFF\uC9C0 \uB9D0\uACE0 ",
+                        React.createElement("b", null, "\uC9C0\uAE08 \uC2DC\uC138"),
+                        "\uB97C \uC9C1\uC811 \uD655\uC778\uD558\uC138\uC694."))))),
+        React.createElement("div", { style: { fontSize: 11, color: T.sub, textAlign: "center", lineHeight: 1.75, wordBreak: "keep-all", padding: "0 4px" } },
+            "\uB099\uCC30\uAC00\uC728\uC758 \uBD84\uBAA8\uC778 \uAC10\uC815\uAC00\uB294 \uBCF4\uD1B5 \uB9E4\uAC01 6\uAC1C\uC6D4~1\uB144 \uC804 \uD3C9\uAC00\uC608\uC694.",
+            React.createElement("br", null),
+            "\uB099\uCC30\uAC00\uC728\uC774 \uB192\uB2E4\uACE0 \uBE44\uC2F8\uAC8C \uC0B0 \uAC83\uB3C4, \uB0AE\uB2E4\uACE0 \uC2F8\uAC8C \uC0B0 \uAC83\uB3C4 \uC544\uB2D9\uB2C8\uB2E4.",
+            React.createElement("br", null),
+            React.createElement("span", { style: { color: T.sub, opacity: 0.75 } }, "\uBC95\uC6D0\uACBD\uB9E4\uC815\uBCF4 \uACF5\uC2DD \uB9E4\uAC01\uD1B5\uACC4 \uAE30\uBC18 \u00B7 \uD22C\uC790 \uD310\uB2E8\uC758 \uADFC\uAC70\uB85C \uC0BC\uC9C0 \uB9C8\uC138\uC694"))));
+}
 /* ── 관리자 · 자료실 도구 설정 (규제 수치 리뉴얼) ── */
 function ToolsAdmin({ settings, onSave }) {
     const [draft, setDraft] = useState(() => JSON.parse(JSON.stringify(effToolCfg(settings))));
@@ -4033,13 +4297,15 @@ function PublicPage({ members, ledger, log, insights, lectures, settings, certs,
         const ARCHIVE_TOOLS = [
             { k: "calc", icon: "🧮", name: "경공매 수익률 계산기", by: "경공매 수익률·세금 시뮬레이터", desc: "낙찰가·비용·세금을 넣으면 단타/2년 보유/전세·월세 세팅별 수익률을 계산해요." },
             { k: "loan", icon: "🏦", name: "대출 판독기", by: toolCfg.asOf, desc: "지역·주택수·소득을 고르면 현행 규제(LTV·DSR·한도 상한)를 반영해 대출 가능액을 판독해요." },
+            { k: "thermo", icon: "🌡️", name: "지역 경매 온도계", by: "낙찰가율·경쟁률 참고자료", desc: "지역·용도별 낙찰가율과 평균 응찰자 수를 조회해요. 입찰가를 정해주지는 않아요." },
         ];
         if (tool)
             return (React.createElement("div", null,
                 React.createElement("button", { onClick: () => setTool(null), style: { cursor: "pointer", border: "none", background: "transparent", fontFamily: "inherit", fontWeight: 800,
                         fontSize: 13, color: T.sub, padding: "2px 2px 12px", display: "flex", alignItems: "center", gap: 4 } }, "\u2190 \uC790\uB8CC\uC2E4 \uBAA9\uB85D"),
                 tool === "calc" && React.createElement(ProfitCalc, { cfg: toolCfg }),
-                tool === "loan" && React.createElement(LoanReader, { cfg: toolCfg })));
+                tool === "loan" && React.createElement(LoanReader, { cfg: toolCfg }),
+                tool === "thermo" && React.createElement(AuctionThermo, { stats: austats })));
         return (React.createElement("div", null,
             React.createElement(SectionTitle, { eyebrow: "GROW IN ARCHIVE", title: "\uD83D\uDCDA \uC790\uB8CC\uC2E4", right: React.createElement(Pill, { tone: "line" }, "\uADF8\uB85C\uC778 \uBA64\uBC84 \uC804\uC6A9 \uB3C4\uAD6C") }),
             React.createElement("div", { style: { display: "grid", gap: 10 } }, ARCHIVE_TOOLS.map((t) => (React.createElement(Card, { key: t.k, pad: 0, style: { overflow: "hidden", cursor: "pointer" } },
