@@ -3461,18 +3461,23 @@ function ErrorLogTab({ errors, onRefresh }) {
    ※ 계산 방식: 필요현금(P) = P − 대출(P) 이 P에 단조증가 → 이분탐색으로 상한 역산 */
 const BUDGET_REGION_OPTS = [["reg", "🚨 규제지역"], ["metro", "🏙 수도권 비규제"], ["etc", "🌄 그 외 지방"]];
 const BUDGET_HOUSE_OPTS = [["first", "생애최초"], ["none", "무주택"], ["oneSell", "1주택 · 처분조건"], ["oneKeep", "1주택 유지"], ["multi", "2주택 이상"]];
-function BudgetReader({ cfg }) {
+function BudgetReader({ cfg, onGoMap }) {
     const [region, setRegion] = useState("metro");
     const [house, setHouse] = useState("none");
     const [cash, setCash] = useState("");
     const [income, setIncome] = useState("");
+    const [incomeMode, setIncomeMode] = useState("income");
+    const [card, setCard] = useState("");
     const [more, setMore] = useState(false);
     const [rate, setRate] = useState(cfg.defaultRate != null ? cfg.defaultRate : 5.0);
     const [years, setYears] = useState(30);
     const [existing, setExisting] = useState("");
     const out = useMemo(() => {
         const C = Number(cash) || 0;
-        const I = Number(income) || 0;
+        const ci = cfg.cardIncome || { divisor: 40.9, multiplier: 90, cap: 5000 };
+        const I = incomeMode === "income"
+            ? (Number(income) || 0)
+            : Math.min((Number(card) || 0) / (ci.divisor / 100) * (ci.multiplier / 100), ci.cap);
         const ltvBase = (cfg.ltv[region] || {})[house] || 0;
         if (ltvBase <= 0) {
             return { banned: true, msg: house === "oneKeep"
@@ -3528,7 +3533,7 @@ function BudgetReader({ cfg }) {
         const mapLow = toMin(lo.P);
         return { ready: true, banned: false, lo, hi, tight, mapMax, mapLow, ltvBase, upper: (cfg.budgetUpperLtv != null ? cfg.budgetUpperLtv : 85),
             dsrLimit, dsrPct, evalRate, stress };
-    }, [region, house, cash, income, rate, years, existing, cfg]);
+    }, [region, house, cash, income, incomeMode, card, rate, years, existing, cfg]);
     const bindLabel = { ltv: "LTV", cap: "주담대 한도 상한", dsr: "DSR(소득)" };
     return (React.createElement("div", null,
         React.createElement(SectionTitle, { eyebrow: "GROW IN ARCHIVE", title: "\uD83D\uDCB0 \uC785\uCC30 \uC608\uC0B0 \uD310\uB3C5\uAE30", right: React.createElement(Pill, { tone: "line" }, "1\uB2E8\uACC4 \uB3C4\uAD6C") }),
@@ -3536,7 +3541,17 @@ function BudgetReader({ cfg }) {
             React.createElement("div", { style: { display: "grid", gap: 14 } },
                 React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10 } },
                     React.createElement(ToolNum, { label: "\uAC00\uC9C4 \uD604\uAE08", value: cash, onChange: setCash, hint: "\uC2E4\uC81C \uB3D9\uC6D0 \uAC00\uB2A5\uD55C \uB3C8" }),
-                    React.createElement(ToolNum, { label: "\uC5F0\uC18C\uB4DD", value: income, onChange: setIncome, hint: "\uC138\uC804 \u00B7 \uBD80\uBD80\uD569\uC0B0 \uAC00\uB2A5" })),
+                    React.createElement("div", null,
+                        React.createElement("div", { style: { display: "flex", gap: 4, marginBottom: 4 } }, [["income", "연소득"], ["card", "카드사용액(연)"]].map(([k, lb]) => (React.createElement("button", { key: k, onClick: () => setIncomeMode(k), style: { cursor: "pointer", fontFamily: "inherit", border: "none", fontWeight: 800, fontSize: 10.5,
+                                padding: "3px 9px", borderRadius: 999, whiteSpace: "nowrap",
+                                background: incomeMode === k ? T.grad : "#EFF3F2", color: incomeMode === k ? "#fff" : T.sub } }, lb)))),
+                        incomeMode === "income"
+                            ? React.createElement(ToolNum, { label: "", value: income, onChange: setIncome, hint: "\uC138\uC804 \u00B7 \uBD80\uBD80\uD569\uC0B0 \uAC00\uB2A5" })
+                            : (() => {
+                                const ci = cfg.cardIncome || { divisor: 40.9, multiplier: 90, cap: 5000 };
+                                const capped = Math.min((Number(card) || 0) / (ci.divisor / 100) * (ci.multiplier / 100), ci.cap);
+                                return React.createElement(ToolNum, { label: "", value: card, onChange: setCard, hint: Number(card) > 0 ? `환산 연소득 ≈ ${fmtMan(capped)}` : "소득 증빙이 어려울 때 쓸 수 있어요" });
+                            })())),
                 React.createElement(ToolChips, { label: "\uBB3C\uAC74 \uC9C0\uC5ED", opts: BUDGET_REGION_OPTS, value: region, onChange: setRegion }),
                 React.createElement(ToolChips, { label: "\uD604\uC7AC \uC8FC\uD0DD \uBCF4\uC720", opts: BUDGET_HOUSE_OPTS, value: house, onChange: setHouse }),
                 React.createElement("button", { onClick: () => setMore(!more), style: { cursor: "pointer", border: "none", background: "transparent",
@@ -3569,17 +3584,25 @@ function BudgetReader({ cfg }) {
             React.createElement(Card, { style: { marginBottom: 12 } },
                 React.createElement("div", { style: { fontWeight: 800, fontSize: 13.5, marginBottom: 10 } }, "\uC774\uC81C \uC774\uB807\uAC8C \uD574\uBCF4\uC138\uC694"),
                 React.createElement("div", { style: { display: "grid", gap: 8 } }, [
-                    ["📍", "원픽 지도에서 물건 훑어보기", `최저가 ${fmtMan(out.mapMax)} 이하로 걸러서 관심 물건을 골라보세요.`],
-                    ["🏦", "물건을 찾으면 대출 판독기로 확인", "그 물건 금액으로 실제 대출 가능액을 계산해보세요."],
-                    ["🧮", "수익률 계산기로 자금 계획 세우기", "취득세·법무비·명도비·인테리어까지 넣어 실제 필요 금액을 확인하세요."],
-                    ["📞", "대출 상담사에게 최종 확인", "상품과 조건에 따라 달라지니 입찰 전에 꼭 확인하세요."],
-                    ["💬", "그로인 톡방에서 의견 나누기", "같은 지역·비슷한 물건을 해본 분들의 경험이 제일 빨라요."],
-                ].map(([ic, t2, d], i) => (React.createElement("div", { key: i, style: { display: "flex", gap: 10, padding: "10px 12px", background: "#F7F9F9", borderRadius: 12 } },
+                    ["📍", "원픽 지도에서 물건 훑어보기", `최저가 ${fmtMan(out.mapMax)} 이하로 걸러서 관심 물건을 골라보세요.`, true],
+                    ["🏦", "물건을 찾으면 대출 판독기로 확인", "그 물건 금액으로 실제 대출 가능액을 계산해보세요.", false],
+                    ["🧮", "수익률 계산기로 자금 계획 세우기", "취득세·법무비·명도비·인테리어까지 넣어 실제 필요 금액을 확인하세요.", false],
+                    ["📞", "대출 상담사에게 최종 확인", "상품과 조건에 따라 달라지니 입찰 전에 꼭 확인하세요.", false],
+                    ["💬", "그로인 톡방에서 의견 나누기", "같은 지역·비슷한 물건을 해본 분들의 경험이 제일 빨라요.", false],
+                ].map(([ic, t2, d, act], i) => (React.createElement("div", { key: i, onClick: act && onGoMap ? () => onGoMap(out.mapMax) : undefined, style: { display: "flex", gap: 10, alignItems: "center", padding: "10px 12px", borderRadius: 12,
+                        background: act && onGoMap ? T.gradSoft : "#F7F9F9",
+                        border: act && onGoMap ? `1px solid ${T.mint}` : "1px solid transparent",
+                        cursor: act && onGoMap ? "pointer" : "default" } },
                     React.createElement("div", { style: { fontSize: 15, lineHeight: 1.4 } }, ic),
                     React.createElement("div", { style: { flex: 1, minWidth: 0 } },
                         React.createElement("div", { style: { fontSize: 12.5, fontWeight: 800, color: T.ink, lineHeight: 1.5, wordBreak: "keep-all" } }, t2),
-                        React.createElement("div", { style: { fontSize: 11.5, color: T.sub, lineHeight: 1.6, marginTop: 2, wordBreak: "keep-all" } }, d)))))),
-                React.createElement("div", { style: { marginTop: 12, fontSize: 11.5, color: T.sub, lineHeight: 1.7, wordBreak: "keep-all" } }, "\uCDE8\uB4DD\uC138\u00B7\uBC95\uBB34\uBE44\u00B7\uBA85\uB3C4\uBE44\u00B7\uC778\uD14C\uB9AC\uC5B4\uB294 \uC774 \uBC94\uC704\uC5D0 \uB4E4\uC5B4 \uC788\uC9C0 \uC54A\uC544\uC694. \uB099\uCC30\uAC00 \uC678\uC5D0 \uB530\uB85C \uC900\uBE44\uD558\uC154\uC57C \uD558\uB294 \uB3C8\uC774\uC5D0\uC694."))))));
+                        React.createElement("div", { style: { fontSize: 11.5, color: T.sub, lineHeight: 1.6, marginTop: 2, wordBreak: "keep-all" } }, d)),
+                    act && onGoMap && React.createElement(Pill, { tone: "grad", style: { whiteSpace: "nowrap", flexShrink: 0 } }, "\uBC14\uB85C \uAC00\uAE30 \u2192"))))),
+                React.createElement("div", { style: { marginTop: 12, fontSize: 11.5, color: T.sub, lineHeight: 1.7, wordBreak: "keep-all" } },
+                    "\uCDE8\uB4DD\uC138\u00B7\uBC95\uBB34\uBE44\u00B7\uBA85\uB3C4\uBE44\u00B7\uC778\uD14C\uB9AC\uC5B4\uB294 \uC774 \uBC94\uC704\uC5D0 \uB4E4\uC5B4 \uC788\uC9C0 \uC54A\uC544\uC694. \uB099\uCC30\uAC00 \uC678\uC5D0 \uB530\uB85C \uC900\uBE44\uD558\uC154\uC57C \uD558\uB294 \uB3C8\uC774\uC5D0\uC694.",
+                    incomeMode === "card" && React.createElement(React.Fragment, null,
+                        React.createElement("br", null),
+                        "\uCE74\uB4DC\uC0AC\uC6A9\uC561 \uD658\uC0B0\uC18C\uB4DD\uC740 \uC740\uD589\uBCC4 \uC778\uC815 \uBC29\uC2DD\uC774 \uB2EC\uB77C \uC2E4\uC81C \uD55C\uB3C4\uC640 \uCC28\uC774 \uB0A0 \uC218 \uC788\uC5B4\uC694.")))))));
 }
 /* ── 관리자 · 자료실 도구 설정 (규제 수치 리뉴얼) ── */
 function ToolsAdmin({ settings, onSave }) {
@@ -3738,6 +3761,8 @@ function PublicPage({ members, ledger, log, insights, lectures, settings, certs,
     const [ptab, setPtab] = useState("home");
     const [archiveTool, setArchiveTool] = useState(null); // 다른 탭에서 자료실 특정 도구로 바로 진입
     const goTool = (k) => { setArchiveTool(k); setPtab("archive"); };
+    const [mapBudget, setMapBudget] = useState(null); // 예산 판독기 → 원픽 지도 최저가 필터 (만원)
+    const goMap = (maxMan) => { setMapBudget(maxMan || null); setPtab("onepick"); };
     /* 선택된 탭이 화면 밖에 있으면 탭바를 자동 스크롤해 보이게 함 */
     useEffect(() => {
         const el = document.getElementById("ptab-" + ptab);
@@ -4082,7 +4107,17 @@ function PublicPage({ members, ledger, log, insights, lectures, settings, certs,
     /* ── 원픽 경매 지도 ── */
     const OnePickTab = () => (React.createElement("div", null,
         React.createElement(SectionTitle, { eyebrow: "\uB9E4\uC6D4 \uC5C5\uB370\uC774\uD2B8", title: "\uC6D0\uD53D \uACBD\uB9E4 \uC9C0\uB3C4", right: React.createElement(Pill, { tone: "coral" }, "\uBA64\uBC84 \uC804\uC6A9") }),
-        React.createElement("div", { onClick: () => goTool("budget"), style: { cursor: "pointer", display: "flex", alignItems: "center", gap: 11,
+        mapBudget && (React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", marginBottom: 12,
+                borderRadius: 14, background: "#fff", border: `1px solid ${T.line}`, borderLeft: `4px solid ${T.coral}` } },
+            React.createElement("div", { style: { fontSize: 18, lineHeight: 1 } }, "\uD83D\uDD0E"),
+            React.createElement("div", { style: { flex: 1, minWidth: 0, fontSize: 12.5, fontWeight: 800, color: T.ink, lineHeight: 1.55, wordBreak: "keep-all" } },
+                "\uCD5C\uC800\uAC00 ",
+                fmtMan(mapBudget),
+                " \uC774\uD558\uB85C \uBCF4\uACE0 \uC788\uC5B4\uC694",
+                React.createElement("div", { style: { fontSize: 11.5, color: T.sub, fontWeight: 700, marginTop: 2 } }, "\uC608\uC0B0 \uD310\uB3C5\uAE30\uC5D0\uC11C \uACC4\uC0B0\uD55C \uAE08\uC561\uC774\uC5D0\uC694")),
+            React.createElement("button", { onClick: () => setMapBudget(null), style: { cursor: "pointer", fontFamily: "inherit", fontWeight: 800, fontSize: 11.5, padding: "6px 11px",
+                    borderRadius: 999, border: `1px solid ${T.line}`, background: "#fff", color: T.sub, whiteSpace: "nowrap" } }, "\uC804\uCCB4 \uBCF4\uAE30"))),
+        !mapBudget && React.createElement("div", { onClick: () => goTool("budget"), style: { cursor: "pointer", display: "flex", alignItems: "center", gap: 11,
                 padding: "13px 15px 13px 14px", marginBottom: 14, borderRadius: 14, background: "#fff",
                 border: `1px solid ${T.line}`, borderLeft: `4px solid ${T.mint}`, boxShadow: "0 3px 12px rgba(28,35,51,.07)" } },
             React.createElement("div", { style: { fontSize: 22, lineHeight: 1 } }, "\uD83D\uDCB0"),
@@ -4108,7 +4143,7 @@ function PublicPage({ members, ledger, log, insights, lectures, settings, certs,
                     React.createElement("b", { style: { color: T.coral } }, "\uAD8C\uB9AC\uBD84\uC11D\uC0C1 100% \uAE68\uB057\uD55C \uBB34\uACB0\uC810 \uBB3C\uAC74"),
                     "\uB9CC \uC120\uBCC4\uD574 \uCD94\uCC9C\uD574\uB4DC\uB9BD\uB2C8\uB2E4!"))),
         React.createElement(Card, { pad: 0, style: { overflow: "hidden", marginBottom: 8 } },
-            React.createElement("iframe", { src: ONEPICK_MAP_URL, title: "\uD574\uD53C\uD14C\uD06C \uC6D0\uD53D \uACBD\uB9E4 \uC9C0\uB3C4", loading: "lazy", style: { display: "block", width: "100%", height: "64vh", minHeight: 400, maxHeight: 680, border: "none" } })),
+            React.createElement("iframe", { key: mapBudget || "all", src: mapBudget ? `${ONEPICK_MAP_URL}?max=${mapBudget * 10000}` : ONEPICK_MAP_URL, title: "\uD574\uD53C\uD14C\uD06C \uC6D0\uD53D \uACBD\uB9E4 \uC9C0\uB3C4", loading: "lazy", style: { display: "block", width: "100%", height: "64vh", minHeight: 400, maxHeight: 680, border: "none" } })),
         React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 14, padding: "0 2px" } },
             React.createElement("div", { style: { fontSize: 11.5, color: T.sub } }, "\uD83D\uDC46 \uC9C0\uB3C4\uC758 \uAC01 \uC9C0\uC5ED \uBB3C\uAC74\uB4E4\uC744 \uD130\uCE58\uD558\uBA74 \uBCFC \uC218 \uC788\uC2B5\uB2C8\uB2E4."),
             React.createElement("a", { href: ONEPICK_MAP_URL, target: "_blank", rel: "noopener noreferrer", style: { textDecoration: "none", flexShrink: 0 } },
@@ -4209,7 +4244,7 @@ function PublicPage({ members, ledger, log, insights, lectures, settings, certs,
             return (React.createElement("div", null,
                 React.createElement("button", { onClick: () => setTool(null), style: { cursor: "pointer", border: "none", background: "transparent", fontFamily: "inherit", fontWeight: 800,
                         fontSize: 13, color: T.sub, padding: "2px 2px 12px", display: "flex", alignItems: "center", gap: 4 } }, "\u2190 \uC790\uB8CC\uC2E4 \uBAA9\uB85D"),
-                tool === "budget" && React.createElement(BudgetReader, { cfg: toolCfg }),
+                tool === "budget" && React.createElement(BudgetReader, { cfg: toolCfg, onGoMap: goMap }),
                 tool === "calc" && React.createElement(ProfitCalc, { cfg: toolCfg }),
                 tool === "loan" && React.createElement(LoanReader, { cfg: toolCfg })));
         return (React.createElement("div", null,
