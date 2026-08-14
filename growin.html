@@ -3771,6 +3771,40 @@ function ToolsAdmin({ settings, onSave }) {
         dirty && React.createElement("div", { style: { fontSize: 11.5, color: T.coral, fontWeight: 800, marginTop: 8 } }, "\uC800\uC7A5\uD558\uC9C0 \uC54A\uC740 \uBCC0\uACBD \uC0AC\uD56D\uC774 \uC788\uC5B4\uC694.")));
 }
 /* ── 공개 조회 페이지 (탭 대시보드) ── */
+/* 자료실 탭 — PublicPage 밖에서 정의한다.
+   부모 안에 두면 부모가 다시 그려질 때마다 새 컴포넌트로 취급돼 통째로 다시 마운트되고,
+   그때 선택한 도구와 예산 판독기 입력값이 사라져 목록으로 되돌아간다.
+   (원픽 지도 iframe 리마운트와 같은 원인 · 마스터 §0 v3.20 오류 2번)
+   부모에서 오는 값은 settings·onGoMap 둘뿐이므로 props로 받는다. */
+function ArchiveTab({ initialTool, settings, onGoMap }) {
+    const toolCfg = effToolCfg(settings);
+    const [tool, setTool] = useState(initialTool || null);
+    const ARCHIVE_TOOLS = [
+        { k: "budget", icon: "💰", name: "입찰 예산 판독기", by: "1단계 · 얼마짜리 물건을 볼까", desc: "현금과 소득을 넣으면 훑어볼 만한 경매 물건 금액대를 알려줘요." },
+        { k: "calc", icon: "🧮", name: "경공매 수익률 계산기", by: "경공매 수익률·세금 시뮬레이터", desc: "낙찰가·비용·세금을 넣으면 단타/2년 보유/전세·월세 세팅별 수익률을 계산해요." },
+        { k: "loan", icon: "🏦", name: "대출 판독기", by: toolCfg.asOf, desc: "지역·주택수·소득을 고르면 현행 규제(LTV·DSR·한도 상한)를 반영해 대출 가능액을 판독해요." },
+    ];
+    if (tool)
+        return (React.createElement("div", null,
+            React.createElement("button", { onClick: () => setTool(null), style: { cursor: "pointer", border: "none", background: "transparent", fontFamily: "inherit", fontWeight: 800,
+                    fontSize: 13, color: T.sub, padding: "2px 2px 12px", display: "flex", alignItems: "center", gap: 4 } }, "\u2190 \uC790\uB8CC\uC2E4 \uBAA9\uB85D"),
+            tool === "budget" && React.createElement(BudgetReader, { cfg: toolCfg, onGoMap: onGoMap }),
+            tool === "calc" && React.createElement(ProfitCalc, { cfg: toolCfg }),
+            tool === "loan" && React.createElement(LoanReader, { cfg: toolCfg })));
+    return (React.createElement("div", null,
+        React.createElement(SectionTitle, { eyebrow: "GROW IN ARCHIVE", title: "\uD83D\uDCDA \uC790\uB8CC\uC2E4", right: React.createElement(Pill, { tone: "line" }, "\uADF8\uB85C\uC778 \uBA64\uBC84 \uC804\uC6A9 \uB3C4\uAD6C") }),
+        React.createElement("div", { style: { display: "grid", gap: 10 } }, ARCHIVE_TOOLS.map((t) => (React.createElement(Card, { key: t.k, pad: 0, style: { overflow: "hidden", cursor: "pointer" } },
+            React.createElement("div", { onClick: () => setTool(t.k), style: { display: "flex", alignItems: "center", gap: 14, padding: 16 } },
+                React.createElement("div", { style: { width: 52, height: 52, borderRadius: 16, background: T.gradSoft, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26, flexShrink: 0 } }, t.icon),
+                React.createElement("div", { style: { flex: 1, minWidth: 0 } },
+                    React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" } },
+                        React.createElement("div", { style: { fontWeight: 800, fontSize: 15, letterSpacing: "-0.01em" } }, t.name),
+                        React.createElement(Pill, { tone: "line", style: { fontSize: 10 } }, t.by)),
+                    React.createElement("div", { style: { fontSize: 12, color: T.sub, marginTop: 3, lineHeight: 1.6, wordBreak: "keep-all" } }, t.desc)),
+                React.createElement("div", { style: { color: T.sub, fontWeight: 800 } }, "\u203A")))))),
+        React.createElement("div", { style: { fontSize: 11.5, color: T.sub, marginTop: 14, textAlign: "center", lineHeight: 1.7 } }, "\uC720\uC6A9\uD55C \uB3C4\uAD6C\uAC00 \uACC4\uC18D \uCD94\uAC00\uB420 \uC608\uC815\uC774\uC5D0\uC694 \u00B7 \uB9CC\uB4E4\uACE0 \uC2F6\uC740 \uB3C4\uAD6C\uAC00 \uC788\uB2E4\uBA74 \uD1A1\uBC29\uC5D0\uC11C \uD574\uD53C\uD14C\uD06C\uC5D0\uAC8C!")));
+}
+
 function PublicPage({ members, ledger, log, insights, lectures, settings, certs, cmts, austats, onAddCert, onAddCmt, viewer, onLogin, onLogout, onChangePw }) {
     const [ptab, setPtab] = useState("home");
     const [archiveTool, setArchiveTool] = useState(null); // 다른 탭에서 자료실 특정 도구로 바로 진입
@@ -4252,34 +4286,6 @@ function PublicPage({ members, ledger, log, insights, lectures, settings, certs,
     };
     /* ── 크레딧 안내 ── */
     /* 📚 자료실 — 도구 목록 · 앞으로 도구가 늘어나면 ARCHIVE_TOOLS에 추가 */
-    const ArchiveTab = ({ initialTool }) => {
-        const toolCfg = effToolCfg(settings);
-        const [tool, setTool] = useState(initialTool || null);
-        const ARCHIVE_TOOLS = [
-            { k: "budget", icon: "💰", name: "입찰 예산 판독기", by: "1단계 · 얼마짜리 물건을 볼까", desc: "현금과 소득을 넣으면 훑어볼 만한 경매 물건 금액대를 알려줘요." },
-            { k: "calc", icon: "🧮", name: "경공매 수익률 계산기", by: "경공매 수익률·세금 시뮬레이터", desc: "낙찰가·비용·세금을 넣으면 단타/2년 보유/전세·월세 세팅별 수익률을 계산해요." },
-            { k: "loan", icon: "🏦", name: "대출 판독기", by: toolCfg.asOf, desc: "지역·주택수·소득을 고르면 현행 규제(LTV·DSR·한도 상한)를 반영해 대출 가능액을 판독해요." },
-        ];
-        if (tool)
-            return (React.createElement("div", null,
-                React.createElement("button", { onClick: () => setTool(null), style: { cursor: "pointer", border: "none", background: "transparent", fontFamily: "inherit", fontWeight: 800,
-                        fontSize: 13, color: T.sub, padding: "2px 2px 12px", display: "flex", alignItems: "center", gap: 4 } }, "\u2190 \uC790\uB8CC\uC2E4 \uBAA9\uB85D"),
-                tool === "budget" && React.createElement(BudgetReader, { cfg: toolCfg, onGoMap: goMap }),
-                tool === "calc" && React.createElement(ProfitCalc, { cfg: toolCfg }),
-                tool === "loan" && React.createElement(LoanReader, { cfg: toolCfg })));
-        return (React.createElement("div", null,
-            React.createElement(SectionTitle, { eyebrow: "GROW IN ARCHIVE", title: "\uD83D\uDCDA \uC790\uB8CC\uC2E4", right: React.createElement(Pill, { tone: "line" }, "\uADF8\uB85C\uC778 \uBA64\uBC84 \uC804\uC6A9 \uB3C4\uAD6C") }),
-            React.createElement("div", { style: { display: "grid", gap: 10 } }, ARCHIVE_TOOLS.map((t) => (React.createElement(Card, { key: t.k, pad: 0, style: { overflow: "hidden", cursor: "pointer" } },
-                React.createElement("div", { onClick: () => setTool(t.k), style: { display: "flex", alignItems: "center", gap: 14, padding: 16 } },
-                    React.createElement("div", { style: { width: 52, height: 52, borderRadius: 16, background: T.gradSoft, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26, flexShrink: 0 } }, t.icon),
-                    React.createElement("div", { style: { flex: 1, minWidth: 0 } },
-                        React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" } },
-                            React.createElement("div", { style: { fontWeight: 800, fontSize: 15, letterSpacing: "-0.01em" } }, t.name),
-                            React.createElement(Pill, { tone: "line", style: { fontSize: 10 } }, t.by)),
-                        React.createElement("div", { style: { fontSize: 12, color: T.sub, marginTop: 3, lineHeight: 1.6, wordBreak: "keep-all" } }, t.desc)),
-                    React.createElement("div", { style: { color: T.sub, fontWeight: 800 } }, "\u203A")))))),
-            React.createElement("div", { style: { fontSize: 11.5, color: T.sub, marginTop: 14, textAlign: "center", lineHeight: 1.7 } }, "\uC720\uC6A9\uD55C \uB3C4\uAD6C\uAC00 \uACC4\uC18D \uCD94\uAC00\uB420 \uC608\uC815\uC774\uC5D0\uC694 \u00B7 \uB9CC\uB4E4\uACE0 \uC2F6\uC740 \uB3C4\uAD6C\uAC00 \uC788\uB2E4\uBA74 \uD1A1\uBC29\uC5D0\uC11C \uD574\uD53C\uD14C\uD06C\uC5D0\uAC8C!")));
-    };
     const GuideTab = () => (React.createElement("div", null,
         React.createElement(SectionTitle, { title: "\uD06C\uB808\uB527 \uC548\uB0B4" }),
         React.createElement(Card, { pad: 0, style: { overflow: "hidden", marginBottom: 16 } },
@@ -4396,7 +4402,7 @@ function PublicPage({ members, ledger, log, insights, lectures, settings, certs,
             onepickSeen && React.createElement("div", { style: { display: ptab === "onepick" ? "block" : "none" } }, OnePickTab()),
             ptab === "cert" && React.createElement(CertBoard, { certs: certs, cmts: cmts, members: members, me: meMember, onAddCert: onAddCert, onAddCmt: onAddCmt }),
             ptab === "stats" && React.createElement(AuctionStatsTab, { stats: austats }),
-            ptab === "archive" && React.createElement(ArchiveTab, { key: archiveTool || "root", initialTool: archiveTool }),
+            ptab === "archive" && React.createElement(ArchiveTab, { key: archiveTool || "root", initialTool: archiveTool, settings: settings, onGoMap: goMap }),
             ptab === "lectures" && React.createElement(LecturesTab, null),
             ptab === "insights" && React.createElement(InsightsTab, null),
             ptab === "guide" && React.createElement(GuideTab, null),
