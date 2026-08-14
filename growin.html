@@ -212,7 +212,7 @@ const shortDate = (s) => {
     return str.slice(0, 10);
 };
 const NOTION_ONEPICK_URL = "https://handy-neon-1fc.notion.site/7-38f301b03fdc802fb2acf4f192a89bb0";
-const ONEPICK_MAP_URL = "https://happytech0913.github.io/happytech_onepick_map/growin_onepickmap_0hgRcKKuBgHb.html";
+const ONEPICK_MAP_URL = "https://happytech0913.github.io/happytech_onepick_map/growin_onepickmap.html";
 const EVENT_TYPES = [
     { k: "낙찰가", label: "낙찰가 맞추기", icon: "🎯" },
     { k: "퀴즈", label: "부동산 퀴즈", icon: "🧠" },
@@ -3777,6 +3777,12 @@ function PublicPage({ members, ledger, log, insights, lectures, settings, certs,
     const goTool = (k) => { setArchiveTool(k); setPtab("archive"); };
     const [mapBudget, setMapBudget] = useState(null); // 예산 판독기 → 원픽 지도 최저가 필터 (만원)
     const goMap = (maxMan) => { setMapBudget(maxMan || null); setPtab("onepick"); };
+    /* 원픽 지도 유지: 탭을 벗어나도 iframe을 언마운트하지 않는다.
+       예전에는 조건부 렌더라 탭을 오갈 때마다 지도가 통째로 다시 떴고(지도 위치 초기화 · open 로그 중복),
+       게이트가 붙은 뒤로는 "확인 중입니다"가 매번 노출됐다.
+       처음 들어오기 전에는 렌더하지 않으므로 첫 로딩 비용은 종전과 같다. */
+    const [onepickSeen, setOnepickSeen] = useState(false);
+    useEffect(() => { if (ptab === "onepick") setOnepickSeen(true); }, [ptab]);
     /* 선택된 탭이 화면 밖에 있으면 탭바를 자동 스크롤해 보이게 함 */
     useEffect(() => {
         const el = document.getElementById("ptab-" + ptab);
@@ -4157,7 +4163,7 @@ function PublicPage({ members, ledger, log, insights, lectures, settings, certs,
                     React.createElement("b", { style: { color: T.coral } }, "\uAD8C\uB9AC\uBD84\uC11D\uC0C1 100% \uAE68\uB057\uD55C \uBB34\uACB0\uC810 \uBB3C\uAC74"),
                     "\uB9CC \uC120\uBCC4\uD574 \uCD94\uCC9C\uD574\uB4DC\uB9BD\uB2C8\uB2E4!"))),
         React.createElement(Card, { pad: 0, style: { overflow: "hidden", marginBottom: 8 } },
-            React.createElement("iframe", { key: mapBudget || "all", src: mapBudget ? `${ONEPICK_MAP_URL}?max=${mapBudget * 10000}` : ONEPICK_MAP_URL, title: "\uD574\uD53C\uD14C\uD06C \uC6D0\uD53D \uACBD\uB9E4 \uC9C0\uB3C4", loading: "lazy", style: { display: "block", width: "100%", height: "64vh", minHeight: 400, maxHeight: 680, border: "none" } })),
+            React.createElement("iframe", { src: mapBudget ? `${ONEPICK_MAP_URL}?max=${mapBudget * 10000}` : ONEPICK_MAP_URL, title: "\uD574\uD53C\uD14C\uD06C \uC6D0\uD53D \uACBD\uB9E4 \uC9C0\uB3C4", loading: "lazy", style: { display: "block", width: "100%", height: "64vh", minHeight: 400, maxHeight: 680, border: "none" } })),
         React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 14, padding: "0 2px" } },
             React.createElement("div", { style: { fontSize: 11.5, color: T.sub } }, "\uD83D\uDC46 \uC9C0\uB3C4\uC758 \uAC01 \uC9C0\uC5ED \uBB3C\uAC74\uB4E4\uC744 \uD130\uCE58\uD558\uBA74 \uBCFC \uC218 \uC788\uC2B5\uB2C8\uB2E4."),
             React.createElement("a", { href: ONEPICK_MAP_URL, target: "_blank", rel: "noopener noreferrer", style: { textDecoration: "none", flexShrink: 0 } },
@@ -4387,7 +4393,7 @@ function PublicPage({ members, ledger, log, insights, lectures, settings, certs,
             ptab === "home" && React.createElement(HomeTab, null),
             ptab === "ranking" && React.createElement(RankingTab, null),
             ptab === "growth" && React.createElement(GrowthTab, null),
-            ptab === "onepick" && React.createElement(OnePickTab, null),
+            onepickSeen && React.createElement("div", { style: { display: ptab === "onepick" ? "block" : "none" } }, React.createElement(OnePickTab, null)),
             ptab === "cert" && React.createElement(CertBoard, { certs: certs, cmts: cmts, members: members, me: meMember, onAddCert: onAddCert, onAddCmt: onAddCmt }),
             ptab === "stats" && React.createElement(AuctionStatsTab, { stats: austats }),
             ptab === "archive" && React.createElement(ArchiveTab, { key: archiveTool || "root", initialTool: archiveTool }),
