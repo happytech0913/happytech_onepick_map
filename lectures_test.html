@@ -47,6 +47,16 @@ input:focus,button:focus{outline:2px solid var(--mint);outline-offset:2px}
 .pill.gold{border-color:rgba(239,182,60,.45);background:rgba(239,182,60,.12);color:#8A6410}
 .linkbtn{border:none;background:none;color:var(--sub);font-size:11.5px;font-weight:700;text-decoration:underline;padding:4px}
 
+/* ── 지갑: 크레딧·이용권을 몇 편인지까지 보여준다 ── */
+.purse{max-width:720px;margin:0 auto;padding:0 16px 12px;display:flex;gap:8px}
+.w{flex:1;min-width:0;background:#fff;border:1px solid var(--line);border-radius:14px;padding:10px 14px}
+.w .k{display:block;font-size:11px;font-weight:800;color:var(--sub);letter-spacing:.02em}
+.w b{display:block;font-size:22px;letter-spacing:-.03em;line-height:1.2;margin-top:1px}
+.w .s{display:block;font-size:11px;color:var(--sub);margin-top:2px;line-height:1.45}
+.w.gold{border-color:rgba(239,182,60,.45);background:rgba(239,182,60,.09)}
+.w.gold b{color:#8A6410}
+.w.zero b{color:#B7C0BE}
+
 /* ── 배너 ── */
 .banner{margin:14px 0 4px;border-radius:14px;padding:14px 16px;border:1px solid rgba(225,95,80,.3);background:rgba(225,95,80,.07)}
 .banner b{display:block;font-size:14px;margin-bottom:4px;letter-spacing:-.02em}
@@ -314,12 +324,10 @@ function render() {
     '<div class="top"><div class="in">' +
       '<div class="brand">해피테크 <span>강의 아카이브</span></div>' +
       '<div class="wallet">' +
-        (d.staff ? '<span class="pill on">관리자</span>' :
-          '<span class="pill">크레딧 ' + (me.credits || 0).toLocaleString() + "</span>" +
-          (me.tickets > 0 ? '<span class="pill gold">이용권 ' + me.tickets + "장</span>" : "")) +
+        (d.staff ? '<span class="pill on">관리자</span>' : (me.name ? '<span class="pill">' + esc(me.name) + " 님</span>" : "")) +
         '<button class="linkbtn" id="out">나가기</button>' +
       "</div>" +
-    '</div></div><div class="wrap">';
+    "</div>" + purse(d, me) + '</div><div class="wrap">';
 
   if (!d.staff && !me.membership) {
     html += '<div class="banner"><b>멤버십이 만료됐어요</b><p>연장하시면 ' +
@@ -390,8 +398,28 @@ function render() {
   if (ST.pending) renderSheet();
 }
 
-function card(l) {
-  var open = ST.openId === l.id;
+/* 지갑 — 가진 것과 그게 몇 편인지를 나란히 놓는다.
+   숫자 하나만 있으면 "많은 건가?"에 답이 안 된다. */
+function purse(d, me) {
+  if (d.staff) return "";
+  var cost = d.cost || 100;
+  var n = Math.floor((me.credits || 0) / cost);
+  var t = me.tickets || 0;
+
+  var credit =
+    '<div class="w' + (n ? "" : " zero") + '"><span class="k">크레딧</span>' +
+      "<b>" + (me.credits || 0).toLocaleString() + "</b>" +
+      '<span class="s">' + (n ? n + "편 열 수 있어요" : "1편에 " + cost + " 크레딧이에요") + "</span></div>";
+
+  var ticket =
+    '<div class="w' + (t ? " gold" : " zero") + '"><span class="k">이용권</span>' +
+      "<b>" + t + "장</b>" +
+      '<span class="s">' + (t ? t + "편 바로 열려요" : "연장하시면 " + (d.renewTickets || 3) + "장 드려요") + "</span></div>";
+
+  return '<div class="purse">' + credit + ticket + "</div>";
+}
+
+function card(l) {  var open = ST.openId === l.id;
   var d = ST.data, me = d.me || {};
   var left = l.byPass && l.passExpiresMs ? remain(l.passExpiresMs) : null;
 
