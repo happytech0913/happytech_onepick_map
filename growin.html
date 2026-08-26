@@ -2996,6 +2996,308 @@ function CertBoard({ certs, cmts, members, me, onAddCert, onAddCmt }) {
             }))));
 }
 /* ═════════════════════════════════════════════
+   수익률 계산 내보내기 — 캔버스 렌더러 + PDF 생성기
+   · 캔버스에 직접 그린다 (외부 라이브러리·서버 전송 없음)
+   · PNG = canvas 그대로, PDF = JPEG를 품은 최소 PDF를 손으로 조립
+   ═════════════════════════════════════════════ */
+const RPT_W = 1080, RPT_H = 1350, RPT_PAD = 60;
+const RPT_FONT = `"Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", "Noto Sans CJK KR", "Helvetica Neue", Arial, sans-serif`;
+const rf = (w, s) => `${w} ${s}px ${RPT_FONT}`;
+
+/* 만원 숫자 → "3,377" */
+const rptNum = (n) => Math.round(n).toLocaleString("ko-KR");
+
+function roundRect(c, x, y, w, h, r) {
+    r = Math.max(0, Math.min(r, w / 2, h / 2)); // 알약(r=999)에서 호가 폭주하는 것 방지
+    c.beginPath();
+    c.moveTo(x + r, y);
+    c.arcTo(x + w, y, x + w, y + h, r);
+    c.arcTo(x + w, y + h, x, y + h, r);
+    c.arcTo(x, y + h, x, y, r);
+    c.arcTo(x, y, x + w, y, r);
+    c.closePath();
+}
+
+/* 폭에 맞춰 줄바꿈 */
+function wrapLines(c, text, maxW) {
+    const words = String(text).split(" ");
+    const lines = [];
+    let cur = "";
+    for (const w of words) {
+        const t = cur ? cur + " " + w : w;
+        if (c.measureText(t).width > maxW && cur) { lines.push(cur); cur = w; }
+        else cur = t;
+    }
+    if (cur) lines.push(cur);
+    return lines;
+}
+
+function drawReport(canvas, D) {
+    const S = 2; // 2배 해상도
+    canvas.width = RPT_W * S;
+    canvas.height = RPT_H * S;
+    const c = canvas.getContext("2d");
+    c.scale(S, S);
+    c.textBaseline = "alphabetic";
+
+    /* ── 배경: 대각 그라데이션 ── */
+    c.fillStyle = "#F3F6F5";
+    c.fillRect(0, 0, RPT_W, RPT_H);
+    const bg = c.createLinearGradient(0, 0, RPT_W, RPT_H);
+    bg.addColorStop(0, "rgba(53,201,168,.15)");
+    bg.addColorStop(.64, "rgba(111,123,224,.13)");
+    bg.addColorStop(1, "rgba(239,182,60,.09)");
+    c.fillStyle = bg;
+    c.fillRect(0, 0, RPT_W, RPT_H);
+
+    const L = RPT_PAD, R = RPT_W - RPT_PAD, CW = R - L;
+    const FOOT_Y = RPT_H - 112;
+    let y = 54;
+
+    /* ── 머리말 ── */
+    const g = c.createLinearGradient(L, y, L + 40, y + 40);
+    g.addColorStop(0, "#35C9A8"); g.addColorStop(1, "#6F7BE0");
+    c.fillStyle = g; roundRect(c, L, y, 40, 40, 13); c.fill();
+    c.font = rf(400, 20); c.textAlign = "center"; c.fillStyle = "#fff";
+    c.fillText("\uD83C\uDF31", L + 20, y + 28);
+    c.textAlign = "left";
+    c.font = rf(800, 11); c.fillStyle = "#6B7486";
+    c.fillText("GROW IN TOOLS", L + 54, y + 15);
+    c.font = rf(800, 18); c.fillStyle = "#1C2333";
+    c.fillText("경공매 수익률 계산", L + 54, y + 35);
+    c.textAlign = "right";
+    c.font = rf(800, 14); c.fillStyle = "#1C2333";
+    c.fillText(D.today, R, y + 16);
+    c.font = rf(600, 12); c.fillStyle = "#6B7486";
+    c.fillText("내려받은 날", R, y + 33);
+    c.textAlign = "left";
+    y += 68;
+
+    /* ── ① 결과 ── */
+    const rcH = 248;
+    c.fillStyle = "#fff"; roundRect(c, L, y, CW, rcH, 26); c.fill();
+    c.strokeStyle = "#E4E9E8"; c.lineWidth = 1; c.stroke();
+    const divX = R - 262, PX = L + 40;
+    const netCol = D.net >= 0 ? "#14806B" : "#E15F50";
+
+    c.font = rf(800, 14);
+    const bw = c.measureText(D.scenario.name).width + 28;
+    c.fillStyle = D.scenario.bg; roundRect(c, PX, y + 30, bw, 32, 999); c.fill();
+    c.fillStyle = D.scenario.fg; c.fillText(D.scenario.name, PX + 14, y + 51);
+    if (D.caseNo) { /* 사건번호 — 입력했을 때만 */
+        c.font = rf(700, 13);
+        const cw = c.measureText(D.caseNo).width + 26;
+        c.fillStyle = "#EEF2F1"; roundRect(c, PX + bw + 9, y + 30, cw, 32, 999); c.fill();
+        c.fillStyle = "#4A5364"; c.fillText(D.caseNo, PX + bw + 9 + 13, y + 51);
+    }
+    c.font = rf(700, 15); c.fillStyle = "#6B7486";
+    c.fillText(D.netLabel, PX, y + 100);
+    c.font = rf(800, 76); c.fillStyle = netCol;
+    const netTx = (D.net < 0 ? "\u2212" : "") + rptNum(Math.abs(D.net));
+    c.fillText(netTx, PX, y + 172);
+    const nw = c.measureText(netTx).width;
+    c.font = rf(800, 32); c.fillText("만원", PX + nw + 8, y + 172);
+    c.font = rf(600, 13.5); c.fillStyle = "#6B7486";
+    c.fillText(D.priceLine, PX, y + 208);
+
+    c.strokeStyle = "#E4E9E8"; c.beginPath();
+    c.moveTo(divX, y + 34); c.lineTo(divX, y + rcH - 34); c.stroke();
+    c.textAlign = "center";
+    const cx = divX + (R - divX) / 2 - 14;
+    c.font = rf(700, 13.5); c.fillStyle = "#6B7486";
+    c.fillText("수익률", cx, y + 88);
+    c.font = rf(800, 60); c.fillStyle = netCol;
+    c.fillText(D.rate, cx, y + 152);
+    c.font = rf(600, 12.5); c.fillStyle = "#6B7486";
+    c.fillText("현금투입 " + rptNum(D.cash) + "만원", cx, y + 184);
+    c.fillText("기준", cx, y + 203);
+    c.textAlign = "left";
+    y += rcH + 18;
+
+    /* ── 물건 조건 ── */
+    const fH = 88, fw = CW / D.facts.length;
+    c.fillStyle = "#fff"; roundRect(c, L, y, CW, fH, 18); c.fill();
+    c.strokeStyle = "#E4E9E8"; c.stroke();
+    D.facts.forEach((f, i) => {
+        const fx = L + fw * i;
+        if (i) { c.strokeStyle = "#EEF2F1"; c.beginPath(); c.moveTo(fx, y + 18); c.lineTo(fx, y + fH - 18); c.stroke(); }
+        c.textAlign = "center";
+        c.font = rf(700, 12.5); c.fillStyle = "#6B7486";
+        c.fillText(f.k, fx + fw / 2, y + 33);
+        c.font = rf(800, 21); c.fillStyle = "#1C2333";
+        c.fillText(f.v, fx + fw / 2, y + 64);
+        c.textAlign = "left";
+    });
+    y += fH + 18;
+
+    /* ── ③ 비교는 바닥 고정 → ② 내역이 남는 공간을 채운다 ── */
+    const cmpH = 32 + D.compare.length * 44 + 28;
+    const cmpTop = FOOT_Y - 22 - cmpH;
+    const headH = 52, padB = 20;
+    const avail = cmpTop - 18 - y;
+    const rowH = Math.max(30, Math.min(46, (avail - headH - padB) / D.rows.length));
+    const ledH = headH + rowH * D.rows.length + padB;
+
+    c.fillStyle = "#fff"; roundRect(c, L, y, CW, ledH, 20); c.fill();
+    c.strokeStyle = "#E4E9E8"; c.stroke();
+    c.save(); roundRect(c, L, y, CW, ledH, 20); c.clip();
+    c.fillStyle = "#F7FAF9"; c.fillRect(L, y, CW, headH);
+    c.restore();
+    c.strokeStyle = "#E4E9E8"; c.beginPath();
+    c.moveTo(L, y + headH); c.lineTo(R, y + headH); c.stroke();
+    c.font = rf(800, 15.5); c.fillStyle = "#1C2333";
+    c.fillText("계산 내역", L + 30, y + 33);
+    c.textAlign = "right";
+    c.font = rf(700, 12); c.fillStyle = "#6B7486";
+    c.fillText("단위 만원", R - 30, y + 33);
+    c.textAlign = "left";
+
+    let ly = y + headH;
+    for (const row of D.rows) {
+        const fin = row.t === "fin", mid = row.t === "mid", base = row.t === "base", sub = row.t === "sub";
+        if (fin) {
+            c.save(); roundRect(c, L, y, CW, ledH, 20); c.clip();
+            const fg = c.createLinearGradient(L, ly, R, ly + rowH);
+            fg.addColorStop(0, "rgba(53,201,168,.17)"); fg.addColorStop(1, "rgba(111,123,224,.13)");
+            c.fillStyle = fg; c.fillRect(L, ly, CW, rowH); c.restore();
+        } else if (mid) { c.fillStyle = "#FAFCFB"; c.fillRect(L, ly, CW, rowH); }
+        const ty = ly + rowH / 2 + 6;
+        c.font = rf(sub ? 600 : 800, fin ? 19 : mid ? 16.5 : sub ? 14.5 : 16.5);
+        c.fillStyle = sub ? "#4A5364" : base ? "#6B7486" : "#1C2333";
+        c.fillText(row.label, L + (sub ? 48 : 30), ty);
+        if (row.why) {
+            c.font = rf(600, 12.5); c.fillStyle = "#6B7486";
+            c.fillText(row.why, L + 330, ty - 1);
+        }
+        c.textAlign = "right";
+        c.font = rf(sub ? 600 : 800, fin ? 20 : sub ? 14.5 : 16.5);
+        c.fillStyle = fin ? netCol : sub ? "#4A5364" : base ? "#6B7486" : "#1C2333";
+        c.fillText(row.amt, R - 30, ty);
+        c.textAlign = "left";
+        ly += rowH;
+    }
+    y = cmpTop;
+
+    /* ── ③ 비교 ── */
+    c.font = rf(800, 13.5); c.fillStyle = "#6B7486";
+    c.fillText("같은 물건, 다른 방법으로 팔면", L, y + 14);
+    y += 32;
+    const barX = L + 128, barW = CW - 128 - 210, barH = 28;
+    for (const cp of D.compare) {
+        c.font = rf(800, 13.5); c.fillStyle = cp.on ? "#1C2333" : "#6B7486";
+        c.fillText(cp.name, L, y + 19);
+        c.fillStyle = "#fff"; roundRect(c, barX, y, barW, barH, 7); c.fill();
+        c.save(); roundRect(c, barX, y, barW, barH, 7); c.clip();
+        let sx = barX;
+        for (const sg of cp.segs) { const w = barW * sg.w; c.fillStyle = sg.c; c.fillRect(sx, y, w + .5, barH); sx += w; }
+        if (cp.over != null) { /* 양도차익 초과분 = 손실 */
+            const ox = barX + barW * cp.over;
+            c.beginPath(); c.rect(ox, y, barX + barW - ox, barH); c.clip();
+            c.strokeStyle = "rgba(255,255,255,.6)"; c.lineWidth = 4;
+            for (let i = -2; i < 12; i++) {
+                c.beginPath(); c.moveTo(ox + i * 12, y + barH); c.lineTo(ox + i * 12 + barH, y); c.stroke();
+            }
+            c.fillStyle = "#fff"; c.fillRect(ox, y, 2.5, barH);
+        }
+        c.restore();
+        c.textAlign = "right";
+        c.font = rf(800, 15); c.fillStyle = cp.net >= 0 ? "#14806B" : "#E15F50";
+        c.fillText((cp.net < 0 ? "\u2212" : "") + rptNum(Math.abs(cp.net)) + "만원", R - 66, y + 19);
+        c.font = rf(700, 13); c.fillStyle = "#6B7486";
+        c.fillText(cp.rate, R, y + 19);
+        c.textAlign = "left";
+        y += 44;
+    }
+    y += 14;
+    c.font = rf(700, 12);
+    let lx = L;
+    for (const lg of [["#8A93A5", "취득·명도·중개비"], ["#EFB63C", "대출이자"], ["#E15F50", "세금"], ["#35C9A8", "남는 돈"]]) {
+        c.fillStyle = lg[0]; roundRect(c, lx, y - 9, 10, 10, 3); c.fill();
+        c.fillStyle = "#6B7486"; c.fillText(lg[1], lx + 15, y);
+        lx += c.measureText(lg[1]).width + 36;
+    }
+    if (D.compare.some((x) => x.over != null)) {
+        c.textAlign = "right"; c.fillStyle = "#6B7486";
+        c.fillText("빗금 = 양도차익 초과분(손실)", R, y); c.textAlign = "left";
+    }
+
+    /* ── 꼬리말 ── */
+    c.strokeStyle = "#E4E9E8"; c.beginPath();
+    c.moveTo(L, FOOT_Y); c.lineTo(R, FOOT_Y); c.stroke();
+    let ty2 = FOOT_Y + 24;
+    if (D.taxAsOf) {
+        c.font = rf(800, 12.5); c.fillStyle = "#1C2333";
+        c.fillText("\uD83D\uDCC5 " + D.taxAsOf + " 세법 기준으로 계산했어요", L, ty2);
+        ty2 += 19;
+    }
+    c.font = rf(600, 11); c.fillStyle = "#6B7486";
+    for (const ln of wrapLines(c, D.disclaimer, CW - 200)) { c.fillText(ln, L, ty2); ty2 += 15; }
+    c.textAlign = "right";
+    c.font = rf(700, 11.5); c.fillStyle = "#6B7486";
+    c.fillText("해피테크 · 그로인 멤버십", R, FOOT_Y + 24);
+    c.fillText("계산기 v2.0", R, FOOT_Y + 41);
+    c.textAlign = "left";
+    return canvas;
+}
+
+/* ── 최소 PDF 조립 (JPEG 한 장을 A4에 배치) ── */
+function buildPdfFromJpeg(bytes, iw, ih) {
+    const A4W = 595.28, A4H = 841.89, M = 28;
+    const maxW = A4W - M * 2, maxH = A4H - M * 2;
+    const sc = Math.min(maxW / iw, maxH / ih);
+    const dw = iw * sc, dh = ih * sc;
+    const dx = (A4W - dw) / 2, dy = (A4H - dh) / 2;
+    const content = `q\n${dw.toFixed(2)} 0 0 ${dh.toFixed(2)} ${dx.toFixed(2)} ${dy.toFixed(2)} cm\n/Im0 Do\nQ\n`;
+    const objs = [
+        `<</Type/Catalog/Pages 2 0 R>>`,
+        `<</Type/Pages/Kids[3 0 R]/Count 1>>`,
+        `<</Type/Page/Parent 2 0 R/MediaBox[0 0 ${A4W} ${A4H}]/Resources<</XObject<</Im0 4 0 R>>>>/Contents 5 0 R>>`,
+        { dict: `<</Type/XObject/Subtype/Image/Width ${iw}/Height ${ih}/ColorSpace/DeviceRGB/BitsPerComponent 8/Filter/DCTDecode/Length ${bytes.length}>>`, stream: bytes },
+        `<</Length ${content.length}>>\nstream\n${content}endstream`,
+    ];
+    const chunks = [];
+    let len = 0;
+    const push = (u8) => { chunks.push(u8); len += u8.length; };
+    const pushStr = (s) => { const a = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) a[i] = s.charCodeAt(i) & 0xff; push(a); };
+    pushStr("%PDF-1.3\n");
+    const offsets = [];
+    objs.forEach((o, i) => {
+        offsets.push(len);
+        if (typeof o === "string") pushStr(`${i + 1} 0 obj\n${o}\nendobj\n`);
+        else {
+            pushStr(`${i + 1} 0 obj\n${o.dict}\nstream\n`);
+            push(o.stream);
+            pushStr("\nendstream\nendobj\n");
+        }
+    });
+    const xref = len;
+    let x = `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n`;
+    for (const o of offsets) x += String(o).padStart(10, "0") + " 00000 n \n";
+    x += `trailer\n<</Size ${objs.length + 1}/Root 1 0 R>>\nstartxref\n${xref}\n%%EOF\n`;
+    pushStr(x);
+    const out = new Uint8Array(len);
+    let p = 0;
+    for (const ch of chunks) { out.set(ch, p); p += ch.length; }
+    return out;
+}
+
+function dataUrlToBytes(dataUrl) {
+    const b64 = dataUrl.slice(dataUrl.indexOf(",") + 1);
+    const bin = atob(b64);
+    const a = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i);
+    return a;
+}
+
+function downloadBlob(blob, name) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = name;
+    document.body.appendChild(a); a.click();
+    setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 1500);
+}
+
+/* ═════════════════════════════════════════════
    📚 자료실 — 커뮤니티 도구 모음
    ① 경공매 수익률 계산기 (Made by 써니)
    ② 대출 판독기 (규제지역·주택수·소득 기반 LTV/DSR)
@@ -3003,6 +3305,9 @@ function CertBoard({ certs, cmts, members, me, onAddCert, onAddCmt }) {
    ═════════════════════════════════════════════ */
 const TOOL_CFG_DEFAULT = {
     asOf: "10.15 대책 + 스트레스 DSR 3단계 (2026-07 조사 기준)",
+    /* 수익률 계산기 세율 기준일 — 관리자가 세법을 직접 확인한 날짜를 손으로 입력.
+       updatedAt(저장 시각 자동 기록)과 달리 '확인한 날'을 뜻하므로 자동 갱신하지 않는다. */
+    taxAsOf: "",
     updatedAt: "",
     regulatedNote: "규제지역(조정대상·투기과열): 서울 25개 구 전역 · 경기 12곳(과천, 광명, 성남 분당·수정·중원, 수원 영통·장안·팔달, 안양 동안, 용인 수지, 의왕, 하남)",
     /* 지역 × 보유상황별 LTV (%) — 0 = 구입목적 주담대 불가 */
@@ -3074,6 +3379,12 @@ const mergeToolCfg = (saved) => {
     return o;
 };
 const effToolCfg = (settings) => mergeToolCfg(settings && settings.loanCfg);
+/* 리포트 요약칸용 짧은 표기 — 20000 → "2억", 6972 → "6,972만" */
+const fmtManShort = (m) => {
+    const n = Math.round(Number(m) || 0);
+    if (n >= 10000) { const eok = n / 10000; return (Math.round(eok * 100) / 100).toLocaleString("ko-KR") + "억"; }
+    return n.toLocaleString("ko-KR") + "만";
+};
 /* 만원 단위 숫자 → "12억 5,000만원" */
 const fmtMan = (m) => {
     const n = Math.round(Number(m) || 0);
@@ -3130,9 +3441,73 @@ const ToolRow = ({ label, value, strong, tone, sub }) => (React.createElement("d
     React.createElement("div", { style: { fontSize: strong ? 15 : 13, fontWeight: 800, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap",
             color: tone === "coral" ? T.coral : tone === "mint" ? T.mint : T.ink } }, value)));
 /* ── ① 경공매 수익률 계산기 (Made by 써니) ── */
+/* ── 내보내기 팝업 — 사건번호(선택) + 형식(PDF/PNG) ── */
+function ExportModal({ data, onClose }) {
+    const [caseNo, setCaseNo] = useState("");
+    const [fmt, setFmt] = useState("pdf");
+    const [busy, setBusy] = useState(false);
+    const [err, setErr] = useState("");
+
+    const run = async () => {
+        setBusy(true); setErr("");
+        try {
+            const cv = document.createElement("canvas");
+            drawReport(cv, { ...data, caseNo: caseNo.trim() });
+            const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+            const tag = caseNo.trim() ? caseNo.trim().replace(/[\\/:*?"<>|\s]/g, "") : "미기재";
+            const base = `경공매수익률_${tag}_${stamp}`;
+            if (fmt === "png") {
+                await new Promise((res) => cv.toBlob((b) => { downloadBlob(b, base + ".png"); res(); }, "image/png"));
+            } else {
+                const jpg = dataUrlToBytes(cv.toDataURL("image/jpeg", 0.94));
+                const pdf = buildPdfFromJpeg(jpg, cv.width, cv.height);
+                downloadBlob(new Blob([pdf], { type: "application/pdf" }), base + ".pdf");
+            }
+            onClose();
+        } catch (e) {
+            setErr("파일을 만들지 못했어요. 잠시 후 다시 시도해 주세요.");
+        } finally { setBusy(false); }
+    };
+
+    const fmtBtn = (k, icon, label, note) => (React.createElement("button", {
+        key: k, onClick: () => setFmt(k), disabled: busy,
+        style: {
+            flex: 1, padding: "14px 10px", borderRadius: 14, cursor: busy ? "default" : "pointer",
+            border: `2px solid ${fmt === k ? T.mint : T.line}`,
+            background: fmt === k ? "rgba(53,201,168,.10)" : "#fff",
+            fontFamily: "inherit", textAlign: "center", transition: "all .15s",
+        },
+    }, React.createElement("div", { style: { fontSize: 22, lineHeight: 1.2 } }, icon), React.createElement("div", { style: { fontWeight: 800, fontSize: 13.5, marginTop: 5, color: fmt === k ? "#14806B" : T.ink } }, label), React.createElement("div", { style: { fontSize: 10.5, color: T.sub, fontWeight: 600, marginTop: 2 } }, note)));
+
+    return (React.createElement("div", {
+        onClick: (e) => { if (e.target === e.currentTarget && !busy) onClose(); },
+        style: { position: "fixed", inset: 0, zIndex: 400, display: "flex", alignItems: "center", justifyContent: "center", padding: 20, background: "rgba(18,24,38,.55)", backdropFilter: "blur(3px)", WebkitBackdropFilter: "blur(3px)" },
+    }, React.createElement("div", { style: { width: "100%", maxWidth: 380, background: "#fff", borderRadius: 22, padding: 22, boxShadow: "0 20px 60px rgba(0,0,0,.3)" } },
+        React.createElement("div", { style: { fontWeight: 800, fontSize: 17, letterSpacing: "-0.02em" } }, "계산 결과 내보내기"),
+        React.createElement("div", { style: { fontSize: 12.5, color: T.sub, fontWeight: 600, marginTop: 5, lineHeight: 1.6 } }, data.scenario.name + " 기준으로 만들어요"),
+
+        React.createElement("div", { style: { marginTop: 18 } },
+            React.createElement("div", { style: { fontSize: 12, fontWeight: 800, color: T.sub, marginBottom: 6 } }, "사건번호 (선택)"),
+            React.createElement(Input, { value: caseNo, onChange: (e) => setCaseNo(e.target.value), placeholder: "미입력 시 미기재", disabled: busy, style: { width: "100%", boxSizing: "border-box" } })),
+
+        React.createElement("div", { style: { marginTop: 16 } },
+            React.createElement("div", { style: { fontSize: 12, fontWeight: 800, color: T.sub, marginBottom: 7 } }, "형식"),
+            React.createElement("div", { style: { display: "flex", gap: 10 } },
+                fmtBtn("pdf", "\uD83D\uDCC4", "문서", "PDF · A4"),
+                fmtBtn("png", "\uD83D\uDDBC\uFE0F", "사진", "PNG · 4:5"))),
+
+        err && React.createElement("div", { style: { fontSize: 11.5, color: T.coral, fontWeight: 700, marginTop: 12, lineHeight: 1.6 } }, err),
+
+        React.createElement("div", { style: { display: "flex", gap: 8, marginTop: 20 } },
+            React.createElement(Btn, { onClick: onClose, tone: "line", disabled: busy, style: { flex: 1 } }, "\uB2EB\uAE30"),
+            React.createElement(Btn, { onClick: run, disabled: busy, style: { flex: 2 } }, busy ? "\uB9CC\uB4DC\uB294 \uC911\u2026" : "\uB0B4\uBCF4\uB0B4\uAE30")),
+
+        React.createElement("div", { style: { fontSize: 10.5, color: T.sub, fontWeight: 600, marginTop: 12, lineHeight: 1.6, textAlign: "center" } }, "\uD3F0 \uC548\uC5D0\uC11C\uB9CC \uB9CC\uB4E4\uC5B4\uC838\uC694. \uC785\uB825\uD55C \uAE08\uC561\uC740 \uC11C\uBC84\uB85C \uC804\uC1A1\uB418\uC9C0 \uC54A\uC544\uC694."))));
+}
 function ProfitCalc({ cfg }) {
     const C = cfg.calc;
     const [v, setV] = useState({ appraisal: "", lowest: "", bid: "", sell: "", evict: "", unpaid: "", repair: "", jeonse: "", depo: "", rent: "" });
+    const [expKind, setExpKind] = useState(null); // 내보내기 팝업 대상 시나리오
     const [r, setR] = useState({ acqTax: C.acqTax, legal: C.legal, broker: C.broker, loanRatio: C.loanRatio, loanRate: C.loanRate, earlyFee: C.earlyFee, shortTax: C.shortTax,
         holdShort: C.holdShort != null ? C.holdShort : 3, holdLong: C.holdLong != null ? C.holdLong : 24, holdJeonse: C.holdJeonse != null ? C.holdJeonse : 3 });
     const [showR, setShowR] = useState(false);
@@ -3190,6 +3565,62 @@ function ProfitCalc({ cfg }) {
             taxShort, netShort, taxLong, netLong, taxBiz, netBiz, profit,
             jInvest, jeonse, jNet, mInterest, mNet, yNet, realCash };
     }, [v, r, cfg]);
+    /* 내보내기용 데이터 — 화면에 보이는 값 그대로 사용 */
+    const buildReport = (kind) => {
+        const o = out, M = (n) => (n < 0 ? "−" : "") + rptNum(Math.abs(n));
+        const meta = {
+            short: { name: `단타 · ${o.mShort}개월 보유`, bg: T.coral, fg: "#fff", months: o.mShort, int: o.intShort, tax: o.taxShort, net: o.netShort,
+                base: o.taxBaseS, baseWhy: "명도비·수리비·이자는 빼주지 않아요", taxWhy: `과표 ${rptNum(o.taxBaseS)} × ${r.shortTax}%` },
+            long: { name: `개인 · ${o.mLong}개월 보유`, bg: T.mint, fg: "#fff", months: o.mLong, int: o.intLong, tax: o.taxLong, net: o.netLong,
+                base: o.taxBaseS, baseWhy: "명도비·수리비·이자는 빼주지 않아요", taxWhy: `과표 ${rptNum(o.taxBaseS)} · 기본세율 + 지방소득세` },
+            biz: { name: `매매사업자 · ${o.mShort}개월 보유`, bg: T.gold, fg: "#5A4208", months: o.mShort, int: o.intShort, tax: o.taxBiz, net: o.netBiz,
+                base: o.profit, baseWhy: "수리비·이자도 경비로 인정돼요", taxWhy: `과표 ${rptNum(o.profit)} · 기본세율 + 지방소득세` },
+        }[kind];
+        const pre = o.gain - o.sellCost - meta.int; // 세전수익
+        const rows = [{ t: "gain", label: "양도차익", why: "매도가 − 낙찰가", amt: rptNum(o.gain) }];
+        const sub = (label, why, amt) => { if (amt > 0) rows.push({ t: "sub", label, why, amt: "−" + rptNum(amt) }); };
+        sub("취득세", `낙찰가 × ${r.acqTax}%`, o.acq);
+        sub("법무비", `낙찰가 × ${r.legal}%`, o.legal);
+        sub("명도비", "입력값", n("evict"));
+        sub("미납관리비", "입력값", n("unpaid"));
+        sub("수리비 및 기타", "입력값", n("repair"));
+        sub("중개비", `매도가 × ${r.broker}%`, o.broker);
+        sub("중도상환수수료", `대출 × ${r.earlyFee}%`, o.early);
+        sub("대출이자", `대출 ${rptNum(o.loan)} × ${r.loanRate}% × ${meta.months}개월`, meta.int);
+        rows.push({ t: "mid", label: "세전수익", why: "비용을 모두 뺀 실제 이익", amt: rptNum(pre) });
+        rows.push({ t: "base", label: "과세표준", why: meta.baseWhy, amt: rptNum(meta.base) });
+        rows.push({ t: "sub", label: "세금", why: meta.taxWhy, amt: "−" + rptNum(meta.tax) });
+        rows.push({ t: "fin", label: "순수익", why: "세전수익 − 세금", amt: M(meta.net) });
+        /* 비교 막대 — 세 시나리오를 같은 자로 잰다 */
+        const arms = [
+            { k: "short", nm: `단타 ${o.mShort}개월`, int: o.intShort, tax: o.taxShort, net: o.netShort },
+            { k: "long", nm: `개인 ${o.mLong}개월`, int: o.intLong, tax: o.taxLong, net: o.netLong },
+            { k: "biz", nm: "매매사업자", int: o.intShort, tax: o.taxBiz, net: o.netBiz },
+        ];
+        const scale = Math.max(o.gain, ...arms.map((a) => o.sellCost + a.int + a.tax));
+        const compare = arms.map((a) => {
+            const used = o.sellCost + a.int + a.tax;
+            const segs = [{ w: o.sellCost / scale, c: "#8A93A5" }, { w: a.int / scale, c: T.gold }, { w: Math.max(a.tax, 0) / scale, c: T.coral }];
+            if (a.net > 0) segs.push({ w: a.net / scale, c: T.mint });
+            return { name: a.nm, segs, over: used > o.gain ? o.gain / scale : null, net: a.net,
+                rate: o.cash > 0 ? pctStr(a.net / o.cash * 100) : "—", on: a.k === kind };
+        });
+        return {
+            today: new Date().toLocaleDateString("ko-KR", { year: "numeric", month: "2-digit", day: "2-digit" }),
+            taxAsOf: cfg.taxAsOf || "", scenario: { name: meta.name, bg: meta.bg, fg: meta.fg },
+            netLabel: meta.net >= 0 ? "손에 남는 돈" : "예상 손실",
+            net: meta.net, rate: o.cash > 0 ? pctStr(meta.net / o.cash * 100) : "—", cash: o.cash,
+            priceLine: `낙찰 ${fmtMan(n("bid"))} · 매도 ${fmtMan(n("sell"))}`,
+            facts: [
+                { k: "감정가", v: fmtManShort(n("appraisal")) },
+                { k: "낙찰가율", v: isFinite(o.bidRate) ? Math.round(o.bidRate) + "%" : "—" },
+                { k: "경락대금대출", v: fmtManShort(o.loan) },
+                { k: "현금투입", v: fmtManShort(o.cash) },
+            ],
+            rows, compare,
+            disclaimer: "참고용 계산이며 실제 세액과 다를 수 있습니다. 다른 소득이 있으면 합산돼 세율이 올라가고, 조정대상지역 2주택 이상은 비교과세 대상입니다. 경비 인정 범위는 세무 전문가와 확인하세요.",
+        };
+    };
     const rateFields = [
         ["acqTax", "취득세율"], ["legal", "법무비율"], ["broker", "중개비율"],
         ["loanRatio", "대출비율"], ["loanRate", "대출금리(연)"], ["earlyFee", "중도상환수수료"], ["shortTax", "단타 양도세율"],
@@ -3199,7 +3630,8 @@ function ProfitCalc({ cfg }) {
         React.createElement(Card, { pad: 0, style: { overflow: "hidden", marginBottom: 14 } },
             React.createElement("div", { style: { background: T.grad, padding: "16px 18px", color: "#fff" } },
                 React.createElement("div", { style: { fontSize: 11, fontWeight: 800, letterSpacing: "0.12em", opacity: 0.9 } }, "GROW IN TOOLS"),
-                React.createElement("div", { style: { fontSize: 18, fontWeight: 800, letterSpacing: "-0.02em", marginTop: 2 } }, "\uD83E\uDDEE \uACBD\uACF5\uB9E4 \uC218\uC775\uB960 \uACC4\uC0B0\uAE30")),
+                React.createElement("div", { style: { fontSize: 18, fontWeight: 800, letterSpacing: "-0.02em", marginTop: 2 } }, "\uD83E\uDDEE \uACBD\uACF5\uB9E4 \uC218\uC775\uB960 \uACC4\uC0B0\uAE30"),
+                cfg.taxAsOf && React.createElement("div", { style: { fontSize: 11.5, fontWeight: 700, marginTop: 7, opacity: .92 } }, `\uD83D\uDCC5 세율 기준일 ${cfg.taxAsOf}`)),
             React.createElement("div", { style: { padding: 18 } },
                 React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 12 } },
                     React.createElement(ToolNum, { label: "\uAC10\uC815\uAC00", value: v.appraisal, onChange: set("appraisal") }),
@@ -3238,7 +3670,8 @@ function ProfitCalc({ cfg }) {
                     React.createElement(ToolRow, { label: "\uB300\uCD9C\uC774\uC790", sub: `${out.mShort}개월`, value: fmtMan(out.intShort), tone: "coral" }),
                     React.createElement(ToolRow, { label: "\uC591\uB3C4\uC18C\uB4DD\uC138", sub: `과표 ${fmtMan(out.taxBaseS)} × ${r.shortTax}%`, value: fmtMan(out.taxShort), tone: "coral" }),
                     React.createElement(ToolRow, { label: "\uC21C\uC218\uC775", value: fmtMan(out.netShort), strong: true, tone: out.netShort >= 0 ? "mint" : "coral" }),
-                    React.createElement(ToolRow, { label: "\uC218\uC775\uB960", sub: "\uC21C\uC218\uC775 \u00F7 \uD604\uAE08\uD22C\uC785", value: out.cash > 0 ? pctStr(out.netShort / out.cash * 100) : "—", strong: true })),
+                    React.createElement(ToolRow, { label: "\uC218\uC775\uB960", sub: "\uC21C\uC218\uC775 \u00F7 \uD604\uAE08\uD22C\uC785", value: out.cash > 0 ? pctStr(out.netShort / out.cash * 100) : "—", strong: true }),
+                    React.createElement("button", { onClick: () => setExpKind("short"), style: { marginTop: 12, width: "100%", padding: "9px 0", borderRadius: 11, border: `1.5px solid ${T.line}`, background: "#fff", color: T.sub, fontWeight: 800, fontSize: 12.5, fontFamily: "inherit", cursor: "pointer" } }, "\u2B07\uFE0F \uB0B4\uBCF4\uB0B4\uAE30")),
                 React.createElement(Card, { pad: 16 },
                     React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" } },
                         React.createElement(Pill, { tone: "grad", style: { fontSize: 10.5 } }, "\uAC1C\uC778 \u00B7 2\uB144 \uD6C4 \uB9E4\uB3C4"),
@@ -3248,7 +3681,8 @@ function ProfitCalc({ cfg }) {
                     React.createElement(ToolRow, { label: "\uB300\uCD9C\uC774\uC790", sub: `${out.mLong}개월`, value: fmtMan(out.intLong), tone: "coral" }),
                     React.createElement(ToolRow, { label: "\uC591\uB3C4\uC18C\uB4DD\uC138", sub: `과표 ${fmtMan(out.taxBaseS)} · 기본세율+지방세`, value: fmtMan(out.taxLong), tone: "coral" }),
                     React.createElement(ToolRow, { label: "\uC21C\uC218\uC775", value: fmtMan(out.netLong), strong: true, tone: out.netLong >= 0 ? "mint" : "coral" }),
-                    React.createElement(ToolRow, { label: "\uC218\uC775\uB960", sub: "\uC21C\uC218\uC775 \u00F7 \uD604\uAE08\uD22C\uC785", value: out.cash > 0 ? pctStr(out.netLong / out.cash * 100) : "—", strong: true })),
+                    React.createElement(ToolRow, { label: "\uC218\uC775\uB960", sub: "\uC21C\uC218\uC775 \u00F7 \uD604\uAE08\uD22C\uC785", value: out.cash > 0 ? pctStr(out.netLong / out.cash * 100) : "—", strong: true }),
+                    React.createElement("button", { onClick: () => setExpKind("long"), style: { marginTop: 12, width: "100%", padding: "9px 0", borderRadius: 11, border: `1.5px solid ${T.line}`, background: "#fff", color: T.sub, fontWeight: 800, fontSize: 12.5, fontFamily: "inherit", cursor: "pointer" } }, "\u2B07\uFE0F \uB0B4\uBCF4\uB0B4\uAE30")),
                 React.createElement(Card, { pad: 16 },
                     React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" } },
                         React.createElement(Pill, { tone: "gold", style: { fontSize: 10.5 } }, "\uB9E4\uB9E4\uC0AC\uC5C5\uC790"),
@@ -3263,7 +3697,8 @@ function ProfitCalc({ cfg }) {
                     React.createElement("div", { style: { fontSize: 10.5, color: T.sub, marginTop: 8, lineHeight: 1.6 } },
                         React.createElement("div", null, "\uD83D\uDCCC \uB9E4\uB3C4 \uD6C4 2\uAC1C\uC6D4 \uB0B4 \uC608\uC815\uC2E0\uACE0\uB97C \uBA3C\uC800 \uD558\uACE0 \uB2E4\uC74C\uD574 5\uC6D4\uC5D0 \uD655\uC815\uC2E0\uACE0\uD574\uC694. \uC120\uB0A9\u00B7\uD658\uAE09\uC561\uC740 \uBB3C\uAC74\uACFC \uAC1C\uC778 \uC870\uAC74\uC5D0 \uB530\uB77C \uB2EC\uB77C\uC838\uC694"),
                         React.createElement("div", { style: { marginTop: 4 } }, "\u26A0\uFE0F \uB2E4\uB978 \uC18C\uB4DD\uC774 \uC788\uC73C\uBA74 \uD569\uC0B0\uB3FC \uC138\uC728 \uAD6C\uAC04\uC774 \uC62C\uB77C\uAC00\uC694"),
-                        React.createElement("div", { style: { marginTop: 4 } }, "\u26A0\uFE0F \uC870\uC815\uB300\uC0C1\uC9C0\uC5ED 2\uC8FC\uD0DD \uC774\uC0C1\uC740 \uC591\uB3C4\uC138\uC728\uACFC \uBE44\uAD50\uD574 \uB354 \uD070 \uCABD\uC73C\uB85C \uACFC\uC138\uB3FC\uC694 (1\uC8FC\uD0DD\uC740 \uD574\uB2F9 \uC5C6\uC74C)"))))),
+                        React.createElement("div", { style: { marginTop: 4 } }, "\u26A0\uFE0F \uC870\uC815\uB300\uC0C1\uC9C0\uC5ED 2\uC8FC\uD0DD \uC774\uC0C1\uC740 \uC591\uB3C4\uC138\uC728\uACFC \uBE44\uAD50\uD574 \uB354 \uD070 \uCABD\uC73C\uB85C \uACFC\uC138\uB3FC\uC694 (1\uC8FC\uD0DD\uC740 \uD574\uB2F9 \uC5C6\uC74C)")),
+                    React.createElement("button", { onClick: () => setExpKind("biz"), style: { marginTop: 12, width: "100%", padding: "9px 0", borderRadius: 11, border: `1.5px solid ${T.line}`, background: "#fff", color: T.sub, fontWeight: 800, fontSize: 12.5, fontFamily: "inherit", cursor: "pointer" } }, "\u2B07\uFE0F \uB0B4\uBCF4\uB0B4\uAE30")))),
             scen === "jeonse" && (React.createElement(Card, { pad: 16, style: { marginBottom: 12 } },
                 React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 12, marginBottom: 10 } },
                     React.createElement(ToolNum, { label: "\uC804\uC138\uAC00", value: v.jeonse, onChange: set("jeonse") })),
@@ -3286,7 +3721,9 @@ function ProfitCalc({ cfg }) {
                 React.createElement(ToolRow, { label: "\uC2E4\uD22C\uC790\uAE08", sub: "\uD604\uAE08\uD22C\uC785 \u2212 \uBCF4\uC99D\uAE08", value: fmtMan(out.realCash), strong: true }),
                 React.createElement(ToolRow, { label: "\uC5F0 \uC218\uC775\uB960", sub: "\uC5F0 \uC218\uC785 \u00F7 \uC2E4\uD22C\uC790\uAE08", value: out.realCash > 0 ? pctStr(out.yNet / out.realCash * 100) : "—", strong: true }))))),
         React.createElement(Card, { pad: 14, style: { background: T.gradSoft, border: "none" } },
-            React.createElement("div", { style: { fontSize: 11.5, color: T.sub, lineHeight: 1.7 } }, "\u26A0\uFE0F \uC138\uC728\u00B7\uAE08\uB9AC \uB4F1\uC740 \uAC1C\uC778 \uC870\uAC74\uC5D0 \uB530\uB77C \uB2EC\uB77C\uC9C0\uB2C8 \uBC18\uB4DC\uC2DC \uD655\uC778 \uD6C4 \uC0AC\uC6A9\uD558\uC138\uC694. \uD3B8\uC758\uB97C \uC704\uD574 \uC81C\uACF5\uB418\uB294 \uCC38\uACE0\uC6A9 \uB3C4\uAD6C\uC774\uBA70, \uACC4\uC0B0 \uACB0\uACFC\uB294 \uBCF8\uC778 \uCC45\uC784\uD558\uC5D0 \uD655\uC778\uD574\uC57C \uD569\uB2C8\uB2E4. \uADF8 \uC5B4\uB5A4 \uCC45\uC784\uB3C4 \uC9C0\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4."))));
+            cfg.taxAsOf && React.createElement("div", { style: { fontSize: 11.5, color: T.ink, fontWeight: 800, lineHeight: 1.7, marginBottom: 5 } }, `\uD83D\uDCC5 ${cfg.taxAsOf} 세법 기준으로 계산했어요`),
+            React.createElement("div", { style: { fontSize: 11.5, color: T.sub, lineHeight: 1.7 } }, "\u26A0\uFE0F \uC138\uC728\u00B7\uAE08\uB9AC \uB4F1\uC740 \uAC1C\uC778 \uC870\uAC74\uC5D0 \uB530\uB77C \uB2EC\uB77C\uC9C0\uB2C8 \uBC18\uB4DC\uC2DC \uD655\uC778 \uD6C4 \uC0AC\uC6A9\uD558\uC138\uC694. \uD3B8\uC758\uB97C \uC704\uD574 \uC81C\uACF5\uB418\uB294 \uCC38\uACE0\uC6A9 \uB3C4\uAD6C\uC774\uBA70, \uACC4\uC0B0 \uACB0\uACFC\uB294 \uBCF8\uC778 \uCC45\uC784\uD558\uC5D0 \uD655\uC778\uD574\uC57C \uD569\uB2C8\uB2E4. \uADF8 \uC5B4\uB5A4 \uCC45\uC784\uB3C4 \uC9C0\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4.")),
+        expKind && React.createElement(ExportModal, { data: buildReport(expKind), onClose: () => setExpKind(null) })));
 }
 /* ── ② 대출 판독기 — 규제지역·주택수·소득 기반 LTV/DSR 한도 ── */
 const LOAN_REGION_OPTS = [["reg", "🚨 규제지역"], ["metro", "🏙 수도권 비규제"], ["etc", "🌄 그 외 지방"]];
@@ -3851,7 +4288,13 @@ function ToolsAdmin({ settings, onSave }) {
                     "\uCC98\uBD84 \uAE30\uD55C ",
                     React.createElement(MiniNum, { value: draft.sellMonths, onChange: (v) => up((d) => { d.sellMonths = v; }), w: 54, unit: "\uAC1C\uC6D4" })))),
         React.createElement(Card, { pad: 16, style: { marginBottom: 12 } },
-            React.createElement("div", { style: { fontWeight: 800, fontSize: 13.5, marginBottom: 8 } }, "\uC218\uC775\uB960 \uACC4\uC0B0\uAE30 \uAE30\uBCF8 \uC694\uC728 (%)"),
+            React.createElement("div", { style: { fontWeight: 800, fontSize: 13.5, marginBottom: 8 } }, "\uC218\uC775\uB960 \uACC4\uC0B0\uAE30"),
+            React.createElement("div", { style: { background: "#FAFCFB", border: `1px solid ${T.line}`, borderRadius: 12, padding: 12, marginBottom: 14 } },
+                React.createElement("div", { style: { fontSize: 11.5, fontWeight: 800, color: T.sub, marginBottom: 5 } }, "세율 기준일"),
+                React.createElement(Input, { type: "date", value: draft.taxAsOf || "", onChange: (e) => { const v = e.target.value; up((d) => { d.taxAsOf = v; }); }, style: { width: "100%", maxWidth: 220, boxSizing: "border-box" } }),
+                React.createElement("div", { style: { fontSize: 10.5, color: T.sub, marginTop: 6, lineHeight: 1.6 } }, "세법을 직접 확인한 날짜예요. 계산기 화면과 내려받는 이미지에 그대로 표시돼요. 저장만 해서는 바뀌지 않으니, 세율을 검토했을 때만 날짜를 옮기세요."),
+                !draft.taxAsOf && React.createElement("div", { style: { fontSize: 10.5, color: T.coral, fontWeight: 800, marginTop: 5 } }, "⚠️ 비워두면 계산기에 기준일이 표시되지 않아요")),
+            React.createElement("div", { style: { fontSize: 12.5, fontWeight: 800, marginBottom: 8 } }, "기본 요율 (%)"),
             React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: "10px 18px", fontSize: 12, fontWeight: 700, alignItems: "center" } }, [["depositPct", "입찰보증금"], ["acqTax", "취득세율"], ["legal", "법무비율"], ["broker", "중개비율"],
                 ["loanRatio", "대출비율"], ["loanRate", "대출금리"], ["earlyFee", "중도상환"], ["shortTax", "단타 양도세"], ["localAdd", "지방소득세"]].map(([k, lb]) => (React.createElement("span", { key: k },
                 lb,
@@ -3874,7 +4317,7 @@ function ArchiveTab({ initialTool, settings, onGoMap }) {
     const [tool, setTool] = useState(initialTool || null);
     const ARCHIVE_TOOLS = [
         { k: "budget", icon: "💰", name: "입찰 예산 판독기", by: "1단계 · 얼마짜리 물건을 볼까", desc: "현금과 소득을 넣으면 훑어볼 만한 경매 물건 금액대를 알려줘요." },
-        { k: "calc", icon: "🧮", name: "경공매 수익률 계산기", by: "경공매 수익률·세금 시뮬레이터", desc: "낙찰가·비용·세금을 넣으면 단타/2년 보유/전세·월세 세팅별 수익률을 계산해요." },
+        { k: "calc", icon: "🧮", name: "경공매 수익률 계산기", by: toolCfg.taxAsOf ? `세율 기준일 ${toolCfg.taxAsOf}` : "경공매 수익률·세금 시뮬레이터", desc: "낙찰가·비용·세금을 넣으면 단타/2년 보유/전세·월세 세팅별 수익률을 계산해요." },
         { k: "loan", icon: "🏦", name: "대출 판독기", by: toolCfg.asOf, desc: "지역·주택수·소득을 고르면 현행 규제(LTV·DSR·한도 상한)를 반영해 대출 가능액을 판독해요." },
     ];
     if (tool)
