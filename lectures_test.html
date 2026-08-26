@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<link rel="preconnect" href="https://script.google.com" />
+<link rel="preconnect" href="https://script.googleusercontent.com" />
+<link rel="preconnect" href="https://player.vimeo.com" />
+<title>강의 아카이브 · 해피테크</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎬</text></svg>" />
+<style>
+/* ─────────────────────────────────────────────────────────────
+   강의 아카이브 (2단계 · 테스트 배포본)
+   커뮤니티(growin.html)의 색·글꼴을 그대로 씁니다. 다른 페이지처럼 보이면 안 됩니다.
+   React를 쓰지 않은 이유 — 이 페이지의 일은 '빠르게 열리는 것'입니다.
+   unpkg에서 React 3개를 받는 데만 수백 ms가 드는데, 여기서 할 일은
+   목록 그리기와 iframe 하나 띄우기뿐이라 남는 장사가 아닙니다.
+   ───────────────────────────────────────────────────────────── */
+:root{
+  --mint:#35C9A8; --peri:#6F7BE0; --ink:#1C2333; --sub:#6B7486;
+  --coral:#E15F50; --gold:#EFB63C; --bg:#F3F6F5; --card:#FFFFFF; --line:#E4E9E8;
+  --grad:linear-gradient(120deg,#35C9A8 0%,#6F7BE0 100%);
+  --gradSoft:linear-gradient(120deg,rgba(53,201,168,.12),rgba(111,123,224,.12));
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{
+  background:var(--bg); color:var(--ink); min-height:100vh;
+  font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif;
+  -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;
+  font-variant-numeric:tabular-nums;
+}
+button{font-family:inherit;cursor:pointer}
+input:focus,button:focus{outline:2px solid var(--mint);outline-offset:2px}
+::selection{background:rgba(53,201,168,.25)}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+.wrap{max-width:720px;margin:0 auto;padding:0 16px 64px}
+
+/* ── 상단 ── */
+.top{position:sticky;top:0;z-index:20;background:rgba(243,246,245,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+.top .in{max-width:720px;margin:0 auto;padding:12px 16px;display:flex;align-items:center;gap:10px}
+.brand{font-weight:800;font-size:15.5px;letter-spacing:-.02em}
+.brand span{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+.wallet{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.pill{border:1px solid var(--line);background:#fff;border-radius:999px;padding:4px 10px;font-size:11.5px;color:var(--sub);font-weight:700;white-space:nowrap}
+.pill.on{border-color:transparent;background:var(--gradSoft);color:var(--ink)}
+.pill.gold{border-color:rgba(239,182,60,.45);background:rgba(239,182,60,.12);color:#8A6410}
+.linkbtn{border:none;background:none;color:var(--sub);font-size:11.5px;font-weight:700;text-decoration:underline;padding:4px}
+
+/* ── 배너 ── */
+.banner{margin:14px 0 4px;border-radius:14px;padding:14px 16px;border:1px solid rgba(225,95,80,.3);background:rgba(225,95,80,.07)}
+.banner b{display:block;font-size:14px;margin-bottom:4px;letter-spacing:-.02em}
+.banner p{font-size:12.5px;color:var(--sub);line-height:1.65}
+
+/* ── 분류 칩 ── */
+.chips{display:flex;gap:7px;overflow-x:auto;padding:16px 0 12px;scrollbar-width:none}
+.chips::-webkit-scrollbar{display:none}
+.chip{border:1px solid var(--line);background:#fff;border-radius:999px;padding:7px 14px;font-size:12.5px;font-weight:700;color:var(--sub);white-space:nowrap;transition:.15s}
+.chip[aria-pressed="true"]{border-color:transparent;background:var(--grad);color:#fff}
+
+/* ── 강의 카드 ── */
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;margin-bottom:10px;overflow:hidden}
+.card.locked{background:#FBFCFC}
+.head{display:flex;gap:12px;align-items:flex-start;padding:16px;width:100%;border:none;background:none;text-align:left}
+.mark{width:28px;height:28px;border-radius:9px;flex:0 0 28px;display:grid;place-items:center;font-size:13px;background:var(--gradSoft)}
+.card.locked .mark{background:#EFF2F1}
+.meta{font-size:11px;color:var(--sub);font-weight:700;letter-spacing:.01em;margin-bottom:3px}
+.title{font-size:14.5px;font-weight:800;letter-spacing:-.02em;line-height:1.45}
+.card.locked .title{color:#4A5364}
+.sum{font-size:12.5px;color:var(--sub);line-height:1.6;margin-top:5px}
+.tags{display:flex;gap:5px;flex-wrap:wrap;margin-top:8px}
+.tag{font-size:10.5px;font-weight:800;border-radius:999px;padding:3px 8px;background:#EFF2F1;color:var(--sub)}
+.tag.open{background:rgba(53,201,168,.14);color:#127A63}
+.tag.time{background:rgba(239,182,60,.16);color:#8A6410}
+.caret{margin-left:auto;color:#B7C0BE;font-size:12px;padding-top:2px;transition:transform .18s}
+.card.on .caret{transform:rotate(180deg)}
+
+.body{padding:0 16px 16px;border-top:1px solid var(--line);margin-top:-1px}
+.body>*:first-child{margin-top:14px}
+
+/* ── 기준일 안내 ── */
+.basis{border-radius:11px;padding:10px 12px;font-size:12px;line-height:1.6;margin-bottom:12px}
+.basis.soft{background:#F1F4F3;color:var(--sub)}
+.basis.warn{background:rgba(239,182,60,.14);color:#7A5809;font-weight:700}
+
+/* ── 플레이어 ── */
+.stage{position:relative;border-radius:12px;overflow:hidden;background:#0E1218;aspect-ratio:16/9;margin-bottom:12px}
+.stage iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
+.wm{position:absolute;z-index:3;pointer-events:none;user-select:none;font-size:11px;font-weight:700;color:rgba(255,255,255,.42);text-shadow:0 1px 3px rgba(0,0,0,.5);transition:all .8s ease;letter-spacing:.02em}
+.stage .load{position:absolute;inset:0;display:grid;place-items:center;color:#8A94A6;font-size:12.5px}
+
+.text{font-size:13.5px;line-height:1.85;color:#2B3444;white-space:pre-wrap;word-break:break-word}
+.text img{max-width:100%;border-radius:10px}
+
+/* ── 버튼 ── */
+.btn{border:none;border-radius:999px;padding:12px 20px;font-weight:800;font-size:13.5px;letter-spacing:-.01em;transition:.15s}
+.btn.primary{background:var(--grad);color:#fff}
+.btn.ghost{background:#fff;border:1.5px solid var(--line);color:var(--ink)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.block{width:100%}
+.alt{display:block;width:100%;text-align:center;margin-top:10px;border:none;background:none;color:var(--sub);font-size:12px;font-weight:700;text-decoration:underline;padding:4px}
+.why{font-size:12.5px;color:var(--sub);line-height:1.65;margin-bottom:12px}
+
+/* ── 모달 ── */
+.veil{position:fixed;inset:0;z-index:60;background:rgba(14,18,24,.5);display:grid;place-items:end center;padding:0}
+.sheet{background:#fff;width:100%;max-width:440px;border-radius:20px 20px 0 0;padding:22px 20px calc(22px + env(safe-area-inset-bottom));animation:up .22s ease}
+@keyframes up{from{transform:translateY(18px);opacity:0}to{transform:none;opacity:1}}
+@media(min-width:520px){.veil{place-items:center}.sheet{border-radius:20px}}
+.sheet h3{font-size:16px;letter-spacing:-.02em;margin-bottom:14px}
+.recap{border:1px solid var(--line);border-radius:13px;padding:14px;margin-bottom:16px;background:#FAFBFB}
+.recap .lec{font-size:13.5px;font-weight:800;letter-spacing:-.02em;line-height:1.45}
+.recap .until{font-size:12.5px;color:var(--sub);margin-top:6px;line-height:1.6}
+.row{display:flex;justify-content:space-between;align-items:baseline;font-size:12.5px;padding-top:12px;margin-top:12px;border-top:1px dashed var(--line)}
+.row .k{color:var(--sub);font-weight:700}
+.row .v{font-weight:800}
+.row .v s{color:#B7C0BE;font-weight:700;margin-right:6px}
+
+/* ── 로그인 ── */
+.gate{min-height:100vh;display:flex;flex-direction:column;justify-content:center;padding:24px;max-width:400px;margin:0 auto}
+.gate h1{font-size:23px;letter-spacing:-.03em;line-height:1.35;margin-bottom:8px}
+.gate .lede{font-size:13px;color:var(--sub);line-height:1.7;margin-bottom:24px}
+.field{margin-bottom:10px}
+.field label{display:block;font-size:11.5px;font-weight:800;color:var(--sub);margin-bottom:6px}
+.field input{width:100%;border:1.5px solid var(--line);border-radius:12px;padding:13px 14px;font-size:15px;font-family:inherit;outline:none;background:#fff}
+.err{font-size:12.5px;color:var(--coral);font-weight:700;line-height:1.6;margin:10px 0 0}
+
+.empty{text-align:center;padding:56px 20px;color:var(--sub);font-size:13px;line-height:1.7}
+.skel{height:78px;border-radius:16px;background:linear-gradient(90deg,#EDF1F0,#F6F8F8,#EDF1F0);background-size:200% 100%;animation:sh 1.2s infinite;margin-bottom:10px}
+@keyframes sh{to{background-position:-200% 0}}
+.foot{text-align:center;padding:28px 0 0;font-size:11px;color:#A8B2B0;line-height:1.8}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:80;background:var(--ink);color:#fff;padding:12px 18px;border-radius:999px;font-size:12.5px;font-weight:700;max-width:90vw;text-align:center}
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script>
+/* ═══════════════════════════════════════════════════════════════
+   설정 — growin.html 과 같은 배포본을 바라봅니다
+   ═══════════════════════════════════════════════════════════════ */
+var API_URL = "https://script.google.com/macros/s/AKfycbz_TQCrc0dxcaKSS9LCCB84C22Kzt2qYgwRRMSJxYLzmAw3oHWZIdtDA9t8owkCch2s/exec";
+
+/* 커뮤니티와 공유할 세션 키.
+   3단계에서 growin.html 의 setSessToken 옆에 아래 한 줄만 넣으면 자동으로 이어집니다.
+     try{localStorage.setItem("growin_sess_v1",JSON.stringify({t:Date.now(),token:d.token,name:name}))}catch(e){} */
+var SESS_KEY = "growin_sess_v1";
+var LEC_KEY  = "ht_lec_v1";     // 목록 캐시 — 재방문 때 즉시 그리고 뒤에서 갱신
+var SESS_DAYS = 55;             // 서버 토큰은 60일. 조금 일찍 만료시켜 어긋남을 피한다
+
+/* 기준일 안내 문턱 (개월) — 세법·규제가 3개월에 두 번 바뀐 적이 있다 */
+var BASIS_SOFT = 3, BASIS_WARN = 6;
+
+/* ═══════════════════════════════════════════════════════════════
+   통신
+   ═══════════════════════════════════════════════════════════════ */
+function api(action, payload) {
+  var body = JSON.stringify(Object.assign({ action: action }, payload || {}));
+  return fetch(API_URL, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: body,
+  }).then(function (r) { return r.json(); }).then(function (j) {
+    if (!j.ok) throw new Error(j.error || "요청에 실패했어요");
+    return j.data;
+  });
+}
+
+/* 콜드 스타트(2~4초) 선점 — 로그인 폼을 채우는 동안 컨테이너를 깨워둔다 */
+try { fetch(API_URL, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: '{"action":"ping"}' }); } catch (e) {}
+
+function lsGet(k) { try { return JSON.parse(localStorage.getItem(k) || "null"); } catch (e) { return null; } }
+function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+function lsDel(k) { try { localStorage.removeItem(k); } catch (e) {} }
+
+/* ═══════════════════════════════════════════════════════════════
+   상태
+   ═══════════════════════════════════════════════════════════════ */
+var ST = {
+  token: null, name: "",
+  pin: null,            // 운영진 테스트용 (sessionStorage · 새로고침하면 유지, 탭 닫으면 소멸)
+  data: null,           // lecList 응답
+  offset: 0,            // 서버시각 - 브라우저시각
+  cat: "전체",
+  openId: 0,
+  busy: false,
+  pending: null,        // 확인 모달에 올라온 강의
+};
+
+function now() { return Date.now() + ST.offset; }
+
+/* ═══════════════════════════════════════════════════════════════
+   표시용 계산
+   ═══════════════════════════════════════════════════════════════ */
+function esc(s) {
+  return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+    return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+  });
+}
+
+/* 남은 시간 — 분 단위까지만. 초까지 세는 건 사람을 쫓는 느낌이라 뺐다 */
+function remain(ms) {
+  var d = ms - now();
+  if (d <= 0) return null;
+  var h = Math.floor(d / 3600000), m = Math.floor((d % 3600000) / 60000);
+  if (h >= 1) return h + "시간 " + m + "분 남음";
+  if (m >= 1) return m + "분 남음";
+  return "곧 만료";
+}
+
+function whenText(ms) {
+  var d = new Date(ms);
+  var wd = ["일", "월", "화", "수", "목", "금", "토"][d.getDay()];
+  var h = d.getHours(), ap = h < 12 ? "오전" : "오후", hh = h % 12 || 12;
+  return (d.getMonth() + 1) + "/" + d.getDate() + " " + wd + " " + ap + " " + hh + ":" + ("0" + d.getMinutes()).slice(-2);
+}
+
+/* basisDate 로부터 몇 달이 지났는지 — 자동 갱신은 하지 않고 경고만 띄운다 */
+function basisNote(s) {
+  var m = String(s || "").match(/^(\d{4})-(\d{2})/);
+  if (!m) return null;
+  var d = new Date(now());
+  var months = (d.getFullYear() - Number(m[1])) * 12 + (d.getMonth() + 1 - Number(m[2]));
+  if (months < BASIS_SOFT) return null;
+  var when = m[1] + "년 " + Number(m[2]) + "월";
+  if (months < BASIS_WARN) return { cls: "soft", text: when + " 기준으로 만든 강의예요." };
+  return { cls: "warn", text: when + " 기준이에요 · " + months + "개월 지났으니 제도가 바뀌었을 수 있어요" };
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   그리기
+   ═══════════════════════════════════════════════════════════════ */
+var root = document.getElementById("root");
+
+function toast(msg) {
+  var old = document.querySelector(".toast"); if (old) old.remove();
+  var t = document.createElement("div");
+  t.className = "toast"; t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(function () { t.remove(); }, 3200);
+}
+
+/* ── 로그인 화면 ── */
+function renderGate(err, name) {
+  root.innerHTML =
+    '<div class="gate">' +
+      '<h1>강의 아카이브</h1>' +
+      '<p class="lede">그로인 커뮤니티와 같은 이름·비밀번호로 들어옵니다.<br>비밀번호를 바꾸신 적이 없다면 전화번호 뒷 4자리예요.</p>' +
+      '<div class="field"><label for="gn">이름</label><input id="gn" autocomplete="name" value="' + esc(name || "") + '" /></div>' +
+      '<div class="field"><label for="gp">비밀번호 4자리</label><input id="gp" inputmode="numeric" maxlength="4" autocomplete="current-password" type="password" /></div>' +
+      (err ? '<p class="err">' + esc(err) + "</p>" : "") +
+      '<button class="btn primary block" id="gb" style="margin-top:16px">들어가기</button>' +
+      '<p class="foot">해피테크 · 그로인</p>' +
+    "</div>";
+
+  var n = document.getElementById("gn"), p = document.getElementById("gp"), b = document.getElementById("gb");
+  function go() {
+    var nv = n.value.trim(), pv = p.value.trim();
+    if (!nv || pv.length !== 4) { renderGate("이름과 비밀번호 4자리를 확인해주세요", nv); return; }
+    b.disabled = true; b.textContent = "확인 중…";
+    api("login", { name: nv, p4: pv }).then(function (d) {
+      ST.token = d.token; ST.name = nv;
+      lsSet(SESS_KEY, { t: Date.now(), token: d.token, name: nv });
+      load(true);
+    }).catch(function (e) { renderGate(e.message, nv); });
+  }
+  b.onclick = go;
+  p.onkeydown = function (e) { if (e.key === "Enter") go(); };
+  (n.value ? p : n).focus();
+}
+
+/* ── 목록 화면 ── */
+function render() {
+  var d = ST.data;
+  if (!d) {
+    root.innerHTML = '<div class="wrap" style="padding-top:24px"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>';
+    return;
+  }
+  var me = d.me || {};
+  var locked = d.lectures.filter(function (l) { return !l.open; }).length;
+
+  /* 분류 칩 — 설정에 없는 분류가 강의에 들어와 있어도 칩이 생기게 한다 */
+  var seen = {}, chips = [{ key: "전체", label: "전체" }];
+  (d.cats || []).forEach(function (c) { if (!seen[c.key]) { seen[c.key] = 1; chips.push(c); } });
+  d.lectures.forEach(function (l) { if (!seen[l.cat]) { seen[l.cat] = 1; chips.push({ key: l.cat, label: l.catLabel || l.cat }); } });
+
+  var list = d.lectures.filter(function (l) { return ST.cat === "전체" || l.cat === ST.cat; });
+
+  var html =
+    '<div class="top"><div class="in">' +
+      '<div class="brand">해피테크 <span>강의 아카이브</span></div>' +
+      '<div class="wallet">' +
+        (d.staff ? '<span class="pill on">운영진</span>' :
+          '<span class="pill">크레딧 ' + (me.credits || 0).toLocaleString() + "</span>" +
+          (me.tickets > 0 ? '<span class="pill gold">이용권 ' + me.tickets + "장</span>" : "")) +
+        '<button class="linkbtn" id="out">나가기</button>' +
+      "</div>" +
+    '</div></div><div class="wrap">';
+
+  if (!d.staff && !me.membership) {
+    html += '<div class="banner"><b>멤버십이 만료됐어요</b><p>연장하시면 ' +
+      locked + "편이 바로 열려요. 교환해두신 열람권도 그대로 남아 있어요.</p></div>";
+  }
+
+  html += '<div class="chips">' + chips.map(function (c) {
+    return '<button class="chip" data-cat="' + esc(c.key) + '" aria-pressed="' + (ST.cat === c.key) + '">' + esc(c.label) + "</button>";
+  }).join("") + "</div>";
+
+  if (!list.length) {
+    html += '<div class="empty">이 분류에는 아직 올라온 강의가 없어요.</div>';
+  } else {
+    html += list.map(card).join("");
+  }
+
+  html += '<p class="foot">영상은 회원 본인 시청용이에요.<br>화면에 표시되는 이름은 계정 공유를 막기 위한 표시입니다.' +
+    (d.staff ? "" : '<br><button class="linkbtn" id="pinbtn" style="margin-top:8px">운영진</button>') + "</p></div>";
+
+  root.innerHTML = html;
+
+  document.getElementById("out").onclick = function () {
+    lsDel(SESS_KEY); lsDel(LEC_KEY);
+    try { sessionStorage.removeItem("ht_pin"); } catch (e) {}
+    location.reload();
+  };
+  var pb = document.getElementById("pinbtn");
+  if (pb) pb.onclick = function () {
+    var v = prompt("운영진 PIN"); if (!v) return;
+    try { sessionStorage.setItem("ht_pin", v); } catch (e) {}
+    ST.pin = v; load(true);
+  };
+  Array.prototype.forEach.call(document.querySelectorAll(".chip"), function (b) {
+    b.onclick = function () { ST.cat = b.dataset.cat; ST.openId = 0; render(); };
+  });
+  Array.prototype.forEach.call(document.querySelectorAll(".head"), function (b) {
+    b.onclick = function () { toggle(Number(b.dataset.id)); };
+  });
+  Array.prototype.forEach.call(document.querySelectorAll("[data-use]"), function (b) {
+    b.onclick = function (e) { e.stopPropagation(); askUse(Number(b.dataset.use), b.dataset.pay); };
+  });
+
+  if (ST.pending) renderSheet();
+}
+
+function card(l) {
+  var open = ST.openId === l.id;
+  var d = ST.data, me = d.me || {};
+  var left = l.byPass && l.passExpiresMs ? remain(l.passExpiresMs) : null;
+
+  var tags = "";
+  if (l.open && l.byGroup) tags += '<span class="tag open">멤버십 포함</span>';
+  if (l.open && l.byPass) tags += '<span class="tag time">' + esc(left || "곧 만료") + "</span>";
+  if (!l.hasVideo) tags += '<span class="tag">영상 준비 중</span>';
+  if (d.staff && l.access) tags += '<span class="tag">' + esc(l.access) + "</span>";
+  if (d.staff && l.hide) tags += '<span class="tag">숨김</span>';
+
+  var h =
+    '<div class="card' + (l.open ? "" : " locked") + (open ? " on" : "") + '">' +
+      '<button class="head" data-id="' + l.id + '" aria-expanded="' + open + '">' +
+        '<span class="mark">' + (l.open ? "▶" : "🔒") + "</span>" +
+        "<span style=\"flex:1;min-width:0\">" +
+          '<span class="meta">' + esc(l.catLabel || l.cat) + (l.date ? " · " + esc(l.date) : "") + "</span>" +
+          '<span class="title" style="display:block">' + esc(l.title) + "</span>" +
+          (l.summary ? '<span class="sum" style="display:block">' + esc(l.summary) + "</span>" : "") +
+          (tags ? '<span class="tags">' + tags + "</span>" : "") +
+        "</span>" +
+        '<span class="caret">▼</span>' +
+      "</button>";
+
+  if (open) h += '<div class="body" id="body-' + l.id + '">' + (l.open ? '<div class="stage"><div class="load">영상을 여는 중…</div></div>' : lockedBody(l, me, d)) + "</div>";
+  return h + "</div>";
+}
+
+/* 잠긴 강의를 펼쳤을 때 — 요약까지만. 본문·영상은 서버가 애초에 보내지 않는다 */
+function lockedBody(l, me, d) {
+  if (!me.membership) {
+    return '<p class="why">멤버십이 만료돼서 잠겨 있어요. 연장하시면 바로 열립니다.</p>';
+  }
+  if (!l.hasVideo) {
+    return '<p class="why">아직 영상이 올라오지 않은 강의예요.</p>';
+  }
+  var cost = d.cost, hours = d.hours;
+  if (me.tickets > 0) {
+    return '<p class="why">이용권 1장으로 ' + hours + "시간 동안 볼 수 있어요. 지금 " + me.tickets + "장 있어요.</p>" +
+      '<button class="btn primary block" data-use="' + l.id + '" data-pay="ticket">이용권 1장으로 열기</button>' +
+      '<button class="alt" data-use="' + l.id + '" data-pay="credit">크레딧 ' + cost + "으로 대신 쓰기</button>";
+  }
+  if (me.credits >= cost) {
+    return '<p class="why">크레딧 ' + cost + "으로 " + hours + "시간 동안 볼 수 있어요. 지금 " + me.credits.toLocaleString() + " 있어요.</p>" +
+      '<button class="btn primary block" data-use="' + l.id + '" data-pay="credit">크레딧 ' + cost + "으로 열기</button>";
+  }
+  return '<p class="why">크레딧이 ' + cost + " 필요해요. 지금 " + me.credits.toLocaleString() + " 있어요 (" +
+    (cost - me.credits).toLocaleString() + " 모자라요).<br>오전 프로그램·임장에 참여하시면 모을 수 있어요.</p>" +
+    '<button class="btn primary block" disabled>크레딧 ' + cost + " 필요</button>";
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   펼치기 · 재생
+   ═══════════════════════════════════════════════════════════════ */
+function toggle(id) {
+  if (ST.openId === id) { ST.openId = 0; render(); return; }
+  ST.openId = id; render();
+  var l = ST.data.lectures.filter(function (x) { return x.id === id; })[0];
+  if (l && l.open) play(id);
+}
+
+function play(id) {
+  var box = document.getElementById("body-" + id);
+  if (!box) return;
+  api("lecOpen", { token: ST.token, adminKey: ST.pin || undefined, lecId: id })
+    .then(function (v) { paint(id, v); })
+    .catch(function (e) {
+      var b = document.getElementById("body-" + id);
+      if (b) b.innerHTML = '<p class="why">' + esc(e.message) + "</p>";
+      /* 서버가 거절했다면 목록이 실제와 어긋난 것 — 조용히 다시 맞춘다 */
+      load(false);
+    });
+}
+
+function paint(id, v) {
+  var box = document.getElementById("body-" + id);
+  if (!box) return;
+  var note = basisNote(v.basisDate);
+  var frame = v.vimeo
+    ? '<iframe src="https://player.vimeo.com/video/' + encodeURIComponent(v.vimeo.id) +
+        (v.vimeo.h ? "?h=" + encodeURIComponent(v.vimeo.h) + "&" : "?") +
+        'badge=0&byline=0&portrait=0&title=0&dnt=1" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen></iframe>'
+    : (v.yt || '<div class="load">영상이 등록되지 않았어요</div>');
+
+  box.innerHTML =
+    (note ? '<div class="basis ' + note.cls + '">' + esc(note.text) + "</div>" : "") +
+    '<div class="stage">' + frame + '<span class="wm" id="wm-' + id + '">' + esc(v.mark) + "</span></div>" +
+    (v.expiresAt ? '<p class="why">' + whenText(v.expiresAt) + "까지 볼 수 있어요 · " + esc(remain(v.expiresAt) || "곧 만료") + "</p>" : "") +
+    (v.body ? '<div class="text">' + v.body + "</div>" : "");
+
+  wander(document.getElementById("wm-" + id));
+}
+
+/* 워터마크는 4개 모서리를 30초마다 돈다.
+   화면 녹화를 막지 못한다는 건 안다. 이건 계정 공유를 머뭇거리게 하는 장치다. */
+function wander(el) {
+  if (!el) return;
+  var spots = [
+    { top: "10px", right: "12px", left: "auto", bottom: "auto" },
+    { bottom: "10px", left: "12px", top: "auto", right: "auto" },
+    { top: "10px", left: "12px", right: "auto", bottom: "auto" },
+    { bottom: "10px", right: "12px", top: "auto", left: "auto" },
+  ];
+  var i = 0;
+  function set() { if (!document.body.contains(el)) return; Object.assign(el.style, spots[i % 4]); i++; setTimeout(set, 30000); }
+  set();
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   교환 확인 — 숫자가 눈에 보여야 한다
+   ═══════════════════════════════════════════════════════════════ */
+function askUse(id, pay) {
+  var l = ST.data.lectures.filter(function (x) { return x.id === id; })[0];
+  if (!l) return;
+  ST.pending = { l: l, pay: pay };
+  renderSheet();
+}
+
+function renderSheet() {
+  var p = ST.pending; if (!p) return;
+  var d = ST.data, me = d.me, ticket = p.pay === "ticket";
+  var until = now() + d.hours * 3600000;
+
+  var old = document.querySelector(".veil"); if (old) old.remove();
+  var v = document.createElement("div");
+  v.className = "veil";
+  v.innerHTML =
+    '<div class="sheet" role="dialog" aria-modal="true">' +
+      "<h3>" + (ticket ? "이용권 1장을 사용합니다" : "크레딧 " + d.cost + "을 사용합니다") + "</h3>" +
+      '<div class="recap">' +
+        '<div class="lec">' + esc(p.l.title) + "</div>" +
+        '<div class="until">지금부터 ' + d.hours + "시간 · " + whenText(until) + "까지</div>" +
+        '<div class="row"><span class="k">' + (ticket ? "이용권" : "크레딧") + '</span><span class="v">' +
+          "<s>" + (ticket ? me.tickets + "장" : me.credits.toLocaleString()) + "</s>" +
+          (ticket ? (me.tickets - 1) + "장" : (me.credits - d.cost).toLocaleString()) +
+        "</span></div>" +
+      "</div>" +
+      '<button class="btn primary block" id="ok">사용하고 재생</button>' +
+      '<button class="alt" id="no">취소</button>' +
+      (ticket && me.credits >= d.cost ? '<button class="alt" id="swap">크레딧 ' + d.cost + "으로 대신 쓰기</button>" :
+       (!ticket && me.tickets > 0 ? '<button class="alt" id="swap">이용권 1장으로 대신 쓰기</button>' : "")) +
+    "</div>";
+  document.body.appendChild(v);
+
+  v.onclick = function (e) { if (e.target === v) close(); };
+  document.getElementById("no").onclick = close;
+  var sw = document.getElementById("swap");
+  if (sw) sw.onclick = function () { p.pay = ticket ? "credit" : "ticket"; renderSheet(); };
+  document.getElementById("ok").onclick = confirmUse;
+
+  function close() { ST.pending = null; v.remove(); }
+}
+
+function confirmUse() {
+  var p = ST.pending; if (!p || ST.busy) return;
+  ST.busy = true;
+  var btn = document.getElementById("ok");
+  btn.disabled = true; btn.textContent = "여는 중…";
+
+  api("lecUse", { token: ST.token, lecId: p.l.id, pay: p.pay })
+    .then(function (v) {
+      /* 서버가 알려준 잔액을 그대로 반영한다 — 화면에서 빼서 계산하지 않는다 */
+      if (v.me) { ST.data.me.credits = v.me.credits; ST.data.me.tickets = v.me.tickets; }
+      ST.data.lectures.forEach(function (x) {
+        if (x.id === p.l.id) { x.open = true; x.byPass = true; x.passExpiresMs = v.expiresAt; }
+      });
+      ST.pending = null; ST.openId = p.l.id;
+      var veil = document.querySelector(".veil"); if (veil) veil.remove();
+      ST.busy = false;
+      render();
+      paint(p.l.id, v);
+      lsSet(LEC_KEY, { t: Date.now(), d: ST.data });
+      toast(v.spent && v.spent.source === "ticket" ? "이용권 1장을 썼어요" : "크레딧 " + (v.spent ? v.spent.cost : ST.data.cost) + "을 썼어요");
+    })
+    .catch(function (e) {
+      ST.busy = false;
+      btn.disabled = false; btn.textContent = "사용하고 재생";
+      toast(e.message);
+      load(false); // 잔액·권한이 어긋났을 수 있다
+    });
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   불러오기
+   ═══════════════════════════════════════════════════════════════ */
+function load(showSkeleton) {
+  if (showSkeleton && !ST.data) render();
+  return api("lecList", { token: ST.token, adminKey: ST.pin || undefined })
+    .then(function (d) {
+      ST.data = d;
+      ST.offset = (d.nowMs || Date.now()) - Date.now();
+      if (!d.staff) lsSet(LEC_KEY, { t: Date.now(), d: d });
+      render();
+    })
+    .catch(function (e) {
+      var msg = String(e.message || "");
+      /* 토큰 만료·무효 → 로그인 화면으로. 그 외 오류는 캐시 화면을 유지한다 */
+      if (/토큰|로그인|세션|인증/.test(msg) || !ST.data) {
+        lsDel(SESS_KEY);
+        renderGate(ST.data ? null : msg, ST.name);
+      } else {
+        toast(msg);
+      }
+    });
+}
+
+/* 남은 시간 표시를 1분마다 되그린다 (열려 있는 카드는 건드리지 않음) */
+setInterval(function () {
+  if (!ST.data || ST.pending) return;
+  var stale = ST.data.lectures.some(function (l) {
+    return l.byPass && l.passExpiresMs && l.passExpiresMs <= now() && l.open;
+  });
+  if (stale) { load(false); return; }
+  Array.prototype.forEach.call(document.querySelectorAll(".tag.time"), function (t) {
+    var c = t.closest(".card"); if (!c) return;
+    var id = Number(c.querySelector(".head").dataset.id);
+    var l = ST.data.lectures.filter(function (x) { return x.id === id; })[0];
+    if (l && l.passExpiresMs) t.textContent = remain(l.passExpiresMs) || "곧 만료";
+  });
+}, 60000);
+
+/* ═══════════════════════════════════════════════════════════════
+   시작
+   ═══════════════════════════════════════════════════════════════ */
+(function boot() {
+  try { ST.pin = sessionStorage.getItem("ht_pin") || null; } catch (e) {}
+
+  var s = lsGet(SESS_KEY);
+  if (s && s.token && Date.now() - (s.t || 0) < SESS_DAYS * 86400000) {
+    ST.token = s.token; ST.name = s.name || "";
+  } else if (s) {
+    lsDel(SESS_KEY);
+  }
+
+  if (!ST.token && !ST.pin) { renderGate(null, (s && s.name) || ""); return; }
+
+  /* 캐시가 있으면 먼저 그린다 — 목록만이라 틀려도 위험하지 않고,
+     실제 재생은 서버가 lecOpen 에서 다시 판정한다 */
+  var c = lsGet(LEC_KEY);
+  if (c && c.d && Date.now() - (c.t || 0) < 6 * 3600000) {
+    ST.data = c.d; ST.offset = 0; render();
+  }
+  load(true);
+})();
+</script>
+</body>
+</html>
