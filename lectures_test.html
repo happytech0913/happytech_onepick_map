@@ -86,7 +86,7 @@ input:focus,button:focus{outline:2px solid var(--mint);outline-offset:2px}
 /* ── 플레이어 ── */
 .stage{position:relative;border-radius:12px;overflow:hidden;background:#0E1218;aspect-ratio:16/9;margin-bottom:12px}
 .stage iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
-.wm{position:absolute;z-index:3;pointer-events:none;user-select:none;font-size:11px;font-weight:700;color:rgba(255,255,255,.42);text-shadow:0 1px 3px rgba(0,0,0,.5);transition:all .8s ease;letter-spacing:.02em}
+.wm{position:absolute;z-index:3;pointer-events:none;user-select:none;white-space:nowrap;font-size:11px;font-weight:700;color:rgba(255,255,255,.42);text-shadow:0 1px 3px rgba(0,0,0,.5);transition:all .8s ease;letter-spacing:.02em}
 .stage .load{position:absolute;inset:0;display:grid;place-items:center;color:#8A94A6;font-size:12.5px}
 
 .text{font-size:13.5px;line-height:1.85;color:#2B3444;white-space:pre-wrap;word-break:break-word}
@@ -96,7 +96,8 @@ input:focus,button:focus{outline:2px solid var(--mint);outline-offset:2px}
 .btn{border:none;border-radius:999px;padding:12px 20px;font-weight:800;font-size:13.5px;letter-spacing:-.01em;transition:.15s}
 .btn.primary{background:var(--grad);color:#fff}
 .btn.ghost{background:#fff;border:1.5px solid var(--line);color:var(--ink)}
-.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn:disabled{background:#E9EDEC;color:#9AA5A3;cursor:not-allowed}
+.btn.ghost:disabled{border-color:var(--line)}
 .btn.block{width:100%}
 .alt{display:block;width:100%;text-align:center;margin-top:10px;border:none;background:none;color:var(--sub);font-size:12px;font-weight:700;text-decoration:underline;padding:4px}
 .why{font-size:12.5px;color:var(--sub);line-height:1.65;margin-bottom:12px}
@@ -313,7 +314,7 @@ function render() {
     '<div class="top"><div class="in">' +
       '<div class="brand">해피테크 <span>강의 아카이브</span></div>' +
       '<div class="wallet">' +
-        (d.staff ? '<span class="pill on">운영진</span>' :
+        (d.staff ? '<span class="pill on">관리자</span>' :
           '<span class="pill">크레딧 ' + (me.credits || 0).toLocaleString() + "</span>" +
           (me.tickets > 0 ? '<span class="pill gold">이용권 ' + me.tickets + "장</span>" : "")) +
         '<button class="linkbtn" id="out">나가기</button>' +
@@ -484,15 +485,16 @@ function paint(id, v) {
   wander(document.getElementById("wm-" + id));
 }
 
-/* 워터마크는 4개 모서리를 30초마다 돈다.
+/* 워터마크는 화면 안을 30초마다 옮겨 다닌다.
+   우상단은 비켜간다 — 비메오가 좋아요·나중에보기·공유 버튼을 거기 그린다.
    화면 녹화를 막지 못한다는 건 안다. 이건 계정 공유를 머뭇거리게 하는 장치다. */
 function wander(el) {
   if (!el) return;
   var spots = [
-    { top: "10px", right: "12px", left: "auto", bottom: "auto" },
-    { bottom: "10px", left: "12px", top: "auto", right: "auto" },
     { top: "10px", left: "12px", right: "auto", bottom: "auto" },
-    { bottom: "10px", right: "12px", top: "auto", left: "auto" },
+    { bottom: "52px", right: "14px", top: "auto", left: "auto" },  // 재생바 위
+    { top: "50%", left: "12px", right: "auto", bottom: "auto" },
+    { bottom: "52px", left: "14px", top: "auto", right: "auto" },
   ];
   var i = 0;
   function set() { if (!document.body.contains(el)) return; Object.assign(el.style, spots[i % 4]); i++; setTimeout(set, 30000); }
@@ -654,7 +656,8 @@ function renderEditor() {
           }).join("") +
         "</div>" +
         '<p class="hint' + (ED.access.length ? "" : " bad") + '">' +
-          (ED.access.length ? "고른 그룹 중 하나라도 가진 멤버에게 열려요." : "아무것도 고르지 않으면 잠깁니다. 크레딧·이용권으로만 열려요.") + "</p></div>" +
+          (ED.access.length ? "고른 그룹 중 하나라도 가진 멤버에게 열려요." : "아무것도 고르지 않으면 잠깁니다. 크레딧·이용권으로만 열려요.") +
+          "<br>member = 지금 멤버십이 살아 있는 모든 회원 (해지하면 자동으로 잠겨요)</p></div>" +
 
         '<div class="f"><label for="e-basis">기준일</label>' +
           '<input id="e-basis" value="' + esc(f.basisDate) + '" placeholder="2026-08" />' +
