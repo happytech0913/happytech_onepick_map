@@ -3166,12 +3166,12 @@ function ProfitCalc({ cfg }) {
         const intLong = interestOf(mLong), costLong = costOf(mLong);
         const taxLong = basicTaxOf(taxBaseS, cfg.brackets) * (1 + C.localAdd / 100);
         const netLong = gain - costLong - taxLong;
-        /* 매매사업자 — 예정신고 기준(양도세 계산 준용)으로 보수적 산출.
-           수리비·이자·명도비는 확정신고(다음해 5월)에서 경비 반영되어 일부 환급된다. */
-        const profit = gain - costShort; // 실제 세전수익 (모든 비용 차감)
-        const taxBiz = basicTaxOf(taxBaseS, cfg.brackets) * (1 + C.localAdd / 100);
+        /* 매매사업자 — 사업소득(종소세 기본세율 + 지방소득세). 이자·수리비·명도비 모두 필요경비.
+           매도 후 2개월 내 예정신고를 먼저 하지만, 선납액과 환급액은 물건·개인 조건에 따라
+           달라지므로 이 도구에서 계산하지 않는다. 여기서는 최종 세부담만 산출한다. */
+        const profit = gain - costShort; // 세전수익 (모든 비용 차감)
+        const taxBiz = basicTaxOf(Math.max(profit, 0), cfg.brackets) * (1 + C.localAdd / 100);
         const netBiz = profit - taxBiz;
-        const bizRefund = Math.max(taxBiz - basicTaxOf(Math.max(profit, 0), cfg.brackets) * (1 + C.localAdd / 100), 0);
         /* 전세 세팅 — 전세보증금으로 대출을 상환하는 전제. 이자는 입주까지만, 이후 무이자 보유 */
         const jeonse = n("jeonse");
         const intJeonse = interestOf(mJeonse);
@@ -3185,7 +3185,7 @@ function ProfitCalc({ cfg }) {
         return { deposit, loan, acq, legal, broker, early, acqSide, gain, cash, total,
             bidRate: appraisal > 0 ? bid / appraisal * 100 : NaN,
             mShort, mLong, mJeonse, intShort, intLong, intJeonse, costShort, costLong,
-            taxShort, netShort, taxLong, netLong, taxBiz, netBiz, profit, bizRefund,
+            taxShort, netShort, taxLong, netLong, taxBiz, netBiz, profit,
             jInvest, jeonse, jNet, mInterest, mNet, yNet, realCash };
     }, [v, r, cfg]);
     const rateFields = [
@@ -3251,11 +3251,12 @@ function ProfitCalc({ cfg }) {
                         React.createElement("span", { style: { fontSize: 10.5, color: T.sub, fontWeight: 700 } }, `${out.mShort}개월 보유 가정`)),
                     React.createElement(ToolRow, { label: "\uC138\uC804\uC218\uC775", sub: "\uC774\uC790\u00B7\uC218\uB9AC\uBE44 \uCC28\uAC10 \uD6C4", value: fmtMan(out.profit) }),
                     React.createElement(ToolRow, { label: "\uB300\uCD9C\uC774\uC790", sub: `${out.mShort}개월`, value: fmtMan(out.intShort), tone: "coral" }),
-                    React.createElement(ToolRow, { label: "\uC18C\uB4DD\uC138+\uC8FC\uBBFC\uC138", sub: "\uC608\uC815\uC2E0\uACE0 \uAE30\uC900", value: fmtMan(out.taxBiz), tone: "coral" }),
+                    React.createElement(ToolRow, { label: "\uC18C\uB4DD\uC138+\uC8FC\uBBFC\uC138", sub: "\uAE30\uBCF8\uC138\uC728 + \uC9C0\uBC29\uC18C\uB4DD\uC138", value: fmtMan(out.taxBiz), tone: "coral" }),
                     React.createElement(ToolRow, { label: "\uC21C\uC218\uC775", value: fmtMan(out.netBiz), strong: true, tone: out.netBiz >= 0 ? "mint" : "coral" }),
                     React.createElement(ToolRow, { label: "\uC218\uC775\uB960", sub: "\uC21C\uC218\uC775 \u00F7 \uD604\uAE08\uD22C\uC785", value: out.cash > 0 ? pctStr(out.netBiz / out.cash * 100) : "—", strong: true }),
                     React.createElement("div", { style: { fontSize: 10.5, color: T.sub, marginTop: 8, lineHeight: 1.6 } },
-                        out.bizRefund > 0 && React.createElement("div", null, `\uD83D\uDCA1 \uC608\uC815\uC2E0\uACE0 \uAE30\uC900\uC774\uC5D0\uC694. \uB2E4\uC74C\uD574 5\uC6D4 \uD655\uC815\uC2E0\uACE0\uC5D0\uC11C \uC218\uB9AC\uBE44\u00B7\uC774\uC790\uAC00 \uACBD\uBE44\uB85C \uC7A1\uD790 \uCD5C\uB300 ${fmtMan(out.bizRefund)} \uB3CC\uB824\uBC1B\uC544\uC694`),
+                        React.createElement("div", null, "\uD83D\uDCCC \uB9E4\uB3C4 \uD6C4 2\uAC1C\uC6D4 \uB0B4 \uC608\uC815\uC2E0\uACE0\uB97C \uBA3C\uC800 \uD558\uACE0 \uB2E4\uC74C\uD574 5\uC6D4\uC5D0 \uD655\uC815\uC2E0\uACE0\uD574\uC694. \uC120\uB0A9\u00B7\uD658\uAE09\uC561\uC740 \uBB3C\uAC74\uACFC \uAC1C\uC778 \uC870\uAC74\uC5D0 \uB530\uB77C \uB2EC\uB77C\uC838\uC694"),
+                        React.createElement("div", { style: { marginTop: 4 } }, "\u26A0\uFE0F \uB2E4\uB978 \uC18C\uB4DD\uC774 \uC788\uC73C\uBA74 \uD569\uC0B0\uB3FC \uC138\uC728 \uAD6C\uAC04\uC774 \uC62C\uB77C\uAC00\uC694"),
                         React.createElement("div", { style: { marginTop: 4 } }, "\u26A0\uFE0F \uC870\uC815\uB300\uC0C1\uC9C0\uC5ED 2\uC8FC\uD0DD \uC774\uC0C1\uC740 \uC591\uB3C4\uC138\uC728\uACFC \uBE44\uAD50\uD574 \uB354 \uD070 \uCABD\uC73C\uB85C \uACFC\uC138\uB3FC\uC694 (1\uC8FC\uD0DD\uC740 \uD574\uB2F9 \uC5C6\uC74C)"))))),
             scen === "jeonse" && (React.createElement(Card, { pad: 16, style: { marginBottom: 12 } },
                 React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 12, marginBottom: 10 } },
