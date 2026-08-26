@@ -3155,7 +3155,8 @@ function ProfitCalc({ cfg }) {
         const cash = bid + acqSide - loan; // 현금투입 (잔금일 기준) — 모든 카드 공통 분모
         const total = bid + acqSide; // 총투자금 (대출 없을 시)
         /* 매도까지 총비용 = 취득단계 + 중개비 + 보유기간 이자 + 중도상환수수료 */
-        const costOf = (m) => acqSide + broker + interestOf(m) + early;
+        const sellCost = acqSide + broker + early; // 취득·명도 + 중개비 (이자 제외)
+        const costOf = (m) => sellCost + interestOf(m);
         /* 양도세 필요경비는 취득세·법무비·중개비만 (이자·명도·수리·미납관리비는 불인정) */
         const taxBaseS = Math.max(gain - acq - legal - broker, 0);
         /* 단타 (1년 미만) */
@@ -3182,7 +3183,8 @@ function ProfitCalc({ cfg }) {
         const mNet = n("rent") - mInterest;
         const yNet = mNet * 12;
         const realCash = cash - n("depo");
-        return { deposit, loan, acq, legal, broker, early, acqSide, gain, cash, total,
+        return { deposit, loan, acq, legal, broker, early, acqSide, sellCost, gain, cash, total,
+            taxBaseS, acqInput: acqSide - acq - legal,
             bidRate: appraisal > 0 ? bid / appraisal * 100 : NaN,
             mShort, mLong, mJeonse, intShort, intLong, intJeonse, costShort, costLong,
             taxShort, netShort, taxLong, netLong, taxBiz, netBiz, profit,
@@ -3220,7 +3222,7 @@ function ProfitCalc({ cfg }) {
                 React.createElement(ToolRow, { label: "\uC785\uCC30\uBCF4\uC99D\uAE08", sub: `최저가 × ${C.depositPct}%`, value: fmtMan(out.deposit) }),
                 isFinite(out.bidRate) && React.createElement(ToolRow, { label: "\uB099\uCC30\uAC00\uC728", sub: "\uC785\uCC30\uAC00 \u00F7 \uAC10\uC815\uAC00", value: pctStr(out.bidRate) }),
                 React.createElement(ToolRow, { label: "\uACBD\uB77D\uB300\uAE08\uB300\uCD9C", sub: `낙찰가 × ${r.loanRatio}%`, value: fmtMan(out.loan) }),
-                React.createElement(ToolRow, { label: "\uCDE8\uB4DD\u00B7\uBA85\uB3C4\uBE44\uC6A9", sub: "\uCDE8\uB4DD\uC138\u00B7\uBC95\uBB34\u00B7\uBA85\uB3C4\u00B7\uBBF8\uB0A9\u00B7\uC218\uB9AC", value: fmtMan(out.acqSide), tone: "coral" }),
+                React.createElement(ToolRow, { label: "\uCDE8\uB4DD\u00B7\uBA85\uB3C4\uBE44\uC6A9", sub: `취득세·법무 ${fmtMan(out.acq + out.legal)} + 입력 ${fmtMan(out.acqInput)}`, value: fmtMan(out.acqSide), tone: "coral" }),
                 React.createElement(ToolRow, { label: "\uD604\uAE08\uD22C\uC785", sub: "\uB099\uCC30\uAC00 + \uCDE8\uB4DD\uBE44\uC6A9 \u2212 \uB300\uCD9C", value: fmtMan(out.cash), strong: true }),
                 React.createElement(ToolRow, { label: "\uCD1D\uD22C\uC790\uAE08", sub: "\uB300\uCD9C \uC5C6\uC744 \uC2DC", value: fmtMan(out.total) })),
             React.createElement("div", { style: { display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" } }, [["sell", "🏷 매도 시나리오"], ["jeonse", "🔑 전세 세팅"], ["rent", "🏠 월세 세팅"]].map(([k, lb]) => (React.createElement("button", { key: k, onClick: () => setScen(k), style: { cursor: "pointer", fontFamily: "inherit", fontWeight: 800, fontSize: 12.5, padding: "9px 14px", borderRadius: 999,
@@ -3232,8 +3234,9 @@ function ProfitCalc({ cfg }) {
                         React.createElement(Pill, { tone: "coral", style: { fontSize: 10.5 } }, "\uB2E8\uD0C0 \u00B7 1\uB144 \uBBF8\uB9CC"),
                         React.createElement("span", { style: { fontSize: 10.5, color: T.sub, fontWeight: 700 } }, `${out.mShort}개월 보유 가정`)),
                     React.createElement(ToolRow, { label: "\uC591\uB3C4\uCC28\uC775", value: fmtMan(out.gain) }),
+                    React.createElement(ToolRow, { label: "취득·명도·중개비", value: fmtMan(out.sellCost), tone: "coral" }),
                     React.createElement(ToolRow, { label: "\uB300\uCD9C\uC774\uC790", sub: `${out.mShort}개월`, value: fmtMan(out.intShort), tone: "coral" }),
-                    React.createElement(ToolRow, { label: "\uC591\uB3C4\uC18C\uB4DD\uC138", sub: `${r.shortTax}%`, value: fmtMan(out.taxShort), tone: "coral" }),
+                    React.createElement(ToolRow, { label: "\uC591\uB3C4\uC18C\uB4DD\uC138", sub: `과표 ${fmtMan(out.taxBaseS)} × ${r.shortTax}%`, value: fmtMan(out.taxShort), tone: "coral" }),
                     React.createElement(ToolRow, { label: "\uC21C\uC218\uC775", value: fmtMan(out.netShort), strong: true, tone: out.netShort >= 0 ? "mint" : "coral" }),
                     React.createElement(ToolRow, { label: "\uC218\uC775\uB960", sub: "\uC21C\uC218\uC775 \u00F7 \uD604\uAE08\uD22C\uC785", value: out.cash > 0 ? pctStr(out.netShort / out.cash * 100) : "—", strong: true })),
                 React.createElement(Card, { pad: 16 },
@@ -3241,17 +3244,20 @@ function ProfitCalc({ cfg }) {
                         React.createElement(Pill, { tone: "grad", style: { fontSize: 10.5 } }, "\uAC1C\uC778 \u00B7 2\uB144 \uD6C4 \uB9E4\uB3C4"),
                         React.createElement("span", { style: { fontSize: 10.5, color: T.sub, fontWeight: 700 } }, `${out.mLong}개월 보유 가정`)),
                     React.createElement(ToolRow, { label: "\uC591\uB3C4\uCC28\uC775", value: fmtMan(out.gain) }),
+                    React.createElement(ToolRow, { label: "취득·명도·중개비", value: fmtMan(out.sellCost), tone: "coral" }),
                     React.createElement(ToolRow, { label: "\uB300\uCD9C\uC774\uC790", sub: `${out.mLong}개월`, value: fmtMan(out.intLong), tone: "coral" }),
-                    React.createElement(ToolRow, { label: "\uC591\uB3C4\uC18C\uB4DD\uC138", sub: "\uAE30\uBCF8\uC138\uC728 + \uC9C0\uBC29\uC18C\uB4DD\uC138", value: fmtMan(out.taxLong), tone: "coral" }),
+                    React.createElement(ToolRow, { label: "\uC591\uB3C4\uC18C\uB4DD\uC138", sub: `과표 ${fmtMan(out.taxBaseS)} · 기본세율+지방세`, value: fmtMan(out.taxLong), tone: "coral" }),
                     React.createElement(ToolRow, { label: "\uC21C\uC218\uC775", value: fmtMan(out.netLong), strong: true, tone: out.netLong >= 0 ? "mint" : "coral" }),
                     React.createElement(ToolRow, { label: "\uC218\uC775\uB960", sub: "\uC21C\uC218\uC775 \u00F7 \uD604\uAE08\uD22C\uC785", value: out.cash > 0 ? pctStr(out.netLong / out.cash * 100) : "—", strong: true })),
                 React.createElement(Card, { pad: 16 },
                     React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" } },
                         React.createElement(Pill, { tone: "gold", style: { fontSize: 10.5 } }, "\uB9E4\uB9E4\uC0AC\uC5C5\uC790"),
                         React.createElement("span", { style: { fontSize: 10.5, color: T.sub, fontWeight: 700 } }, `${out.mShort}개월 보유 가정`)),
-                    React.createElement(ToolRow, { label: "\uC138\uC804\uC218\uC775", sub: "\uC774\uC790\u00B7\uC218\uB9AC\uBE44 \uCC28\uAC10 \uD6C4", value: fmtMan(out.profit) }),
+                    React.createElement(ToolRow, { label: "\uC591\uB3C4\uCC28\uC775", value: fmtMan(out.gain) }),
+                    React.createElement(ToolRow, { label: "취득·명도·중개비", value: fmtMan(out.sellCost), tone: "coral" }),
                     React.createElement(ToolRow, { label: "\uB300\uCD9C\uC774\uC790", sub: `${out.mShort}개월`, value: fmtMan(out.intShort), tone: "coral" }),
-                    React.createElement(ToolRow, { label: "\uC18C\uB4DD\uC138+\uC8FC\uBBFC\uC138", sub: "\uAE30\uBCF8\uC138\uC728 + \uC9C0\uBC29\uC18C\uB4DD\uC138", value: fmtMan(out.taxBiz), tone: "coral" }),
+                    React.createElement(ToolRow, { label: "\uC138\uC804\uC218\uC775", sub: "\uBE44\uC6A9 \uCC28\uAC10 \uD6C4", value: fmtMan(out.profit), strong: true }),
+                    React.createElement(ToolRow, { label: "\uC18C\uB4DD\uC138+\uC8FC\uBBFC\uC138", sub: `과표 ${fmtMan(out.profit)} · 기본세율+지방세`, value: fmtMan(out.taxBiz), tone: "coral" }),
                     React.createElement(ToolRow, { label: "\uC21C\uC218\uC775", value: fmtMan(out.netBiz), strong: true, tone: out.netBiz >= 0 ? "mint" : "coral" }),
                     React.createElement(ToolRow, { label: "\uC218\uC775\uB960", sub: "\uC21C\uC218\uC775 \u00F7 \uD604\uAE08\uD22C\uC785", value: out.cash > 0 ? pctStr(out.netBiz / out.cash * 100) : "—", strong: true }),
                     React.createElement("div", { style: { fontSize: 10.5, color: T.sub, marginTop: 8, lineHeight: 1.6 } },
@@ -3264,7 +3270,10 @@ function ProfitCalc({ cfg }) {
                 React.createElement(ToolRow, { label: "\uB300\uCD9C\uC774\uC790", sub: `${out.mJeonse}개월 · 이후 전세금으로 상환`, value: fmtMan(out.intJeonse), tone: "coral" }),
                 React.createElement(ToolRow, { label: "\uD22C\uC790\uAE08", sub: "\uB099\uCC30\uAC00 + \uBE44\uC6A9 \u2212 \uC804\uC138\uAC00", value: fmtMan(out.jInvest), strong: true, tone: out.jInvest <= 0 ? "mint" : undefined }),
                 out.jInvest <= 0 && n("jeonse") > 0 && (React.createElement("div", { style: { fontSize: 12, fontWeight: 800, color: T.mint, margin: "8px 0" } }, "\uD83C\uDF89 \uBB34\uD53C/\uD50C\uD53C \uC138\uD305! \uC804\uC138\uAC00\uAC00 \uCD1D\uD22C\uC790\uAE08\uC744 \uB118\uC5B4\uC694.")),
-                React.createElement(ToolRow, { label: "2\uB144 \uD6C4 \uB9E4\uB3C4\uC218\uC775", sub: "\uB300\uCD9C \uC0C1\uD658 \uD6C4 \u00B7 \uAE30\uBCF8\uC138\uC728", value: fmtMan(out.jNet), tone: out.jNet >= 0 ? "mint" : "coral" }),
+                React.createElement(ToolRow, { label: "\uC591\uB3C4\uCC28\uC775", value: fmtMan(out.gain) }),
+                React.createElement(ToolRow, { label: "취득·명도·중개비", value: fmtMan(out.sellCost), tone: "coral" }),
+                React.createElement(ToolRow, { label: "\uC591\uB3C4\uC18C\uB4DD\uC138", sub: `과표 ${fmtMan(out.taxBaseS)} · 기본세율+지방세`, value: fmtMan(out.taxLong), tone: "coral" }),
+                React.createElement(ToolRow, { label: "2\uB144 \uD6C4 \uB9E4\uB3C4\uC218\uC775", sub: "\uB300\uCD9C \uC0C1\uD658 \uD6C4 \u00B7 \uC774\uC790 \uCD94\uAC00 \uC5C6\uC74C", value: fmtMan(out.jNet), strong: true, tone: out.jNet >= 0 ? "mint" : "coral" }),
                 React.createElement(ToolRow, { label: "\uC218\uC775\uB960", sub: "\uB9E4\uB3C4\uC218\uC775 \u00F7 \uD22C\uC790\uAE08", value: out.jInvest > 0 ? pctStr(out.jNet / out.jInvest * 100) : "—", strong: true }),
                 React.createElement("div", { style: { fontSize: 10.5, color: T.sub, marginTop: 8 } }, "\uC804\uC138 \uC138\uD305 \uC2DC \uB300\uCD9C \uC0C1\uD658\uC744 \uAC00\uC815\uD569\uB2C8\uB2E4. \uC5ED\uC804\uC138 \uB9AC\uC2A4\uD06C\uB294 \uBCC4\uB3C4\uB85C \uAC80\uD1A0\uD558\uC138\uC694."))),
             scen === "rent" && (React.createElement(Card, { pad: 16, style: { marginBottom: 12 } },
@@ -3273,7 +3282,7 @@ function ProfitCalc({ cfg }) {
                     React.createElement(ToolNum, { label: "\uC6D4\uC138", value: v.rent, onChange: set("rent") })),
                 React.createElement(ToolRow, { label: "\uC6D4 \uC774\uC790", sub: `대출 × ${r.loanRate}% ÷ 12`, value: fmtMan(out.mInterest), tone: "coral" }),
                 React.createElement(ToolRow, { label: "\uC6D4 \uC218\uC775", sub: "\uC6D4\uC138 \u2212 \uC774\uC790", value: fmtMan(out.mNet), tone: out.mNet >= 0 ? "mint" : "coral" }),
-                React.createElement(ToolRow, { label: "\uC5F0 \uC218\uC785", value: fmtMan(out.yNet) }),
+                React.createElement(ToolRow, { label: "\uC5F0 \uC218\uC785", sub: "\uC6D4 \uC218\uC775 \u00D7 12", value: fmtMan(out.yNet) }),
                 React.createElement(ToolRow, { label: "\uC2E4\uD22C\uC790\uAE08", sub: "\uD604\uAE08\uD22C\uC785 \u2212 \uBCF4\uC99D\uAE08", value: fmtMan(out.realCash), strong: true }),
                 React.createElement(ToolRow, { label: "\uC5F0 \uC218\uC775\uB960", sub: "\uC5F0 \uC218\uC785 \u00F7 \uC2E4\uD22C\uC790\uAE08", value: out.realCash > 0 ? pctStr(out.yNet / out.realCash * 100) : "—", strong: true }))))),
         React.createElement(Card, { pad: 14, style: { background: T.gradSoft, border: "none" } },
