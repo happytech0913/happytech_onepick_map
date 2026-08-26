@@ -61,7 +61,7 @@ input:focus,button:focus{outline:2px solid var(--mint);outline-offset:2px}
 /* ── 강의 카드 ── */
 .card{background:var(--card);border:1px solid var(--line);border-radius:16px;margin-bottom:10px;overflow:hidden}
 .card.locked{background:#FBFCFC}
-.head{display:flex;gap:12px;align-items:flex-start;padding:16px;width:100%;border:none;background:none;text-align:left}
+.head{display:flex;gap:12px;align-items:flex-start;padding:16px;width:100%;border:none;background:none;text-align:left;cursor:pointer}
 .mark{width:28px;height:28px;border-radius:9px;flex:0 0 28px;display:grid;place-items:center;font-size:13px;background:var(--gradSoft)}
 .card.locked .mark{background:#EFF2F1}
 .meta{font-size:11px;color:var(--sub);font-weight:700;letter-spacing:.01em;margin-bottom:3px}
@@ -124,8 +124,32 @@ input:focus,button:focus{outline:2px solid var(--mint);outline-offset:2px}
 .field input{width:100%;border:1.5px solid var(--line);border-radius:12px;padding:13px 14px;font-size:15px;font-family:inherit;outline:none;background:#fff}
 .err{font-size:12.5px;color:var(--coral);font-weight:700;line-height:1.6;margin:10px 0 0}
 
-.empty{text-align:center;padding:56px 20px;color:var(--sub);font-size:13px;line-height:1.7}
-.skel{height:78px;border-radius:16px;background:linear-gradient(90deg,#EDF1F0,#F6F8F8,#EDF1F0);background-size:200% 100%;animation:sh 1.2s infinite;margin-bottom:10px}
+/* ── 관리자 편집기 ── */
+.adminbar{display:flex;gap:8px;align-items:center;margin:16px 0 0}
+.adminbar .btn{padding:10px 16px;font-size:13px}
+.edit{border:none;background:none;color:var(--peri);font-size:11.5px;font-weight:800;text-decoration:underline;padding:6px 8px;margin-left:auto;flex:0 0 auto}
+.sheet.tall{max-height:88vh;overflow-y:auto}
+.f{margin-bottom:12px}
+.f label{display:block;font-size:11.5px;font-weight:800;color:var(--sub);margin-bottom:5px}
+.f input,.f select,.f textarea{width:100%;border:1.5px solid var(--line);border-radius:11px;padding:11px 12px;font-size:14px;font-family:inherit;outline:none;background:#fff;color:var(--ink)}
+.f textarea{min-height:150px;line-height:1.7;resize:vertical}
+.f .hint{font-size:11.5px;color:var(--sub);margin-top:5px;line-height:1.55}
+.f .hint.bad{color:var(--coral);font-weight:700}
+.f .hint.good{color:#127A63;font-weight:700}
+.two{display:flex;gap:10px}
+.two>*{flex:1;min-width:0}
+details.adv{border-top:1px solid var(--line);margin-top:16px;padding-top:14px}
+details.adv summary{font-size:12.5px;font-weight:800;color:var(--sub);cursor:pointer;list-style:none;padding:2px 0}
+details.adv summary::-webkit-details-marker{display:none}
+details.adv summary:before{content:"▸ ";font-size:10px}
+details.adv[open] summary:before{content:"▾ "}
+details.adv>*:not(summary){margin-top:14px}
+.checks{display:flex;flex-wrap:wrap;gap:7px}
+.ck{border:1.5px solid var(--line);background:#fff;border-radius:999px;padding:8px 14px;font-size:12.5px;font-weight:700;color:var(--sub)}
+.ck[aria-pressed="true"]{border-color:transparent;background:var(--grad);color:#fff}
+.ck:disabled{opacity:.4}
+.danger{border:none;background:none;color:var(--coral);font-size:12px;font-weight:800;text-decoration:underline;padding:6px}
+.empty{text-align:center;padding:56px 20px;color:var(--sub);font-size:13px;line-height:1.7}.skel{height:78px;border-radius:16px;background:linear-gradient(90deg,#EDF1F0,#F6F8F8,#EDF1F0);background-size:200% 100%;animation:sh 1.2s infinite;margin-bottom:10px}
 @keyframes sh{to{background-position:-200% 0}}
 .foot{text-align:center;padding:28px 0 0;font-size:11px;color:#A8B2B0;line-height:1.8}
 .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:80;background:var(--ink);color:#fff;padding:12px 18px;border-radius:999px;font-size:12.5px;font-weight:700;max-width:90vw;text-align:center}
@@ -305,6 +329,11 @@ function render() {
     return '<button class="chip" data-cat="' + esc(c.key) + '" aria-pressed="' + (ST.cat === c.key) + '">' + esc(c.label) + "</button>";
   }).join("") + "</div>";
 
+  if (d.staff) {
+    html += '<div class="adminbar"><button class="btn primary" id="new">+ 새 강의</button>' +
+      '<span style="font-size:11.5px;color:var(--sub);line-height:1.5">아카이브 시트에만 저장돼요<br>커뮤니티 강의 탭과는 별개입니다</span></div>';
+  }
+
   if (!list.length) {
     html += '<div class="empty">이 분류에는 아직 올라온 강의가 없어요.</div>';
   } else {
@@ -312,7 +341,7 @@ function render() {
   }
 
   html += '<p class="foot">영상은 회원 본인 시청용이에요.<br>화면에 표시되는 이름은 계정 공유를 막기 위한 표시입니다.' +
-    (d.staff ? "" : '<br><button class="linkbtn" id="pinbtn" style="margin-top:8px">운영진</button>') + "</p></div>";
+    (d.staff ? "" : '<br><button class="linkbtn" id="pinbtn" style="margin-top:8px">관리자</button>') + "</p></div>";
 
   root.innerHTML = html;
 
@@ -323,18 +352,38 @@ function render() {
   };
   var pb = document.getElementById("pinbtn");
   if (pb) pb.onclick = function () {
-    var v = prompt("운영진 PIN"); if (!v) return;
-    try { sessionStorage.setItem("ht_pin", v); } catch (e) {}
-    ST.pin = v; load(true);
+    /* 관리자 PIN 전용. 운영진 PIN 은 서버가 거절한다 —
+       아카이브 강의는 운영자 개인 자산이라 운영진에게도 열지 않는다. */
+    var v = prompt("관리자 PIN"); if (!v) return;
+    var prev = ST.pin;
+    ST.pin = v;
+    load(false).then(function () {
+      if (ST.data && ST.data.staff) {
+        try { sessionStorage.setItem("ht_pin", v); } catch (e) {}
+      } else { ST.pin = prev; }
+    });
   };
   Array.prototype.forEach.call(document.querySelectorAll(".chip"), function (b) {
     b.onclick = function () { ST.cat = b.dataset.cat; ST.openId = 0; render(); };
   });
   Array.prototype.forEach.call(document.querySelectorAll(".head"), function (b) {
     b.onclick = function () { toggle(Number(b.dataset.id)); };
+    /* button 이 아니게 됐으니 키보드 조작을 직접 붙여준다 */
+    b.onkeydown = function (e) {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(Number(b.dataset.id)); }
+    };
   });
   Array.prototype.forEach.call(document.querySelectorAll("[data-use]"), function (b) {
     b.onclick = function (e) { e.stopPropagation(); askUse(Number(b.dataset.use), b.dataset.pay); };
+  });
+
+  var nb = document.getElementById("new");
+  if (nb) nb.onclick = function () { openEditor(null); };
+  Array.prototype.forEach.call(document.querySelectorAll("[data-edit]"), function (b) {
+    b.onclick = function (e) {
+      e.stopPropagation();
+      openEditor(ST.data.lectures.filter(function (x) { return x.id === Number(b.dataset.edit); })[0]);
+    };
   });
 
   if (ST.pending) renderSheet();
@@ -354,7 +403,7 @@ function card(l) {
 
   var h =
     '<div class="card' + (l.open ? "" : " locked") + (open ? " on" : "") + '">' +
-      '<button class="head" data-id="' + l.id + '" aria-expanded="' + open + '">' +
+      '<div class="head" role="button" tabindex="0" data-id="' + l.id + '" aria-expanded="' + open + '">' +
         '<span class="mark">' + (l.open ? "▶" : "🔒") + "</span>" +
         "<span style=\"flex:1;min-width:0\">" +
           '<span class="meta">' + esc(l.catLabel || l.cat) + (l.date ? " · " + esc(l.date) : "") + "</span>" +
@@ -362,8 +411,9 @@ function card(l) {
           (l.summary ? '<span class="sum" style="display:block">' + esc(l.summary) + "</span>" : "") +
           (tags ? '<span class="tags">' + tags + "</span>" : "") +
         "</span>" +
+        (d.staff ? '<button class="edit" data-edit="' + l.id + '">수정</button>' : "") +
         '<span class="caret">▼</span>' +
-      "</button>";
+      "</div>";
 
   if (open) h += '<div class="body" id="body-' + l.id + '">' + (l.open ? '<div class="stage"><div class="load">영상을 여는 중…</div></div>' : lockedBody(l, me, d)) + "</div>";
   return h + "</div>";
@@ -521,6 +571,187 @@ function confirmUse() {
       toast(e.message);
       load(false); // 잔액·권한이 어긋났을 수 있다
     });
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   관리자 편집기 — 시트를 열지 않고 올리고 고친다
+   기본 칸은 넷(제목·분류·영상·요약)뿐이고, 나머지는 접어둔다.
+   ═══════════════════════════════════════════════════════════════ */
+var ED = null; // 편집 중인 강의 · f 는 화면에 입력된 값 그대로
+
+function openEditor(l) {
+  ED = {
+    id: l ? l.id : 0,
+    f: {
+      title: l ? l.title : "",
+      cat: l ? l.cat : "",
+      date: l ? l.date : "",
+      vimeo: l ? (l.vimeoRaw || "") : "",
+      summary: l ? (l.summary || "") : "",
+      body: l ? (l.body || "") : "",
+      basisDate: l ? (l.basisDate || "") : "",
+    },
+    access: l && l.access ? String(l.access).split(",").map(function (s) { return s.trim(); }).filter(String) : [],
+    hide: !!(l && l.hide),
+    pin: !!(l && l.pin),
+    srcCat: l ? l.cat : "",
+  };
+  renderEditor();
+}
+
+/* 다시 그리기 전에 지금 입력된 값을 붙잡아 둔다 — 안 그러면 체크 하나 누를 때 본문이 날아간다 */
+function grabEditor() {
+  if (!ED) return;
+  ["title", "cat", "date", "vimeo", "summary", "body", "basisDate"].forEach(function (k) {
+    var el = document.getElementById("e-" + (k === "basisDate" ? "basis" : k === "summary" ? "sum" : k));
+    if (el) ED.f[k] = el.value;
+  });
+}
+
+function renderEditor() {
+  var d = ST.data, f = ED.f;
+  var cats = (d.cats || []).map(function (c) { return c.key; });
+  [ED.srcCat, f.cat].forEach(function (c) { if (c && cats.indexOf(c) < 0) cats.push(c); });
+  var groups = (d.groupsKnown || []).slice();
+  var isAll = ED.access.indexOf("all") >= 0;
+
+  var old = document.querySelector(".veil"); if (old) old.remove();
+  var v = document.createElement("div");
+  v.className = "veil";
+  v.innerHTML =
+    '<div class="sheet tall" role="dialog" aria-modal="true">' +
+      "<h3>" + (ED.id ? "강의 수정" : "새 강의") + "</h3>" +
+
+      '<div class="f"><label for="e-title">제목</label>' +
+        '<input id="e-title" value="' + esc(f.title) + '" placeholder="주제만 짧게" />' +
+        '<p class="hint">부가 설명은 아래 한 줄 요약으로 옮기면 목록이 훨씬 읽기 좋아요.</p></div>' +
+
+      '<div class="two">' +
+        '<div class="f"><label for="e-cat">분류</label><select id="e-cat">' +
+          cats.map(function (c) { return '<option value="' + esc(c) + '"' + (f.cat === c ? " selected" : "") + ">" + esc(c) + "</option>"; }).join("") +
+          '<option value="__new">+ 직접 입력</option></select></div>' +
+        '<div class="f"><label for="e-date">날짜</label><input id="e-date" value="' + esc(f.date) + '" placeholder="2026-08-27" /></div>' +
+      "</div>" +
+
+      '<div class="f"><label for="e-vimeo">비메오 주소</label>' +
+        '<input id="e-vimeo" value="' + esc(f.vimeo) + '" placeholder="https://vimeo.com/123456789/abcdef" />' +
+        '<p class="hint" id="e-vh">주소를 어떤 형태로 붙여넣어도 알아서 읽어요.</p></div>' +
+
+      '<div class="f"><label for="e-sum">한 줄 요약</label>' +
+        '<input id="e-sum" value="' + esc(f.summary) + '" placeholder="이 강의에서 무엇을 알게 되는지" />' +
+        '<p class="hint">잠긴 강의에서도 보이는 유일한 설명이에요.</p></div>' +
+
+      '<div class="f"><label for="e-body">본문</label>' +
+        '<textarea id="e-body" placeholder="강의 노트 · 열린 사람에게만 보여요">' + esc(f.body) + "</textarea></div>" +
+
+      '<details class="adv"' + (ED.access.length || ED.hide || ED.pin || f.basisDate ? " open" : "") + ">" +
+        "<summary>접근 권한 · 기준일 · 표시</summary>" +
+
+        '<div class="f"><label>누가 볼 수 있나</label><div class="checks" id="e-acc">' +
+          '<button class="ck" data-g="all" aria-pressed="' + isAll + '">전체 공개</button>' +
+          groups.map(function (g) {
+            return '<button class="ck" data-g="' + esc(g) + '" aria-pressed="' + (ED.access.indexOf(g) >= 0) + '"' + (isAll ? " disabled" : "") + ">" + esc(g) + "</button>";
+          }).join("") +
+        "</div>" +
+        '<p class="hint' + (ED.access.length ? "" : " bad") + '">' +
+          (ED.access.length ? "고른 그룹 중 하나라도 가진 멤버에게 열려요." : "아무것도 고르지 않으면 잠깁니다. 크레딧·이용권으로만 열려요.") + "</p></div>" +
+
+        '<div class="f"><label for="e-basis">기준일</label>' +
+          '<input id="e-basis" value="' + esc(f.basisDate) + '" placeholder="2026-08" />' +
+          '<p class="hint">세법·규제 기준 시점이에요. 3개월 지나면 안내, 6개월 넘으면 경고가 자동으로 붙어요. 자동 갱신은 하지 않아요.</p></div>' +
+
+        '<div class="f"><div class="checks">' +
+          '<button class="ck" id="e-pin" aria-pressed="' + ED.pin + '">맨 위에 고정</button>' +
+          '<button class="ck" id="e-hide" aria-pressed="' + ED.hide + '">제목까지 숨기기</button>' +
+        "</div>" +
+        '<p class="hint">숨기면 권한 없는 사람의 목록에서 아예 사라져요. 개인 피드백 영상용이에요.</p></div>' +
+      "</details>" +
+
+      '<button class="btn primary block" id="e-save" style="margin-top:18px">저장</button>' +
+      '<button class="alt" id="e-cancel">취소</button>' +
+      (ED.id ? '<div style="text-align:center"><button class="danger" id="e-del">이 강의 삭제</button></div>' : "") +
+    "</div>";
+  document.body.appendChild(v);
+
+  /* 분류 직접 입력 */
+  var sel = document.getElementById("e-cat");
+  sel.onchange = function () {
+    if (sel.value !== "__new") { grabEditor(); return; }
+    var t = prompt("새 분류 이름");
+    grabEditor();
+    ED.f.cat = t ? t.trim() : (cats[0] || "기타");
+    renderEditor();
+  };
+
+  /* 비메오 주소를 치는 동안 읽히는지 바로 보여준다 — 저장하고 재생에서 알면 늦다 */
+  var vi = document.getElementById("e-vimeo"), vh = document.getElementById("e-vh");
+  function checkVimeo() {
+    var s = vi.value.trim();
+    if (!s) { vh.className = "hint"; vh.textContent = "주소를 어떤 형태로 붙여넣어도 알아서 읽어요."; return; }
+    var m = s.match(/vimeo\.com\/(?:video\/)?(\d+)/) || (/^\d+$/.test(s) ? [null, s] : null);
+    if (m) { vh.className = "hint good"; vh.textContent = "영상 번호 " + m[1] + " 로 읽었어요"; }
+    else { vh.className = "hint bad"; vh.textContent = "이 주소는 읽지 못했어요. vimeo.com 주소인지 확인해주세요."; }
+  }
+  vi.oninput = checkVimeo;
+  if (vi.value) checkVimeo();
+
+  /* 접근 권한 토글 */
+  Array.prototype.forEach.call(v.querySelectorAll("#e-acc .ck"), function (b) {
+    b.onclick = function () {
+      grabEditor();
+      var g = b.dataset.g, i = ED.access.indexOf(g);
+      if (g === "all") ED.access = i >= 0 ? [] : ["all"];
+      else if (i >= 0) ED.access.splice(i, 1);
+      else ED.access.push(g);
+      renderEditor();
+    };
+  });
+  document.getElementById("e-pin").onclick = function () { grabEditor(); ED.pin = !ED.pin; renderEditor(); };
+  document.getElementById("e-hide").onclick = function () { grabEditor(); ED.hide = !ED.hide; renderEditor(); };
+
+  document.getElementById("e-cancel").onclick = close;
+  v.onclick = function (e) { if (e.target === v) close(); };
+  document.getElementById("e-save").onclick = save;
+
+  var del = document.getElementById("e-del");
+  if (del) del.onclick = function () {
+    if (!confirm("정말 지울까요? 되돌릴 수 없어요.\n\n" + f.title)) return;
+    api("archiveDelete", { adminKey: ST.pin, id: ED.id }).then(function () {
+      ED = null; v.remove(); toast("지웠어요"); load(false);
+    }).catch(function (e) { toast(e.message); });
+  };
+
+  function close() { ED = null; v.remove(); }
+
+  function save() {
+    grabEditor();
+    var btn = document.getElementById("e-save");
+    if (!ED.f.title.trim()) { toast("제목을 입력해주세요"); return; }
+    var lec = {
+      id: ED.id || 0,
+      title: ED.f.title.trim(),
+      cat: ED.f.cat === "__new" || !ED.f.cat ? "기타" : ED.f.cat,
+      date: ED.f.date.trim(),
+      vimeo: ED.f.vimeo.trim(),
+      summary: ED.f.summary.trim(),
+      body: ED.f.body,
+      basisDate: ED.f.basisDate.trim(),
+      access: ED.access,
+      hide: ED.hide,
+      pin: ED.pin,
+    };
+    btn.disabled = true; btn.textContent = "저장 중…";
+    api("archiveSave", { adminKey: ST.pin, lecture: lec }).then(function (r) {
+      ED = null; v.remove();
+      toast(!r.vimeoOk ? "저장했지만 영상 주소를 읽지 못했어요"
+           : r.locked ? "저장했어요 · 접근 권한이 비어 있어 잠긴 상태예요"
+           : "저장했어요");
+      load(false);
+    }).catch(function (e) {
+      btn.disabled = false; btn.textContent = "저장";
+      toast(e.message);
+    });
+  }
 }
 
 /* ═══════════════════════════════════════════════════════════════
