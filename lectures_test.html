@@ -695,7 +695,10 @@ function paint(id, v) {
   box.innerHTML =
     (note ? '<div class="basis ' + note.cls + '">' + esc(note.text) + "</div>" : "") +
     '<div class="stage">' + frame + '<span class="wm" id="wm-' + id + '">' + esc(v.mark) + "</span></div>" +
-    (v.expiresAt ? '<p class="why">' + whenText(v.expiresAt) + "까지 볼 수 있어요 · " + esc(remain(v.expiresAt) || "곧 만료") + "</p>" : "") +
+    /* 남은 시간은 카드 위 태그가 1분마다 다시 계산한다.
+       여기서 또 보여주면 그릴 때 고정된 값이라 시간이 지날수록 위아래가 어긋난다.
+       대신 만료 "시각"은 남긴다 — 위에 없는 정보이고 "몇 시까지"가 계획에 쓸모 있다. */
+    (v.expiresAt ? '<p class="why">' + whenText(v.expiresAt) + "까지 볼 수 있어요</p>" : "") +
     /* 첫 화면에 법률투가 있으면 그게 브랜드 인상이 된다. 여기는 부드럽게, 하단은 정식으로. */
     '<p class="right">이 영상의 저작권은 해피테크에 있어요. 개인 시청용으로만 이용해주세요.</p>' +
     (v.body ? '<div class="text">' + v.body + "</div>" : "");
@@ -836,9 +839,10 @@ function memberPanel() {
         '<input id="m-t" inputmode="numeric" value="' + esc(M.tickets ? M.tickets : "") + '" placeholder="0" />' +
         '<p class="hint">등록과 함께 지급</p></div>' +
       '<div class="f"><label for="m-list">명단 · 한 줄에 한 명</label>' +
-        '<textarea id="m-list" placeholder="김민수 1234&#10;이서연 5678&#10;박준호 9012  특강3기,member@2026-11-30">' + esc(M.text || "") + "</textarea>" +
-        '<p class="hint">이름과 뒷 4자리. 셋째 칸에 그룹을 적으면 위 그룹 대신 그게 쓰여요.<br>' +
-        '뒷자리는 앞의 0까지 그대로 적어주세요 — 자리가 모자라면 건너뜁니다.</p></div>' +
+        '<textarea id="m-list" placeholder="김민수 1234&#10;이서연 5678&#10;박준호 9012  특강3기,member@2026-11-30   ← 이 줄만 자격 둘">' + esc(M.text || "") + "</textarea>" +
+        '<p class="hint">한 줄에 <b>이름 · 뒷 4자리</b> 두 개만 적으면 됩니다. 위에 적은 그룹이 전원에게 붙어요.<br>' +
+        '어떤 사람만 다른 자격을 주려면 뒷자리 뒤에 그룹을 덧붙이세요 — 그 줄만 그게 쓰입니다.<br>' +
+        '뒷자리는 앞의 0까지 그대로. 4자리가 아니면 그 줄은 건너뜁니다.</p></div>' +
       '<button class="btn primary block" id="m-check">확인하기</button>' +
       '<p class="hint" style="text-align:center;margin-top:8px">확인 단계에서는 아무것도 저장되지 않아요.</p>' +
     "</div>" +
