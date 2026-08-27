@@ -341,6 +341,11 @@ var ST = {
   busy: false,
   pending: null,        // 확인 모달에 올라온 강의
   guest: false,         // 토큰 없이 둘러보는 중
+  opened: null,         /* {id, v} — 마지막으로 연 영상 (v71)
+     render() 는 목록을 통째로 다시 만든다. 그때 펼쳐져 있던 카드는
+     "영상을 여는 중…" 자리표시로 돌아가는데, 아무도 다시 칠해주지 않아
+     이미 받아온 영상이 그냥 버려졌다. 받아둔 걸 들고 있다가 다시 칠한다.
+     서버에 또 묻지 않으므로 왕복도 한 번 아낀다. */
   atab: "lec",          // 관리자 탭: lec | mem
   mem: { plan: null, found: null, groups: null },  // 멤버 탭 작업 상태
 };
@@ -552,6 +557,9 @@ function render() {
     (d.staff ? perfPanel() : "") + "</div>";
 
   root.innerHTML = html;
+  /* v71: 펼쳐져 있던 카드를 자리표시로 되돌리지 않는다.
+     받아둔 영상이 있으면 그대로 다시 칠한다 (서버 호출 없음). */
+  if (ST.openId && ST.opened && ST.opened.id === ST.openId) paint(ST.openId, ST.opened.v);
   perf("render", ((performance && performance.now) ? performance.now() : Date.now()) - _r0, null,
        "카드 " + (d.lectures || []).length + "개");
 
@@ -737,10 +745,13 @@ function lockedBody(l, me, d) {
    펼치기 · 재생
    ═══════════════════════════════════════════════════════════════ */
 function toggle(id) {
-  if (ST.openId === id) { ST.openId = 0; render(); return; }
+  if (ST.openId === id) { ST.openId = 0; ST.opened = null; render(); return; }
   ST.openId = id; render();
   var l = ST.data.lectures.filter(function (x) { return x.id === id; })[0];
-  if (l && l.open) play(id);
+  if (!l || !l.open) return;
+  /* 같은 강의를 다시 펼치는 것이면 받아둔 걸 쓴다 — 서버에 또 물을 이유가 없다 */
+  if (ST.opened && ST.opened.id === id) { paint(id, ST.opened.v); return; }
+  play(id);
 }
 
 function play(id) {
@@ -757,6 +768,7 @@ function play(id) {
 }
 
 function paint(id, v) {
+  ST.opened = { id: id, v: v };   // v71: 다시 그려져도 되살릴 수 있게 들고 있는다
   var box = document.getElementById("body-" + id);
   if (!box) return;
   var note = basisNote(v.basisDate);
