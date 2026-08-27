@@ -109,7 +109,7 @@ input:focus,button:focus{outline:2px solid var(--mint);outline-offset:2px}
    시야를 가리면 강의를 방해하니 opacity 를 낮게 두고 천천히 넘어가게 한다. */
 .wmc{position:absolute;inset:0;z-index:2;display:grid;place-items:center;pointer-events:none;user-select:none;
      opacity:0;transition:opacity 1.6s ease}
-.wmc.on{opacity:.18}
+.wmc.on{opacity:.12}
 .wmc img{width:22%;max-width:150px;height:auto;filter:drop-shadow(0 2px 10px rgba(0,0,0,.45))}
 .wmc span{font-size:clamp(22px,7vw,52px);font-weight:800;letter-spacing:-.03em;color:#fff;
           text-shadow:0 2px 10px rgba(0,0,0,.45)}
@@ -296,8 +296,8 @@ var LOGO_URL = "watermark.png";   // lectures_test.html 과 같은 폴더에 두
 
 /* ⚠ 지금은 확인용으로 짧게 잡아뒀습니다.
       15초 뒤에 5초간 나타납니다. 눈으로 보신 뒤 아래 두 줄을 300 / 60 으로 되돌리세요. */
-var LOGO_EVERY = 180;    // 초 · 나타나는 주기      (실사용 300)
-var LOGO_HOLD  = 15;     // 초 · 머무는 시간        (실사용 60)
+var LOGO_EVERY = 999999;    // 초 · 나타나는 주기      (실사용 300)
+var LOGO_HOLD  = 999999;     // 초 · 머무는 시간        (실사용 60)
 
 /* ═══════════════════════════════════════════════════════════════
    통신
