@@ -303,7 +303,10 @@ function api(action, payload) {
     body: body,
   }).then(function (r) { return r.json(); }).then(function (j) {
     var t1 = (performance && performance.now) ? performance.now() : Date.now();
-    perf(action, t1 - t0, j.srv);
+    var laps = j.data && j.data.laps;
+    perf(action, t1 - t0, j.srv,
+      laps ? laps.filter(function (l) { return l.ms >= 30; })
+                 .map(function (l) { return l.k + " " + l.ms; }).join(" · ") : "");
     if (!j.ok) throw new Error(j.error || "요청에 실패했어요");
     return j.data;
   });
