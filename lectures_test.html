@@ -440,7 +440,16 @@ function renderGate(err, name) {
     api("login", { name: nv, p4: pv, scope: "archive" }).then(function (d) {
       ST.token = d.token; ST.name = nv; ST.guest = false;
       lsSet(SESS_KEY, { t: Date.now(), token: d.token, name: nv });
-      load(true);
+      /* v67: 서버가 목록까지 같이 보내준다. 여기서 load() 를 또 부르면
+         Apps Script 왕복(1.3~2.0초)을 한 번 더 하는 셈이라 그대로 쓴다. */
+      if (d.lec) {
+        ST.data = d.lec;
+        ST.offset = (d.lec.nowMs || Date.now()) - Date.now();
+        lsSet(LEC_KEY, { t: Date.now(), d: d.lec });
+        render();
+      } else {
+        load(true);
+      }
     }).catch(function () {
       /* 실패 원인의 절반은 비밀번호가 아니라 이름 표기다.
          톡방 닉네임을 넣거나 띄어쓰기가 다른 경우. 그 한 줄이 문의를 줄인다. */
