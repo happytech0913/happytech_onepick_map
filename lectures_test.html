@@ -862,7 +862,10 @@ function memberPanel() {
       "</div>" +
       (M.bulk && M.bulkN > 0
         ? '<button class="btn primary block" id="m-bulk">' + bulkLabel(g, M.bulk, M.bulkN) + "</button>"
-        : '<button class="btn primary block" disabled>대상과 장수를 골라주세요</button>') +
+        : '<button class="btn primary block" disabled>' +
+            (!M.bulk && !(M.bulkN > 0) ? "위에서 대상을 고르고 장수를 넣어주세요"
+             : !M.bulk ? "위에서 대상 그룹을 눌러주세요"
+             : "장수를 넣어주세요") + "</button>") +
     "</div>" +
 
   "</div>";
