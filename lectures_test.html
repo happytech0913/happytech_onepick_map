@@ -105,8 +105,7 @@ input:focus,button:focus{outline:2px solid var(--mint);outline-offset:2px}
 .wm{position:absolute;top:10px;left:12px;z-index:3;pointer-events:none;user-select:none;white-space:nowrap;font-size:11px;font-weight:700;color:rgba(255,255,255,.42);text-shadow:0 1px 3px rgba(0,0,0,.5);letter-spacing:.02em}
 .stage .load{position:absolute;inset:0;display:grid;place-items:center;color:#8A94A6;font-size:12.5px}
 
-/* 가운데 로고 — 5분에 한 번, 1분만, 아주 흐리게.
-   시야를 가리면 강의를 방해하니 opacity 를 낮게 두고 천천히 넘어가게 한다. */
+/* 가운데 로고 — 상시 노출. 12% 면 강의를 읽는 데 지장이 없다. */
 .wmc{position:absolute;inset:0;z-index:2;display:grid;place-items:center;pointer-events:none;user-select:none;
      opacity:0;transition:opacity 1.6s ease}
 .wmc.on{opacity:.12}
@@ -282,22 +281,19 @@ var BASIS_SOFT = 3, BASIS_WARN = 6;
 var LINK_GROWIN = "https://m.site.naver.com/2bq9R";
 var LINK_LOUNGE = "https://open.kakao.com/o/g8PEXpwi";   // 경매 라운지 오픈채팅
 
-/* 영상 가운데 로고 (v75)
+/* 영상 가운데 로고 (v76)
 
    구석의 이름표가 계정 공유를 머뭇거리게 하는 장치라면, 이건 화면 녹화를 겨냥한 것이다.
    가운데는 잘라내기 어렵고, 유출본을 봤을 때 어디 것인지 바로 읽힌다.
 
-   대신 시야를 가리지 않아야 한다 — 강의를 보러 온 사람을 방해하면 손해다.
-   그래서 5분에 한 번, 1분 동안만, 아주 흐리게, 스르륵 나타났다 사라진다.
+   상시 노출로 정했다. 주기적으로 나타났다 사라지게도 해봤는데,
+   그 사이 빈 구간을 골라 잘라내면 로고 없는 영상이 나온다.
+   12% 투명도면 강의를 읽는 데 지장이 없어서, 계속 켜두는 쪽이 낫다.
 
-   LOGO_URL 을 비워두면 글자로 대신한다.
-   저장소에 이미지를 올리고 파일명을 적으면(예: "watermark.png") 그걸 쓴다. */
-var LOGO_URL = "watermark.png";   // lectures_test.html 과 같은 폴더에 두세요
-
-/* ⚠ 지금은 확인용으로 짧게 잡아뒀습니다.
-      15초 뒤에 5초간 나타납니다. 눈으로 보신 뒤 아래 두 줄을 300 / 60 으로 되돌리세요. */
-var LOGO_EVERY = 999999;    // 초 · 나타나는 주기      (실사용 300)
-var LOGO_HOLD  = 999999;     // 초 · 머무는 시간        (실사용 60)
+   LOGO_URL 을 비우면 글자("해피테크")로 대신한다.
+   LOGO_FADE 를 0보다 크게 주면 그 초만큼 켜졌다 꺼지기를 반복한다. */
+var LOGO_URL = "watermark.png";   // lectures_test.html 과 같은 폴더
+var LOGO_FADE = 0;                // 0 = 상시 노출 · 예: 60 이면 1분 간격으로 깜빡
 
 /* ═══════════════════════════════════════════════════════════════
    통신
@@ -841,20 +837,19 @@ function paint(id, v) {
   logoCycle(document.getElementById("wmc-" + id));
 }
 
-/* 가운데 로고를 주기적으로 스르륵 띄운다.
-   화면에서 사라지면 스스로 멈춘다 — 카드를 접거나 다시 그려도 타이머가 쌓이지 않는다. */
+/* 가운데 로고를 켠다. LOGO_FADE 가 0이면 그냥 켜두고 끝이다.
+   0보다 크면 그 초만큼 켜졌다 꺼지기를 반복하고,
+   화면에서 사라지면 스스로 멈춘다 — 카드를 접어도 타이머가 쌓이지 않는다. */
 function logoCycle(el) {
   if (!el) return;
-  function show() {
+  el.classList.add("on");
+  if (!LOGO_FADE) return;   // 상시 노출
+  function flip() {
     if (!document.body.contains(el)) return;   // 사라졌으면 여기서 끝
-    el.classList.add("on");
-    setTimeout(function () {
-      if (!document.body.contains(el)) return;
-      el.classList.remove("on");
-      setTimeout(show, (LOGO_EVERY - LOGO_HOLD) * 1000);
-    }, LOGO_HOLD * 1000);
+    el.classList.toggle("on");
+    setTimeout(flip, LOGO_FADE * 1000);
   }
-  setTimeout(show, (LOGO_EVERY - LOGO_HOLD) * 1000);   // 처음엔 한 주기 쉬었다 시작
+  setTimeout(flip, LOGO_FADE * 1000);
 }
 
 /* 워터마크는 좌상단에 고정한다 (v55).
