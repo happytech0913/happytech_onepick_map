@@ -329,7 +329,9 @@ function render() {
       "</div>" +
     "</div>" + purse(d, me) + '</div><div class="wrap">';
 
-  if (!d.staff && !me.membership) {
+  /* v56: membership 이 아니라 entitled 로 판정한다.
+     수강생은 member 가 없어도 특강3기 자격이 살아 있으므로 이 배너가 뜨면 안 된다. */
+  if (!d.staff && me.entitled === false) {
     html += '<div class="banner"><b>멤버십이 만료됐어요</b><p>연장하시면 ' +
       locked + "편이 바로 열려요. 교환해두신 열람권도 그대로 남아 있어요.</p></div>";
   }
@@ -450,27 +452,36 @@ function card(l) {  var open = ST.openId === l.id;
   return h + "</div>";
 }
 
-/* 잠긴 강의를 펼쳤을 때 — 요약까지만. 본문·영상은 서버가 애초에 보내지 않는다 */
+/* 잠긴 강의를 펼쳤을 때 — 요약까지만. 본문·영상은 서버가 애초에 보내지 않는다.
+   v56: 순서를 바꿨다. 이용권은 이미 받은 것(소유)이라 자격이 끊겨도 쓸 수 있고,
+   크레딧은 그로인 화폐(자격)라 멤버십이 살아 있어야 쓴다. 서버 판정과 같은 순서다. */
 function lockedBody(l, me, d) {
-  if (!me.membership) {
-    return '<p class="why">멤버십이 만료돼서 잠겨 있어요. 연장하시면 바로 열립니다.</p>';
-  }
-  if (!l.hasVideo) {
-    return '<p class="why">아직 영상이 올라오지 않은 강의예요.</p>';
-  }
+  if (!l.hasVideo) return '<p class="why">아직 영상이 올라오지 않은 강의예요.</p>';
   var cost = d.cost, hours = d.hours;
+
   if (me.tickets > 0) {
     return '<p class="why">이용권 1장으로 ' + hours + "시간 동안 볼 수 있어요. 지금 " + me.tickets + "장 있어요.</p>" +
       '<button class="btn primary block" data-use="' + l.id + '" data-pay="ticket">이용권 1장으로 열기</button>' +
-      '<button class="alt" data-use="' + l.id + '" data-pay="credit">크레딧 ' + cost + "으로 대신 쓰기</button>";
+      (me.membership && me.credits >= cost
+        ? '<button class="alt" data-use="' + l.id + '" data-pay="credit">크레딧 ' + cost + "으로 대신 쓰기</button>"
+        : "");
   }
-  if (me.credits >= cost) {
-    return '<p class="why">크레딧 ' + cost + "으로 " + hours + "시간 동안 볼 수 있어요. 지금 " + me.credits.toLocaleString() + " 있어요.</p>" +
-      '<button class="btn primary block" data-use="' + l.id + '" data-pay="credit">크레딧 ' + cost + "으로 열기</button>";
+
+  if (me.membership) {
+    if (me.credits >= cost) {
+      return '<p class="why">크레딧 ' + cost + "으로 " + hours + "시간 동안 볼 수 있어요. 지금 " + me.credits.toLocaleString() + " 있어요.</p>" +
+        '<button class="btn primary block" data-use="' + l.id + '" data-pay="credit">크레딧 ' + cost + "으로 열기</button>";
+    }
+    return '<p class="why">크레딧이 ' + cost + " 필요해요. 지금 " + me.credits.toLocaleString() + " 있어요 (" +
+      (cost - me.credits).toLocaleString() + " 모자라요).<br>오전 프로그램·임장에 참여하시면 모을 수 있어요.</p>" +
+      '<button class="btn primary block" disabled>크레딧 ' + cost + " 필요</button>";
   }
-  return '<p class="why">크레딧이 ' + cost + " 필요해요. 지금 " + me.credits.toLocaleString() + " 있어요 (" +
-    (cost - me.credits).toLocaleString() + " 모자라요).<br>오전 프로그램·임장에 참여하시면 모을 수 있어요.</p>" +
-    '<button class="btn primary block" disabled>크레딧 ' + cost + " 필요</button>";
+
+  /* 이용권도 없고 크레딧도 못 쓰는 사람 — 만료자와 수강생은 다음에 할 말이 다르다 */
+  if (me.entitled === false) {
+    return '<p class="why">멤버십이 만료돼서 잠겨 있어요. 연장하시면 바로 열립니다.</p>';
+  }
+  return '<p class="why">이 강의는 이용권으로 열 수 있어요. 지금 가진 이용권이 없어요.</p>';
 }
 
 /* ═══════════════════════════════════════════════════════════════
