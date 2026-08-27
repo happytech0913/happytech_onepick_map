@@ -129,12 +129,25 @@ input:focus,button:focus{outline:2px solid var(--mint);outline-offset:2px}
 .row .v s{color:#B7C0BE;font-weight:700;margin-right:6px}
 
 /* ── 로그인 ── */
-.gate{min-height:100vh;display:flex;flex-direction:column;justify-content:center;padding:24px;max-width:400px;margin:0 auto}
-.gate h1{font-size:23px;letter-spacing:-.03em;line-height:1.35;margin-bottom:8px}
-.gate .lede{font-size:13px;color:var(--sub);line-height:1.7;margin-bottom:24px}
-.field{margin-bottom:10px}
+/* ── 로그인 ──
+   로그인한 뒤 화면과 같은 언어를 쓴다. 상단 브랜드의 그라데이션 처리를 그대로 가져와
+   "같은 곳에 들어왔다"는 느낌이 이어지게 했다.
+   배경의 번진 빛 두 덩이가 유일한 장식이다 — 문 너머에서 새어나오는 빛.
+   그 외에는 조용히 둔다. 이 화면의 일은 빨리 통과시키는 것이다. */
+.gatebg{position:fixed;inset:0;overflow-y:auto;display:flex;align-items:center;justify-content:center;padding:28px 20px}
+.gatebg:before,.gatebg:after{content:"";position:fixed;border-radius:50%;filter:blur(72px);pointer-events:none;z-index:0}
+.gatebg:before{width:320px;height:320px;background:rgba(53,201,168,.38);top:-100px;left:-80px}
+.gatebg:after{width:360px;height:360px;background:rgba(111,123,224,.30);bottom:-130px;right:-100px}
+.gate{position:relative;z-index:1;width:100%;max-width:380px;background:#fff;border:1px solid var(--line);border-radius:24px;padding:30px 26px 24px;box-shadow:0 20px 50px -26px rgba(28,35,51,.30);animation:rise .32s ease both}
+@keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.gate .logo{width:42px;height:42px;border-radius:13px;background:var(--grad);display:grid;place-items:center;font-size:19px;margin-bottom:15px}
+.gate h1{font-size:21px;letter-spacing:-.03em;line-height:1.35;margin-bottom:7px;font-weight:800}
+.gate h1 span{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+.gate .lede{font-size:12.5px;color:var(--sub);line-height:1.75;margin-bottom:22px}
+.field{margin-bottom:11px}
 .field label{display:block;font-size:11.5px;font-weight:800;color:var(--sub);margin-bottom:6px}
-.field input{width:100%;border:1.5px solid var(--line);border-radius:12px;padding:13px 14px;font-size:15px;font-family:inherit;outline:none;background:#fff}
+.field input{width:100%;border:1.5px solid var(--line);border-radius:12px;padding:13px 14px;font-size:15px;font-family:inherit;outline:none;background:#FAFBFB;color:var(--ink);transition:border-color .15s,background .15s}
+.field input:focus{background:#fff;border-color:var(--mint)}
 .err{font-size:12.5px;color:var(--coral);font-weight:700;line-height:1.6;margin:10px 0 0}
 
 /* ── 관리자 편집기 ── */
@@ -176,7 +189,7 @@ details.adv>*:not(summary){margin-top:14px}
 .invite .alt{display:block;text-decoration:underline}
 
 /* ── 로그인 화면 구분선 ── */
-.gsep{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:22px;padding-top:18px;border-top:1px solid var(--line)}
+.gsep{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:20px;padding-top:16px;border-top:1px solid var(--line)}
 .gsep span{font-size:12px;color:var(--sub)}
 .gsep .linkbtn{font-size:12.5px;color:var(--peri)}
 .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:80;background:var(--ink);color:#fff;padding:12px 18px;border-radius:999px;font-size:12.5px;font-weight:700;max-width:90vw;text-align:center}
@@ -320,16 +333,16 @@ function toast(msg) {
    그 조합을 공개 화면에 적어두면 비밀번호 변경 기능을 만든 이유와 부딪힌다. */
 function renderGate(err, name) {
   root.innerHTML =
-    '<div class="gate">' +
-      '<h1>해피테크 강의 아카이브</h1>' +
-      '<p class="lede">부동산 경매 강의를 모아둔 곳이에요.<br>로그인하시면 수강할 수 있어요.</p>' +
+    '<div class="gatebg"><div class="gate">' +
+      '<div class="logo">🎬</div>' +
+      '<h1>해피테크 <span>강의 아카이브</span></h1>' +
+      '<p class="lede">부동산 경매 강의를 모아둔 곳이에요.<br>로그인하시면 수강할 수 있어요. 처음이시면 둘러보셔도 돼요.</p>' +
       '<div class="field"><label for="gn">이름</label><input id="gn" autocomplete="name" value="' + esc(name || "") + '" /></div>' +
       '<div class="field"><label for="gp">비밀번호 4자리</label><input id="gp" inputmode="numeric" maxlength="4" autocomplete="current-password" type="password" /></div>' +
       (err ? '<p class="err">' + err + "</p>" : "") +
       '<button class="btn primary block" id="gb" style="margin-top:16px">들어가기</button>' +
       '<div class="gsep"><span>처음 오셨나요?</span><button class="linkbtn" id="gguest">둘러보기</button></div>' +
-      '<p class="foot">해피테크</p>' +
-    "</div>";
+    "</div></div>";
 
   var n = document.getElementById("gn"), p = document.getElementById("gp"), b = document.getElementById("gb");
   function go() {
@@ -466,12 +479,15 @@ function purse(d, me) {
 
   /* 게스트에겐 지갑 대신 문 하나. (v59)
      "다 볼 수 있다"고 쓰지 않는다 — 그로인에 가입해도 access=member 몇 편만 열리고
-     나머지는 크레딧을 모아야 한다. 가입 후 여전히 잠겨 있으면 속았다고 느낀다. */
+     나머지는 크레딧을 모아야 한다. 가입 후 여전히 잠겨 있으면 속았다고 느낀다.
+     v60: 실시간 특강을 첫 줄에 세웠다. 이 줄이 없으면 게스트가
+     "그로인 = 이 강의 모음"으로 오해한다. 실제로는 특강이 본체고 여기가 부가 혜택이다. */
   if (d.guest) {
     var locked = (d.lectures || []).filter(function (l) { return !l.open; }).length;
     return '<div class="purse"><div class="invite">' +
       (locked ? "<b>지금 " + locked + "편이 잠겨 있어요</b>" : "<b>그로인 강의 아카이브</b>") +
-      "<p>그로인 멤버가 되면 크레딧으로 한 편씩 열어볼 수 있어요.<br>" +
+      "<p>그로인은 2주에 한 번 실시간 특강이 열리는 커뮤니티예요.<br>" +
+      "멤버가 되면 여기 강의도 크레딧으로 한 편씩 열어볼 수 있고,<br>" +
       "크레딧은 오전 프로그램·임장에 참여하면 쌓여요.</p>" +
       '<a class="btn primary block" href="' + LINK_GROWIN + '" target="_blank" rel="noopener">그로인 알아보기</a>' +
       (LINK_LOUNGE ? '<a class="alt" href="' + LINK_LOUNGE + '" target="_blank" rel="noopener">경매 라운지에서 먼저 둘러보기</a>' : "") +
