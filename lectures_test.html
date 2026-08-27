@@ -3,6 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<!-- 게스트에게 전체 강의 제목이 보이는 페이지다. 검색에 색인되면 통제가 안 된다. -->
+<meta name="robots" content="noindex, nofollow" />
 <link rel="preconnect" href="https://script.google.com" />
 <link rel="preconnect" href="https://script.googleusercontent.com" />
 <link rel="preconnect" href="https://player.vimeo.com" />
@@ -163,6 +165,20 @@ details.adv>*:not(summary){margin-top:14px}
 .empty{text-align:center;padding:56px 20px;color:var(--sub);font-size:13px;line-height:1.7}.skel{height:78px;border-radius:16px;background:linear-gradient(90deg,#EDF1F0,#F6F8F8,#EDF1F0);background-size:200% 100%;animation:sh 1.2s infinite;margin-bottom:10px}
 @keyframes sh{to{background-position:-200% 0}}
 .foot{text-align:center;padding:28px 0 0;font-size:11px;color:#A8B2B0;line-height:1.8}
+.legal{display:block;margin-top:18px;font-size:10px;color:#C4CCCA;line-height:1.7}
+.right{font-size:11.5px;color:var(--sub);line-height:1.6;margin-bottom:12px}
+
+/* ── 게스트 안내 ── */
+.invite{flex:1;background:#fff;border:1px solid var(--line);border-radius:16px;padding:18px 18px 16px}
+.invite b{display:block;font-size:15px;letter-spacing:-.02em;margin-bottom:7px}
+.invite p{font-size:12.5px;color:var(--sub);line-height:1.7;margin-bottom:14px}
+.invite .btn{display:block;text-decoration:none;text-align:center}
+.invite .alt{display:block;text-decoration:underline}
+
+/* ── 로그인 화면 구분선 ── */
+.gsep{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:22px;padding-top:18px;border-top:1px solid var(--line)}
+.gsep span{font-size:12px;color:var(--sub)}
+.gsep .linkbtn{font-size:12.5px;color:var(--peri)}
 .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:80;background:var(--ink);color:#fff;padding:12px 18px;border-radius:999px;font-size:12.5px;font-weight:700;max-width:90vw;text-align:center}
 </style>
 </head>
@@ -180,10 +196,19 @@ var API_URL = "https://script.google.com/macros/s/AKfycbz_TQCrc0dxcaKSS9LCCB84C2
      try{localStorage.setItem("growin_sess_v1",JSON.stringify({t:Date.now(),token:d.token,name:name}))}catch(e){} */
 var SESS_KEY = "growin_sess_v1";
 var LEC_KEY  = "ht_lec_v1";     // 목록 캐시 — 재방문 때 즉시 그리고 뒤에서 갱신
-var SESS_DAYS = 55;             // 서버 토큰은 60일. 조금 일찍 만료시켜 어긋남을 피한다
+var SESS_DAYS = 14;             /* 아카이브 세션 보관 기간.
+   커뮤니티(growin.html)는 새로고침할 때마다 다시 로그인한다. 영상이 걸린 이쪽이
+   더 관대할 이유가 없어서 격주 강의 주기에 맞춰 14일로 뒀다.
+   3단계에서 커뮤니티 세션을 물려받으면 이 값은 북마크로 직접 들어올 때만 쓰인다. */
 
 /* 기준일 안내 문턱 (개월) — 세법·규제가 3개월에 두 번 바뀐 적이 있다 */
 var BASIS_SOFT = 3, BASIS_WARN = 6;
+
+/* 게스트가 볼 두 개의 문 (v59)
+   그로인 상세페이지는 결제 페이지지만 "그로인이 무엇인지"가 거기 다 적혀 있다.
+   라운지는 아직 안 정해져서 비워뒀다 — 비어 있으면 그 링크는 화면에 안 나온다. */
+var LINK_GROWIN = "https://m.site.naver.com/2bq9R";
+var LINK_LOUNGE = "https://open.kakao.com/o/g8PEXpwi";   // 경매 라운지 오픈채팅
 
 /* ═══════════════════════════════════════════════════════════════
    통신
@@ -219,7 +244,21 @@ var ST = {
   openId: 0,
   busy: false,
   pending: null,        // 확인 모달에 올라온 강의
+  guest: false,         // 토큰 없이 둘러보는 중
 };
+
+/* 게스트를 세기 위한 브라우저 표식 (v59)
+   개인정보가 아니라 난수다. 시청기록에 "게스트 a3f9" 로 남아
+   몇 명이 다녀갔는지 셀 수 있다. 지우면 새로 생긴다 — 그 이상은 못 한다. */
+function gid_() {
+  var v = null;
+  try { v = localStorage.getItem("ht_gid"); } catch (e) {}
+  if (!v) {
+    v = Math.random().toString(36).slice(2, 10);
+    try { localStorage.setItem("ht_gid", v); } catch (e) {}
+  }
+  return v;
+}
 
 function now() { return Date.now() + ST.offset; }
 
@@ -274,17 +313,22 @@ function toast(msg) {
   setTimeout(function () { t.remove(); }, 3200);
 }
 
-/* ── 로그인 화면 ── */
+/* ── 로그인 화면 ──
+   "누구를 위한 곳"이 아니라 "무엇이 있는 곳"을 먼저 말한다.
+   자격을 앞세우면 자격 없는 사람이 첫 줄에서 걸러진다 — 게스트도 같은 문으로 들어온다.
+   "뒷 4자리가 초기 비밀번호"라는 안내는 뺐다 — 이름은 단톡방에 노출돼 있어서
+   그 조합을 공개 화면에 적어두면 비밀번호 변경 기능을 만든 이유와 부딪힌다. */
 function renderGate(err, name) {
   root.innerHTML =
     '<div class="gate">' +
-      '<h1>강의 아카이브</h1>' +
-      '<p class="lede">그로인 커뮤니티와 같은 이름·비밀번호로 들어옵니다.<br>비밀번호를 바꾸신 적이 없다면 전화번호 뒷 4자리예요.</p>' +
+      '<h1>해피테크 강의 아카이브</h1>' +
+      '<p class="lede">부동산 경매 강의를 모아둔 곳이에요.<br>로그인하시면 수강할 수 있어요.</p>' +
       '<div class="field"><label for="gn">이름</label><input id="gn" autocomplete="name" value="' + esc(name || "") + '" /></div>' +
       '<div class="field"><label for="gp">비밀번호 4자리</label><input id="gp" inputmode="numeric" maxlength="4" autocomplete="current-password" type="password" /></div>' +
-      (err ? '<p class="err">' + esc(err) + "</p>" : "") +
+      (err ? '<p class="err">' + err + "</p>" : "") +
       '<button class="btn primary block" id="gb" style="margin-top:16px">들어가기</button>' +
-      '<p class="foot">해피테크 · 그로인</p>' +
+      '<div class="gsep"><span>처음 오셨나요?</span><button class="linkbtn" id="gguest">둘러보기</button></div>' +
+      '<p class="foot">해피테크</p>' +
     "</div>";
 
   var n = document.getElementById("gn"), p = document.getElementById("gp"), b = document.getElementById("gb");
@@ -293,13 +337,22 @@ function renderGate(err, name) {
     if (!nv || pv.length !== 4) { renderGate("이름과 비밀번호 4자리를 확인해주세요", nv); return; }
     b.disabled = true; b.textContent = "확인 중…";
     api("login", { name: nv, p4: pv }).then(function (d) {
-      ST.token = d.token; ST.name = nv;
+      ST.token = d.token; ST.name = nv; ST.guest = false;
       lsSet(SESS_KEY, { t: Date.now(), token: d.token, name: nv });
       load(true);
-    }).catch(function (e) { renderGate(e.message, nv); });
+    }).catch(function () {
+      /* 실패 원인의 절반은 비밀번호가 아니라 이름 표기다.
+         톡방 닉네임을 넣거나 띄어쓰기가 다른 경우. 그 한 줄이 문의를 줄인다. */
+      renderGate("이름이나 비밀번호가 맞지 않아요.<br>가입하신 이름 그대로 넣으셨는지 확인해주세요.<br>계속 안 되면 해피테크나 운영진에게 말씀해주세요.", nv);
+    });
   }
   b.onclick = go;
   p.onkeydown = function (e) { if (e.key === "Enter") go(); };
+  document.getElementById("gguest").onclick = function () {
+    ST.guest = true; ST.token = null;
+    lsDel(LEC_KEY);           // 로그인 상태의 목록 캐시를 게스트가 물려받으면 안 된다
+    load(true);
+  };
   (n.value ? p : n).focus();
 }
 
@@ -324,14 +377,17 @@ function render() {
     '<div class="top"><div class="in">' +
       '<div class="brand">해피테크 <span>강의 아카이브</span></div>' +
       '<div class="wallet">' +
-        (d.staff ? '<span class="pill on">관리자</span>' : (me.name ? '<span class="pill">' + esc(me.name) + " 님</span>" : "")) +
-        '<button class="linkbtn" id="out">나가기</button>' +
+        (d.staff ? '<span class="pill on">관리자</span>'
+         : d.guest ? '<span class="pill">게스트</span>'
+         : (me.name ? '<span class="pill">' + esc(me.name) + " 님</span>" : "")) +
+        '<button class="linkbtn" id="out">' + (d.guest ? "로그인" : "나가기") + "</button>" +
       "</div>" +
     "</div>" + purse(d, me) + '</div><div class="wrap">';
 
   /* v56: membership 이 아니라 entitled 로 판정한다.
-     수강생은 member 가 없어도 특강3기 자격이 살아 있으므로 이 배너가 뜨면 안 된다. */
-  if (!d.staff && me.entitled === false) {
+     수강생은 member 가 없어도 특강3기 자격이 살아 있으므로 이 배너가 뜨면 안 된다.
+     v59: 게스트는 애초에 자격이 없는 사람이라 만료 배너를 띄우지 않는다. */
+  if (!d.staff && !d.guest && me.entitled === false) {
     html += '<div class="banner"><b>멤버십이 만료됐어요</b><p>연장하시면 ' +
       locked + "편이 바로 열려요. 교환해두신 열람권도 그대로 남아 있어요.</p></div>";
   }
@@ -352,14 +408,16 @@ function render() {
   }
 
   html += '<p class="foot">영상은 회원 본인 시청용이에요.<br>화면에 표시되는 이름은 계정 공유를 막기 위한 표시입니다.' +
-    (d.staff ? "" : '<br><button class="linkbtn" id="pinbtn" style="margin-top:8px">관리자</button>') + "</p></div>";
+    '<span class="legal">© 해피테크. 이 페이지의 강의 영상과 자료는 저작권법으로 보호받습니다.<br>' +
+    '무단 복제·배포·공유·재판매는 법적 책임을 물을 수 있습니다.</span>' +
+    (d.staff || d.guest ? "" : '<br><button class="linkbtn" id="pinbtn" style="margin-top:8px">관리자</button>') + "</p></div>";
 
   root.innerHTML = html;
 
   document.getElementById("out").onclick = function () {
     lsDel(SESS_KEY); lsDel(LEC_KEY);
     try { sessionStorage.removeItem("ht_pin"); } catch (e) {}
-    location.reload();
+    location.reload();   // 게스트든 멤버든 로그인 화면으로 돌아간다
   };
   var pb = document.getElementById("pinbtn");
   if (pb) pb.onclick = function () {
@@ -405,6 +463,21 @@ function render() {
    교환 가격이나 열람 시간을 바꾸면 이 문구도 따라 바뀐다 — 화면에 숫자를 박지 않는다. */
 function purse(d, me) {
   if (d.staff) return "";
+
+  /* 게스트에겐 지갑 대신 문 하나. (v59)
+     "다 볼 수 있다"고 쓰지 않는다 — 그로인에 가입해도 access=member 몇 편만 열리고
+     나머지는 크레딧을 모아야 한다. 가입 후 여전히 잠겨 있으면 속았다고 느낀다. */
+  if (d.guest) {
+    var locked = (d.lectures || []).filter(function (l) { return !l.open; }).length;
+    return '<div class="purse"><div class="invite">' +
+      (locked ? "<b>지금 " + locked + "편이 잠겨 있어요</b>" : "<b>그로인 강의 아카이브</b>") +
+      "<p>그로인 멤버가 되면 크레딧으로 한 편씩 열어볼 수 있어요.<br>" +
+      "크레딧은 오전 프로그램·임장에 참여하면 쌓여요.</p>" +
+      '<a class="btn primary block" href="' + LINK_GROWIN + '" target="_blank" rel="noopener">그로인 알아보기</a>' +
+      (LINK_LOUNGE ? '<a class="alt" href="' + LINK_LOUNGE + '" target="_blank" rel="noopener">경매 라운지에서 먼저 둘러보기</a>' : "") +
+      "</div></div>";
+  }
+
   var cost = d.cost || 100;
   var hours = d.hours || 24;
   var n = Math.floor((me.credits || 0) / cost);   // 지금 몇 장으로 바꿀 수 있나 (0이면 흐리게)
@@ -459,6 +532,9 @@ function lockedBody(l, me, d) {
   if (!l.hasVideo) return '<p class="why">아직 영상이 올라오지 않은 강의예요.</p>';
   var cost = d.cost, hours = d.hours;
 
+  /* v59: 게스트는 상단 안내 블록이 이미 설명했다. 카드마다 반복하면 세 번째부터 안 읽힌다. */
+  if (d.guest) return '<p class="why">그로인 멤버가 크레딧으로 여는 강의예요.</p>';
+
   if (me.tickets > 0) {
     return '<p class="why">이용권 1장으로 ' + hours + "시간 동안 볼 수 있어요. 지금 " + me.tickets + "장 있어요.</p>" +
       '<button class="btn primary block" data-use="' + l.id + '" data-pay="ticket">이용권 1장으로 열기</button>' +
@@ -497,7 +573,7 @@ function toggle(id) {
 function play(id) {
   var box = document.getElementById("body-" + id);
   if (!box) return;
-  api("lecOpen", { token: ST.token, adminKey: ST.pin || undefined, lecId: id })
+  api("lecOpen", { token: ST.guest ? undefined : (ST.token || undefined), adminKey: ST.pin || undefined, lecId: id, gid: ST.guest ? gid_() : undefined })
     .then(function (v) { paint(id, v); })
     .catch(function (e) {
       var b = document.getElementById("body-" + id);
@@ -521,6 +597,8 @@ function paint(id, v) {
     (note ? '<div class="basis ' + note.cls + '">' + esc(note.text) + "</div>" : "") +
     '<div class="stage">' + frame + '<span class="wm" id="wm-' + id + '">' + esc(v.mark) + "</span></div>" +
     (v.expiresAt ? '<p class="why">' + whenText(v.expiresAt) + "까지 볼 수 있어요 · " + esc(remain(v.expiresAt) || "곧 만료") + "</p>" : "") +
+    /* 첫 화면에 법률투가 있으면 그게 브랜드 인상이 된다. 여기는 부드럽게, 하단은 정식으로. */
+    '<p class="right">이 영상의 저작권은 해피테크에 있어요. 개인 시청용으로만 이용해주세요.</p>' +
     (v.body ? '<div class="text">' + v.body + "</div>" : "");
 }
 
@@ -790,11 +868,12 @@ function renderEditor() {
    ═══════════════════════════════════════════════════════════════ */
 function load(showSkeleton) {
   if (showSkeleton && !ST.data) render();
-  return api("lecList", { token: ST.token, adminKey: ST.pin || undefined })
+  return api("lecList", { token: ST.guest ? undefined : (ST.token || undefined), adminKey: ST.pin || undefined })
     .then(function (d) {
       ST.data = d;
       ST.offset = (d.nowMs || Date.now()) - Date.now();
-      if (!d.staff) lsSet(LEC_KEY, { t: Date.now(), d: d });
+      ST.guest = !!d.guest;
+      if (!d.staff) lsSet(d.guest ? LEC_KEY + "_g" : LEC_KEY, { t: Date.now(), d: d });
       render();
     })
     .catch(function (e) {
@@ -840,9 +919,10 @@ setInterval(function () {
   if (!ST.token && !ST.pin) { renderGate(null, (s && s.name) || ""); return; }
 
   /* 캐시가 있으면 먼저 그린다 — 목록만이라 틀려도 위험하지 않고,
-     실제 재생은 서버가 lecOpen 에서 다시 판정한다 */
+     실제 재생은 서버가 lecOpen 에서 다시 판정한다.
+     v59: 6시간은 너무 길었다. 자격을 바꿔도 반나절 옛 화면이 보인다. 1시간으로 줄였다. */
   var c = lsGet(LEC_KEY);
-  if (c && c.d && Date.now() - (c.t || 0) < 6 * 3600000) {
+  if (c && c.d && Date.now() - (c.t || 0) < 3600000) {
     ST.data = c.d; ST.offset = 0; render();
   }
   load(true);
