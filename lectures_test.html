@@ -105,6 +105,15 @@ input:focus,button:focus{outline:2px solid var(--mint);outline-offset:2px}
 .wm{position:absolute;top:10px;left:12px;z-index:3;pointer-events:none;user-select:none;white-space:nowrap;font-size:11px;font-weight:700;color:rgba(255,255,255,.42);text-shadow:0 1px 3px rgba(0,0,0,.5);letter-spacing:.02em}
 .stage .load{position:absolute;inset:0;display:grid;place-items:center;color:#8A94A6;font-size:12.5px}
 
+/* 가운데 로고 — 5분에 한 번, 1분만, 아주 흐리게.
+   시야를 가리면 강의를 방해하니 opacity 를 낮게 두고 천천히 넘어가게 한다. */
+.wmc{position:absolute;inset:0;z-index:2;display:grid;place-items:center;pointer-events:none;user-select:none;
+     opacity:0;transition:opacity 1.6s ease}
+.wmc.on{opacity:.14}
+.wmc img{width:38%;max-width:220px;height:auto;filter:drop-shadow(0 2px 8px rgba(0,0,0,.35))}
+.wmc span{font-size:clamp(22px,7vw,52px);font-weight:800;letter-spacing:-.03em;color:#fff;
+          text-shadow:0 2px 10px rgba(0,0,0,.45)}
+
 .text{font-size:13.5px;line-height:1.85;color:#2B3444;white-space:pre-wrap;word-break:break-word}
 .text img{max-width:100%;border-radius:10px}
 
@@ -219,6 +228,8 @@ details.adv>*:not(summary){margin-top:14px}
 @keyframes sh{to{background-position:-200% 0}}
 .foot{text-align:center;padding:28px 0 0;font-size:11px;color:#A8B2B0;line-height:1.8}
 .legal{display:block;margin-top:18px;font-size:10px;color:#C4CCCA;line-height:1.7}
+/* 겉모습은 주변 글자와 똑같이 둔다. 커서만 손 모양이라 아는 사람만 안다. */
+.doorbell{cursor:pointer}
 
 /* ── 측정 기록 (관리자) ── */
 .perf{margin-top:20px;border:1px solid var(--line);border-radius:14px;background:#fff;padding:12px 14px;text-align:left}
@@ -270,6 +281,20 @@ var BASIS_SOFT = 3, BASIS_WARN = 6;
    라운지는 아직 안 정해져서 비워뒀다 — 비어 있으면 그 링크는 화면에 안 나온다. */
 var LINK_GROWIN = "https://m.site.naver.com/2bq9R";
 var LINK_LOUNGE = "https://open.kakao.com/o/g8PEXpwi";   // 경매 라운지 오픈채팅
+
+/* 영상 가운데 로고 (v75)
+
+   구석의 이름표가 계정 공유를 머뭇거리게 하는 장치라면, 이건 화면 녹화를 겨냥한 것이다.
+   가운데는 잘라내기 어렵고, 유출본을 봤을 때 어디 것인지 바로 읽힌다.
+
+   대신 시야를 가리지 않아야 한다 — 강의를 보러 온 사람을 방해하면 손해다.
+   그래서 5분에 한 번, 1분 동안만, 아주 흐리게, 스르륵 나타났다 사라진다.
+
+   LOGO_URL 을 비워두면 글자로 대신한다.
+   저장소에 이미지를 올리고 파일명을 적으면(예: "watermark.png") 그걸 쓴다. */
+var LOGO_URL = "";
+var LOGO_EVERY = 300;   // 초 · 나타나는 주기
+var LOGO_HOLD  = 60;    // 초 · 머무는 시간
 
 /* ═══════════════════════════════════════════════════════════════
    통신
@@ -551,9 +576,13 @@ function render() {
   }
 
   html += '<p class="foot">영상은 회원 본인 시청용이에요.<br>화면에 표시되는 이름은 계정 공유를 막기 위한 표시입니다.' +
-    '<span class="legal">© 해피테크. 이 페이지의 강의 영상과 자료는 저작권법으로 보호받습니다.<br>' +
-    '무단 복제·배포·공유·재판매는 법적 책임을 물을 수 있습니다.</span>' +
-    (d.staff || d.guest ? "" : '<br><button class="linkbtn" id="pinbtn" style="margin-top:8px">관리자</button>') + "</p>" +
+    /* v75: 관리자 입구를 눈에 안 띄게 옮겼다.
+       "관리자"라고 적힌 버튼이 있으면 일반 멤버도 한 번은 눌러본다.
+       저작권 문구 안의 '해피테크' 글자가 그 자리다 — 아무도 눌러볼 생각을 하지 않고,
+       운영자는 어디인지 안다. 겉모습은 주변 글자와 완전히 같다. */
+    '<span class="legal">© <span class="doorbell"' + (d.staff || d.guest ? "" : ' id="pinbtn"') + ">해피테크</span>" +
+    ". 이 페이지의 강의 영상과 자료는 저작권법으로 보호받습니다.<br>" +
+    "무단 복제·배포·공유·재판매는 법적 책임을 물을 수 있습니다.</span></p>" +
     (d.staff ? perfPanel() : "") + "</div>";
 
   root.innerHTML = html;
@@ -792,7 +821,12 @@ function paint(id, v) {
 
   box.innerHTML =
     (note ? '<div class="basis ' + note.cls + '">' + esc(note.text) + "</div>" : "") +
-    '<div class="stage">' + frame + '<span class="wm" id="wm-' + id + '">' + esc(v.mark) + "</span></div>" +
+    '<div class="stage">' + frame +
+      '<span class="wm" id="wm-' + id + '">' + esc(v.mark) + "</span>" +
+      '<div class="wmc" id="wmc-' + id + '">' +
+        (LOGO_URL ? '<img src="' + LOGO_URL + '" alt="" />' : "<span>해피테크</span>") +
+      "</div>" +
+    "</div>" +
     /* 남은 시간은 카드 위 태그가 1분마다 다시 계산한다.
        여기서 또 보여주면 그릴 때 고정된 값이라 시간이 지날수록 위아래가 어긋난다.
        대신 만료 "시각"은 남긴다 — 위에 없는 정보이고 "몇 시까지"가 계획에 쓸모 있다. */
@@ -800,6 +834,24 @@ function paint(id, v) {
     /* 첫 화면에 법률투가 있으면 그게 브랜드 인상이 된다. 여기는 부드럽게, 하단은 정식으로. */
     '<p class="right">이 영상의 저작권은 해피테크에 있어요. 개인 시청용으로만 이용해주세요.</p>' +
     (v.body ? '<div class="text">' + v.body + "</div>" : "");
+
+  logoCycle(document.getElementById("wmc-" + id));
+}
+
+/* 가운데 로고를 주기적으로 스르륵 띄운다.
+   화면에서 사라지면 스스로 멈춘다 — 카드를 접거나 다시 그려도 타이머가 쌓이지 않는다. */
+function logoCycle(el) {
+  if (!el) return;
+  function show() {
+    if (!document.body.contains(el)) return;   // 사라졌으면 여기서 끝
+    el.classList.add("on");
+    setTimeout(function () {
+      if (!document.body.contains(el)) return;
+      el.classList.remove("on");
+      setTimeout(show, (LOGO_EVERY - LOGO_HOLD) * 1000);
+    }, LOGO_HOLD * 1000);
+  }
+  setTimeout(show, (LOGO_EVERY - LOGO_HOLD) * 1000);   // 처음엔 한 주기 쉬었다 시작
 }
 
 /* 워터마크는 좌상단에 고정한다 (v55).
