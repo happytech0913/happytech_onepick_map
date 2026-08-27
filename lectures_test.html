@@ -219,6 +219,14 @@ details.adv>*:not(summary){margin-top:14px}
 @keyframes sh{to{background-position:-200% 0}}
 .foot{text-align:center;padding:28px 0 0;font-size:11px;color:#A8B2B0;line-height:1.8}
 .legal{display:block;margin-top:18px;font-size:10px;color:#C4CCCA;line-height:1.7}
+
+/* ── 측정 기록 (관리자) ── */
+.perf{margin-top:20px;border:1px solid var(--line);border-radius:14px;background:#fff;padding:12px 14px;text-align:left}
+.ptitle{font-size:11px;font-weight:800;color:var(--sub);margin-bottom:8px}
+.prow{display:flex;gap:10px;flex-wrap:wrap;font-size:11.5px;color:var(--sub);padding:4px 0;border-top:1px solid var(--line);font-variant-numeric:tabular-nums}
+.prow:first-of-type{border-top:none}
+.prow b{color:var(--ink);min-width:78px}
+.phint{font-size:10.5px;color:#A8B2B0;line-height:1.6;margin-top:9px;padding-top:8px;border-top:1px solid var(--line)}
 .right{font-size:11.5px;color:var(--sub);line-height:1.6;margin-bottom:12px}
 
 /* ── 게스트 안내 ── */
@@ -266,20 +274,52 @@ var LINK_LOUNGE = "https://open.kakao.com/o/g8PEXpwi";   // 경매 라운지 오
 /* ═══════════════════════════════════════════════════════════════
    통신
    ═══════════════════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════════════
+   통신 · 측정 (v65)
+
+   총 걸린 시간과 서버가 쓴 시간을 같이 재둔다. 이 둘이면 원인이 갈린다.
+     서버가 크다        → 시트 읽기
+     총 − 서버가 크다   → Apps Script 302 리다이렉트 (줄일 수 없음. 호출 횟수만)
+     둘 다 작은데 느리다 → 화면 그리기
+   ═══════════════════════════════════════════════════════════════ */
+var PERF = [];   // 최근 기록 (관리자 화면 하단에 보인다)
+
+function perf(label, ms, srv, extra) {
+  PERF.unshift({ t: Date.now(), label: label, ms: Math.round(ms), srv: srv == null ? null : Math.round(srv), extra: extra || "" });
+  if (PERF.length > 12) PERF.pop();
+  try {
+    console.log("[" + label + "] 총 " + Math.round(ms) + "ms" +
+      (srv == null ? "" : " · 서버 " + Math.round(srv) + "ms · 네트워크 " + Math.round(ms - srv) + "ms") +
+      (extra ? " · " + extra : ""));
+  } catch (e) {}
+}
+
 function api(action, payload) {
+  var t0 = (performance && performance.now) ? performance.now() : Date.now();
   var body = JSON.stringify(Object.assign({ action: action }, payload || {}));
   return fetch(API_URL, {
     method: "POST",
     headers: { "Content-Type": "text/plain;charset=utf-8" },
     body: body,
   }).then(function (r) { return r.json(); }).then(function (j) {
+    var t1 = (performance && performance.now) ? performance.now() : Date.now();
+    perf(action, t1 - t0, j.srv);
     if (!j.ok) throw new Error(j.error || "요청에 실패했어요");
     return j.data;
   });
 }
 
-/* 콜드 스타트(2~4초) 선점 — 로그인 폼을 채우는 동안 컨테이너를 깨워둔다 */
-try { fetch(API_URL, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: '{"action":"ping"}' }); } catch (e) {}
+/* 콜드 스타트(2~4초) 선점 (v65)
+
+   예전엔 페이지가 뜨자마자 무조건 ping 을 쐈는데, 토큰이 이미 있으면
+   boot() 가 몇 ms 뒤에 진짜 요청을 보낸다. 둘이 동시에 나가니 깨울 시간이 없고,
+   재방문 때마다 콜드 스타트를 그대로 맞았다. 예열이 아니라 낭비였다.
+
+   이제 로그인 화면을 띄울 때만 쏜다 — 이름·비밀번호를 치는 몇 초가 예열 시간이 된다.
+   토큰이 있으면 예열을 건너뛰고 곧장 lecList 로 간다. */
+function warmup() {
+  try { fetch(API_URL, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: '{"action":"ping"}' }); } catch (e) {}
+}
 
 function lsGet(k) { try { return JSON.parse(localStorage.getItem(k) || "null"); } catch (e) { return null; } }
 function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
@@ -374,6 +414,7 @@ function toast(msg) {
    "뒷 4자리가 초기 비밀번호"라는 안내는 뺐다 — 이름은 단톡방에 노출돼 있어서
    그 조합을 공개 화면에 적어두면 비밀번호 변경 기능을 만든 이유와 부딪힌다. */
 function renderGate(err, name) {
+  warmup();   // 이 화면에 머무는 몇 초가 컨테이너를 깨우는 시간이 된다
   root.innerHTML =
     '<div class="gatebg"><div class="gate">' +
       '<div class="logo">🎬</div>' +
@@ -415,6 +456,7 @@ function renderGate(err, name) {
 
 /* ── 목록 화면 ── */
 function render() {
+  var _r0 = (performance && performance.now) ? performance.now() : Date.now();
   var d = ST.data;
   if (!d) {
     root.innerHTML = '<div class="wrap" style="padding-top:24px"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>';
@@ -494,9 +536,12 @@ function render() {
   html += '<p class="foot">영상은 회원 본인 시청용이에요.<br>화면에 표시되는 이름은 계정 공유를 막기 위한 표시입니다.' +
     '<span class="legal">© 해피테크. 이 페이지의 강의 영상과 자료는 저작권법으로 보호받습니다.<br>' +
     '무단 복제·배포·공유·재판매는 법적 책임을 물을 수 있습니다.</span>' +
-    (d.staff || d.guest ? "" : '<br><button class="linkbtn" id="pinbtn" style="margin-top:8px">관리자</button>') + "</p></div>";
+    (d.staff || d.guest ? "" : '<br><button class="linkbtn" id="pinbtn" style="margin-top:8px">관리자</button>') + "</p>" +
+    (d.staff ? perfPanel() : "") + "</div>";
 
   root.innerHTML = html;
+  perf("render", ((performance && performance.now) ? performance.now() : Date.now()) - _r0, null,
+       "카드 " + (d.lectures || []).length + "개");
 
   document.getElementById("out").onclick = function () {
     lsDel(SESS_KEY); lsDel(LEC_KEY);
@@ -591,6 +636,21 @@ function purse(d, me) {
       '<span class="s">' + cost.toLocaleString() + " → 이용권 1장</span></div>";
 
   return '<div class="purse">' + ticket + credit + "</div>";
+}
+
+/* 관리자에게만 보이는 측정 기록.
+   폰에서는 콘솔을 열 수 없으니 화면 하단에 둔다. */
+function perfPanel() {
+  if (!PERF.length) return "";
+  var rows = PERF.map(function (p) {
+    var net = p.srv == null ? null : p.ms - p.srv;
+    return '<div class="prow"><b>' + esc(p.label) + "</b>" +
+      "<span>총 " + p.ms + "ms</span>" +
+      (p.srv == null ? "" : "<span>서버 " + p.srv + "</span><span>망 " + net + "</span>") +
+      (p.extra ? "<span>" + esc(p.extra) + "</span>" : "") + "</div>";
+  }).join("");
+  return '<div class="perf"><div class="ptitle">최근 측정 · 관리자만 보여요</div>' + rows +
+    '<div class="phint">서버가 크면 시트 읽기 · 망이 크면 Apps Script 리다이렉트 · 둘 다 작은데 느리면 화면 그리기</div></div>';
 }
 
 function sec(label, n) {
