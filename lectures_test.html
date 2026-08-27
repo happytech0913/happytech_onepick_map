@@ -196,9 +196,12 @@ input:focus,button:focus{outline:2px solid var(--mint);outline-offset:2px}
 .f label{display:block;font-size:11.5px;font-weight:800;color:var(--sub);margin-bottom:5px}
 .f input,.f select,.f textarea{width:100%;border:1.5px solid var(--line);border-radius:11px;padding:11px 12px;font-size:14px;font-family:inherit;outline:none;background:#fff;color:var(--ink)}
 .f textarea{min-height:150px;line-height:1.7;resize:vertical}
-.f .hint{font-size:11.5px;color:var(--sub);margin-top:5px;line-height:1.55}
-.f .hint.bad{color:var(--coral);font-weight:700}
-.f .hint.good{color:#127A63;font-weight:700}
+/* .hint 를 .f 안에서만 정의해두면 필드 밖에 놓인 안내가 본문 크기로 나온다.
+   클래스 자체에 크기를 주고, .f 안에서만 위 여백을 더한다. */
+.hint{font-size:11.5px;color:var(--sub);line-height:1.55}
+.f .hint{margin-top:5px}
+.hint.bad{color:var(--coral);font-weight:700}
+.hint.good{color:#127A63;font-weight:700}
 .two{display:flex;gap:10px}
 .two>*{flex:1;min-width:0}
 details.adv{border-top:1px solid var(--line);margin-top:16px;padding-top:14px}
