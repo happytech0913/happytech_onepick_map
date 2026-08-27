@@ -96,7 +96,7 @@ input:focus,button:focus{outline:2px solid var(--mint);outline-offset:2px}
 /* ── 플레이어 ── */
 .stage{position:relative;border-radius:12px;overflow:hidden;background:#0E1218;aspect-ratio:16/9;margin-bottom:12px}
 .stage iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
-.wm{position:absolute;z-index:3;pointer-events:none;user-select:none;white-space:nowrap;font-size:11px;font-weight:700;color:rgba(255,255,255,.42);text-shadow:0 1px 3px rgba(0,0,0,.5);transition:all .8s ease;letter-spacing:.02em}
+.wm{position:absolute;top:10px;left:12px;z-index:3;pointer-events:none;user-select:none;white-space:nowrap;font-size:11px;font-weight:700;color:rgba(255,255,255,.42);text-shadow:0 1px 3px rgba(0,0,0,.5);letter-spacing:.02em}
 .stage .load{position:absolute;inset:0;display:grid;place-items:center;color:#8A94A6;font-size:12.5px}
 
 .text{font-size:13.5px;line-height:1.85;color:#2B3444;white-space:pre-wrap;word-break:break-word}
@@ -398,23 +398,25 @@ function render() {
   if (ST.pending) renderSheet();
 }
 
-/* 지갑 — 가진 것과 그게 몇 편인지를 나란히 놓는다.
-   숫자 하나만 있으면 "많은 건가?"에 답이 안 된다. */
+/* 지갑 — 가진 것과 그게 무엇으로 바뀌는지를 나란히 놓는다.
+   설명은 전부 설정 시트 값(lecCost · lecHours)에서 나온다.
+   교환 가격이나 열람 시간을 바꾸면 이 문구도 따라 바뀐다 — 화면에 숫자를 박지 않는다. */
 function purse(d, me) {
   if (d.staff) return "";
   var cost = d.cost || 100;
-  var n = Math.floor((me.credits || 0) / cost);
+  var hours = d.hours || 24;
+  var n = Math.floor((me.credits || 0) / cost);   // 지금 몇 장으로 바꿀 수 있나 (0이면 흐리게)
   var t = me.tickets || 0;
 
   var credit =
     '<div class="w' + (n ? "" : " zero") + '"><span class="k">크레딧</span>' +
       "<b>" + (me.credits || 0).toLocaleString() + "</b>" +
-      '<span class="s">' + (n ? n + "편 열 수 있어요" : "1편에 " + cost + " 크레딧이에요") + "</span></div>";
+      '<span class="s">' + cost.toLocaleString() + "크레딧 = 이용권 1장</span></div>";
 
   var ticket =
     '<div class="w' + (t ? " gold" : " zero") + '"><span class="k">이용권</span>' +
       "<b>" + t + "장</b>" +
-      '<span class="s">' + (t ? t + "편 바로 열려요" : "연장하시면 " + (d.renewTickets || 3) + "장 드려요") + "</span></div>";
+      '<span class="s">1장당 1편 수강(' + hours + "시간)</span></div>";
 
   return '<div class="purse">' + credit + ticket + "</div>";
 }
@@ -509,25 +511,12 @@ function paint(id, v) {
     '<div class="stage">' + frame + '<span class="wm" id="wm-' + id + '">' + esc(v.mark) + "</span></div>" +
     (v.expiresAt ? '<p class="why">' + whenText(v.expiresAt) + "까지 볼 수 있어요 · " + esc(remain(v.expiresAt) || "곧 만료") + "</p>" : "") +
     (v.body ? '<div class="text">' + v.body + "</div>" : "");
-
-  wander(document.getElementById("wm-" + id));
 }
 
-/* 워터마크는 화면 안을 30초마다 옮겨 다닌다.
-   우상단은 비켜간다 — 비메오가 좋아요·나중에보기·공유 버튼을 거기 그린다.
-   화면 녹화를 막지 못한다는 건 안다. 이건 계정 공유를 머뭇거리게 하는 장치다. */
-function wander(el) {
-  if (!el) return;
-  var spots = [
-    { top: "10px", left: "12px", right: "auto", bottom: "auto" },
-    { bottom: "52px", right: "14px", top: "auto", left: "auto" },  // 재생바 위
-    { top: "50%", left: "12px", right: "auto", bottom: "auto" },
-    { bottom: "52px", left: "14px", top: "auto", right: "auto" },
-  ];
-  var i = 0;
-  function set() { if (!document.body.contains(el)) return; Object.assign(el.style, spots[i % 4]); i++; setTimeout(set, 30000); }
-  set();
-}
+/* 워터마크는 좌상단에 고정한다 (v55).
+   30초마다 자리를 옮기던 걸 없앴다 — 움직이면 시선을 뺏어 강의에 집중이 안 된다.
+   도용을 막자고 본래 기능인 '강의 수강'을 약화시키는 건 손해다.
+   어차피 화면 녹화는 못 막고, 이건 계정 공유를 머뭇거리게 하는 장치다. */
 
 /* ═══════════════════════════════════════════════════════════════
    교환 확인 — 숫자가 눈에 보여야 한다
