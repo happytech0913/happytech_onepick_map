@@ -391,7 +391,9 @@ function renderGate(err, name) {
     var nv = n.value.trim(), pv = p.value.trim();
     if (!nv || pv.length !== 4) { renderGate("이름과 비밀번호 4자리를 확인해주세요", nv); return; }
     b.disabled = true; b.textContent = "확인 중…";
-    api("login", { name: nv, p4: pv }).then(function (d) {
+    /* scope="archive" — 서버가 커뮤니티 로그인과 구분한다.
+       커뮤니티는 member 자격이 있어야 로그인되지만, 아카이브는 수강생도 들어와야 한다. */
+    api("login", { name: nv, p4: pv, scope: "archive" }).then(function (d) {
       ST.token = d.token; ST.name = nv; ST.guest = false;
       lsSet(SESS_KEY, { t: Date.now(), token: d.token, name: nv });
       load(true);
