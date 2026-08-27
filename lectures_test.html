@@ -153,6 +153,36 @@ input:focus,button:focus{outline:2px solid var(--mint);outline-offset:2px}
 /* ── 관리자 편집기 ── */
 .adminbar{display:flex;gap:8px;align-items:center;margin:16px 0 0}
 .adminbar .btn{padding:10px 16px;font-size:13px}
+
+/* ── 관리자 탭 · 멤버 패널 ── */
+.atab{display:flex;gap:7px;padding:16px 0 4px}
+.mpanel{padding-top:12px}
+.mbox{background:#fff;border:1px solid var(--line);border-radius:16px;padding:18px;margin-bottom:12px}
+.mbox h4{font-size:13.5px;letter-spacing:-.02em;margin-bottom:14px}
+.mbox .f{margin-bottom:12px}
+.mbox input,.mbox textarea{width:100%;border:1.5px solid var(--line);border-radius:11px;padding:11px 12px;font-size:14px;font-family:inherit;outline:none;background:#fff;color:var(--ink)}
+.mbox textarea{min-height:130px;line-height:1.7;resize:vertical;font-variant-numeric:tabular-nums}
+.mrow{display:flex;gap:8px;align-items:flex-start;margin-top:10px}
+.mrow input{flex:1;min-width:0}
+.mrow .btn{flex:0 0 auto;padding:11px 18px;font-size:13px}
+.mhead{font-size:12.5px;font-weight:800;color:var(--sub);padding:2px 2px 10px}
+.mtable{border:1px solid var(--line);border-radius:14px;overflow:hidden;background:#fff}
+.mtable table{width:100%;border-collapse:collapse;font-size:12.5px}
+.mtable td{padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top;line-height:1.5}
+.mtable tr:last-child td{border-bottom:none}
+.mtable td:first-child{white-space:nowrap;font-weight:800;color:var(--sub);width:1%}
+.mtable td:nth-child(2){white-space:nowrap;font-weight:700}
+.mtable td:nth-child(3){white-space:nowrap;color:var(--sub)}
+.mtable .new td:first-child{color:#127A63}
+.mtable .exist td:first-child{color:var(--peri)}
+.mtable .skip td{color:#A8B2B0}
+.mtable .warn td:first-child{color:#8A6410}
+.mtable .warn td{background:rgba(239,182,60,.09)}
+.wnote{display:inline-block;margin-top:3px;color:#8A6410;font-weight:700}
+.mcard{border:1px solid var(--line);border-radius:14px;padding:14px;margin-top:12px;background:#FAFBFB}
+.mname{font-size:14px;font-weight:800;letter-spacing:-.02em}
+.mname span{font-weight:700;font-size:11px;color:var(--sub);margin-left:7px}
+.mmeta{font-size:12px;color:var(--sub);line-height:1.65;margin-top:5px}
 .edit{border:none;background:none;color:var(--peri);font-size:11.5px;font-weight:800;text-decoration:underline;padding:6px 8px;margin-left:auto;flex:0 0 auto}
 .sheet.tall{max-height:88vh;overflow-y:auto}
 .f{margin-bottom:12px}
@@ -258,6 +288,8 @@ var ST = {
   busy: false,
   pending: null,        // 확인 모달에 올라온 강의
   guest: false,         // 토큰 없이 둘러보는 중
+  atab: "lec",          // 관리자 탭: lec | mem
+  mem: { plan: null, found: null, groups: null },  // 멤버 탭 작업 상태
 };
 
 /* 게스트를 세기 위한 브라우저 표식 (v59)
@@ -405,16 +437,28 @@ function render() {
       locked + "편이 바로 열려요. 교환해두신 열람권도 그대로 남아 있어요.</p></div>";
   }
 
-  html += '<div class="chips">' + chips.map(function (c) {
-    return '<button class="chip" data-cat="' + esc(c.key) + '" aria-pressed="' + (ST.cat === c.key) + '">' + esc(c.label) + "</button>";
-  }).join("") + "</div>";
-
-  if (d.staff) {
-    html += '<div class="adminbar"><button class="btn primary" id="new">+ 새 강의</button>' +
-      '<span style="font-size:11.5px;color:var(--sub);line-height:1.5">아카이브 시트에만 저장돼요<br>커뮤니티 강의 탭과는 별개입니다</span></div>';
+  var memTab = d.staff && ST.atab === "mem";
+  if (!memTab) {
+    html += '<div class="chips">' + chips.map(function (c) {
+      return '<button class="chip" data-cat="' + esc(c.key) + '" aria-pressed="' + (ST.cat === c.key) + '">' + esc(c.label) + "</button>";
+    }).join("") + "</div>";
   }
 
-  if (!list.length) {
+  if (d.staff) {
+    html += '<div class="atab">' +
+      '<button class="chip" data-atab="lec" aria-pressed="' + (ST.atab !== "mem") + '">강의</button>' +
+      '<button class="chip" data-atab="mem" aria-pressed="' + (ST.atab === "mem") + '">멤버</button>' +
+      "</div>";
+    if (ST.atab === "mem") { html += memberPanel(); }
+    else {
+      html += '<div class="adminbar"><button class="btn primary" id="new">+ 새 강의</button>' +
+        '<span style="font-size:11.5px;color:var(--sub);line-height:1.5">아카이브 시트에만 저장돼요<br>커뮤니티 강의 탭과는 별개입니다</span></div>';
+    }
+  }
+
+  if (memTab) {
+    /* 멤버 탭에서는 강의 목록을 그리지 않는다 */
+  } else if (!list.length) {
     html += '<div class="empty">이 분류에는 아직 올라온 강의가 없어요.</div>';
   } else {
     html += list.map(card).join("");
@@ -445,8 +489,11 @@ function render() {
       } else { ST.pin = prev; }
     });
   };
-  Array.prototype.forEach.call(document.querySelectorAll(".chip"), function (b) {
+  Array.prototype.forEach.call(document.querySelectorAll(".chips .chip"), function (b) {
     b.onclick = function () { ST.cat = b.dataset.cat; ST.openId = 0; render(); };
+  });
+  Array.prototype.forEach.call(document.querySelectorAll(".atab .chip"), function (b) {
+    b.onclick = function () { ST.atab = b.dataset.atab; ST.openId = 0; render(); };
   });
   Array.prototype.forEach.call(document.querySelectorAll(".head"), function (b) {
     b.onclick = function () { toggle(Number(b.dataset.id)); };
@@ -461,6 +508,7 @@ function render() {
 
   var nb = document.getElementById("new");
   if (nb) nb.onclick = function () { openEditor(null); };
+  bindMember();
   Array.prototype.forEach.call(document.querySelectorAll("[data-edit]"), function (b) {
     b.onclick = function (e) {
       e.stopPropagation();
@@ -698,6 +746,121 @@ function confirmUse() {
 }
 
 /* ═══════════════════════════════════════════════════════════════
+   멤버 탭 (관리자) — 등록 · 찾기 · 일괄 지급
+   시트를 열지 않고 명단을 붙여넣어 한 번에 등록한다.
+   쓰기 전에 무엇이 벌어질지 먼저 보여준다. 되돌릴 수 없는 일이라서.
+   ═══════════════════════════════════════════════════════════════ */
+function memberPanel() {
+  var M = ST.mem;
+  var groups = (ST.data.groupsKnown || []).slice();
+
+  /* ── 확인 단계 ── */
+  if (M.plan) {
+    var c = M.plan.counts;
+    var rowsHtml = M.plan.plan.map(function (p) {
+      var tag = p.kind === "new" ? (p.warn ? "⚠ 동명이인" : "새로")
+              : p.kind === "exist" ? "이미 있음" : "건너뜀";
+      var detail = p.kind === "exist"
+          ? esc(p.note) + (M.plan.tickets ? " · 이용권 " + p.have + "장 → " + p.will + "장" : "")
+          : p.kind === "new"
+          ? esc(p.groups || "(자격 없음)") + (M.plan.tickets ? " · 이용권 " + M.plan.tickets + "장" : "") +
+            (p.warn ? '<br><span class="wnote">' + esc(p.note) + "</span>" : "")
+          : esc(p.note);
+      return '<tr class="' + p.kind + (p.warn ? " warn" : "") + '">' +
+        "<td>" + tag + "</td><td>" + esc(p.name) + "</td><td>" + esc(p.p4) + "</td><td>" + detail + "</td></tr>";
+    }).join("");
+
+    return '<div class="mpanel">' +
+      '<div class="mhead">' + c.total + "줄 읽음 · 새로 " + c.neo + " · 이미 있음 " + c.exist + " · 건너뜀 " + c.skip + "</div>" +
+      '<div class="mtable"><table>' + rowsHtml + "</table></div>" +
+      '<div class="mrow">' +
+        '<button class="btn ghost" id="m-back">뒤로</button>' +
+        '<button class="btn primary" id="m-commit"' + (c.neo + c.exist ? "" : " disabled") + ">" +
+          (c.neo + c.exist) + "명 등록하기</button>" +
+      "</div></div>";
+  }
+
+  /* ── 기본 화면 ── */
+  var g = M.groups || [];
+  var found = M.found;
+
+  return '<div class="mpanel">' +
+
+    /* ① 명단 등록 */
+    '<div class="mbox"><h4>명단 등록</h4>' +
+      '<div class="two">' +
+        '<div class="f"><label for="m-g">그룹</label>' +
+          '<input id="m-g" list="m-glist" placeholder="특강3기" value="' + esc(M.group || "") + '" />' +
+          "<datalist id=\"m-glist\">" + groups.map(function (x) { return '<option value="' + esc(x) + '">'; }).join("") + "</datalist>" +
+          '<p class="hint">이 명단 전원에게 붙습니다.</p></div>' +
+        '<div class="f"><label for="m-u">만료일</label>' +
+          '<input id="m-u" placeholder="2026-09-17" value="' + esc(M.until || "") + '" />' +
+          '<p class="hint">비우면 무기한. 기수 전원이 같이 만료돼요.</p></div>' +
+      "</div>" +
+      '<div class="f" style="max-width:150px"><label for="m-t">이용권</label>' +
+        '<input id="m-t" inputmode="numeric" value="' + esc(M.tickets == null ? "" : M.tickets) + '" placeholder="0" />' +
+        '<p class="hint">등록과 함께 지급</p></div>' +
+      '<div class="f"><label for="m-list">명단 · 한 줄에 한 명</label>' +
+        '<textarea id="m-list" placeholder="김민수 1234&#10;이서연 5678&#10;박준호 9012  특강3기,member@2026-11-30">' + esc(M.text || "") + "</textarea>" +
+        '<p class="hint">이름과 뒷 4자리. 셋째 칸에 그룹을 적으면 위 그룹 대신 그게 쓰여요.<br>' +
+        '뒷자리는 앞의 0까지 그대로 적어주세요 — 자리가 모자라면 건너뜁니다.</p></div>' +
+      '<button class="btn primary block" id="m-check">확인하기</button>' +
+      '<p class="hint" style="text-align:center;margin-top:8px">확인 단계에서는 아무것도 저장되지 않아요.</p>' +
+    "</div>" +
+
+    /* ② 한 명 찾기 */
+    '<div class="mbox"><h4>한 명 찾기</h4>' +
+      '<div class="mrow">' +
+        '<input id="m-q" placeholder="이름 또는 뒷 4자리" value="' + esc(M.q || "") + '" />' +
+        '<button class="btn ghost" id="m-find">찾기</button>' +
+      "</div>" +
+      (found ? (found.length ? found.map(memberCard).join("") : '<p class="hint" style="margin-top:12px">찾지 못했어요.</p>') : "") +
+    "</div>" +
+
+    /* ③ 일괄 지급 */
+    '<div class="mbox"><h4>일괄 지급</h4>' +
+      (g.length
+        ? '<div class="checks" id="m-bg">' + g.map(function (x) {
+            return '<button class="ck" data-g="' + esc(x.key) + '" aria-pressed="' + (M.bulk === x.key) + '">' + esc(x.key) + " " + x.n + "명</button>";
+          }).join("") + "</div>"
+        : '<p class="hint">대상을 불러오는 중…</p>') +
+      '<div class="two" style="margin-top:12px">' +
+        '<div class="f"><label for="m-bn">이용권</label><input id="m-bn" inputmode="numeric" placeholder="3" value="' + esc(M.bulkN == null ? "" : M.bulkN) + '" /></div>' +
+        '<div class="f"><label for="m-br">사유</label><input id="m-br" placeholder="2026 4분기 연장 혜택" value="' + esc(M.bulkR || "") + '" /></div>' +
+      "</div>" +
+      (M.bulk && M.bulkN > 0
+        ? '<button class="btn primary block" id="m-bulk">' + bulkLabel(g, M.bulk, M.bulkN) + "</button>"
+        : '<button class="btn primary block" disabled>대상과 장수를 골라주세요</button>') +
+    "</div>" +
+
+  "</div>";
+}
+
+/* 62명 × 3장 = 186장. 잘못 누르면 60명 지갑이 한꺼번에 틀어진다 — 총량을 보여준다 */
+function bulkLabel(g, key, n) {
+  var t = g.filter(function (x) { return x.key === key; })[0];
+  if (!t) return "지급하기";
+  return t.n + "명에게 " + n + "장씩 · 총 " + (t.n * n) + "장";
+}
+
+function memberCard(m) {
+  return '<div class="mcard">' +
+    '<div class="mname">' + esc(m.name) + " " + esc(m.p4) + '<span>id ' + m.id + (m.joined ? " · " + esc(m.joined) + " 가입" : "") + "</span></div>" +
+    '<div class="mmeta">자격 ' + (m.live.length ? esc(m.live.join(" · ")) : "없음") +
+      "<br>이용권 " + m.tickets + "장 · 크레딧 " + (m.credits || 0).toLocaleString() + "</div>" +
+    '<div class="mrow">' +
+      '<input class="mg-n" data-id="' + m.id + '" inputmode="numeric" placeholder="장수" style="max-width:90px" />' +
+      '<input class="mg-r" data-id="' + m.id + '" placeholder="사유" />' +
+      '<button class="btn ghost mg-go" data-id="' + m.id + '">지급</button>' +
+    "</div>" +
+    (m.live.indexOf("member") >= 0
+      ? '<button class="danger mg-drop" data-id="' + m.id + '">멤버십만 빼기</button>' +
+        '<span class="hint"> groups 에서 member 만 뺍니다. 크레딧·인증글·랭킹은 남아요.</span>'
+      : "") +
+  "</div>";
+}
+
+/* ═══════════════════════════════════════════════════════════════
    관리자 편집기 — 시트를 열지 않고 올리고 고친다
    기본 칸은 넷(제목·분류·영상·요약)뿐이고, 나머지는 접어둔다.
    ═══════════════════════════════════════════════════════════════ */
@@ -877,6 +1040,112 @@ function renderEditor() {
       toast(e.message);
     });
   }
+}
+
+/* 멤버 탭 핸들러 — 화면을 다시 그리기 전에 입력값을 붙잡아 둔다 */
+function grabMember() {
+  var M = ST.mem, v;
+  function val(id) { var e = document.getElementById(id); return e ? e.value : null; }
+  v = val("m-g"); if (v !== null) M.group = v.trim();
+  v = val("m-u"); if (v !== null) M.until = v.trim();
+  v = val("m-t"); if (v !== null) M.tickets = Number(v) || 0;
+  v = val("m-list"); if (v !== null) M.text = v;
+  v = val("m-q"); if (v !== null) M.q = v.trim();
+  v = val("m-bn"); if (v !== null) M.bulkN = Number(v) || 0;
+  v = val("m-br"); if (v !== null) M.bulkR = v.trim();
+}
+
+function bindMember() {
+  var M = ST.mem;
+  if (!ST.data || !ST.data.staff || ST.atab !== "mem") return;
+
+  /* 일괄 지급 대상 목록은 한 번만 불러온다 */
+  if (!M.groups) {
+    M.groups = [];
+    api("groupCounts", { adminKey: ST.pin }).then(function (g) {
+      M.groups = g || []; if (ST.atab === "mem") { grabMember(); render(); }
+    }).catch(function () {});
+  }
+
+  var chk = document.getElementById("m-check");
+  if (chk) chk.onclick = function () {
+    grabMember();
+    if (!M.text || !M.text.trim()) { toast("명단을 붙여넣어 주세요"); return; }
+    chk.disabled = true; chk.textContent = "확인 중…";
+    api("rosterPreview", { adminKey: ST.pin, text: M.text, group: M.group, tickets: M.tickets })
+      .then(function (r) { M.plan = r; render(); })
+      .catch(function (e) { chk.disabled = false; chk.textContent = "확인하기"; toast(e.message); });
+  };
+
+  var back = document.getElementById("m-back");
+  if (back) back.onclick = function () { M.plan = null; render(); };
+
+  var com = document.getElementById("m-commit");
+  if (com) com.onclick = function () {
+    com.disabled = true; com.textContent = "등록 중…";
+    api("rosterCommit", { adminKey: ST.pin, text: M.text, group: M.group, tickets: M.tickets, until: M.until })
+      .then(function (r) {
+        M.plan = null; M.text = ""; M.groups = null; M.found = null;
+        toast(r.done.length + "명 등록했어요");
+        load(false);
+      })
+      .catch(function (e) { com.disabled = false; com.textContent = "다시 시도"; toast(e.message); });
+  };
+
+  var fnd = document.getElementById("m-find"), q = document.getElementById("m-q");
+  function doFind() {
+    grabMember();
+    if (!M.q) { toast("이름이나 뒷 4자리를 넣어주세요"); return; }
+    api("memberFind", { adminKey: ST.pin, q: M.q })
+      .then(function (r) { M.found = r.list; render(); })
+      .catch(function (e) { toast(e.message); });
+  }
+  if (fnd) fnd.onclick = doFind;
+  if (q) q.onkeydown = function (e) { if (e.key === "Enter") doFind(); };
+
+  Array.prototype.forEach.call(document.querySelectorAll(".mg-go"), function (b) {
+    b.onclick = function () {
+      var id = Number(b.dataset.id);
+      var n = Number((document.querySelector('.mg-n[data-id="' + id + '"]') || {}).value) || 0;
+      var r = (document.querySelector('.mg-r[data-id="' + id + '"]') || {}).value || "";
+      if (!n) { toast("장수를 넣어주세요"); return; }
+      b.disabled = true;
+      api("ticketGrant", { adminKey: ST.pin, id: id, n: n, reason: r })
+        .then(function (res) { toast("이용권 " + n + "장 지급 · 남은 " + res.tickets + "장"); doFind(); })
+        .catch(function (e) { b.disabled = false; toast(e.message); });
+    };
+  });
+
+  Array.prototype.forEach.call(document.querySelectorAll(".mg-drop"), function (b) {
+    b.onclick = function () {
+      var id = Number(b.dataset.id);
+      if (!confirm("이 분의 멤버십(member)을 뺄까요?\n\n커뮤니티·원픽 지도·경매통계가 닫힙니다.\n크레딧·인증글·랭킹은 그대로 남아요.")) return;
+      api("memberDropMembership", { adminKey: ST.pin, id: id })
+        .then(function () { toast("멤버십을 뺐어요"); doFind(); })
+        .catch(function (e) { toast(e.message); });
+    };
+  });
+
+  Array.prototype.forEach.call(document.querySelectorAll("#m-bg .ck"), function (b) {
+    b.onclick = function () { grabMember(); M.bulk = (M.bulk === b.dataset.g ? "" : b.dataset.g); render(); };
+  });
+  ["m-bn", "m-br"].forEach(function (id) {
+    var e = document.getElementById(id);
+    if (e) e.onchange = function () { grabMember(); render(); };
+  });
+
+  var bulk = document.getElementById("m-bulk");
+  if (bulk) bulk.onclick = function () {
+    grabMember();
+    if (!confirm(bulkLabel(M.groups, M.bulk, M.bulkN) + "\n\n되돌리려면 한 사람씩 빼야 합니다. 진행할까요?")) return;
+    bulk.disabled = true; bulk.textContent = "지급 중…";
+    api("ticketGrantBulk", { adminKey: ST.pin, group: M.bulk, n: M.bulkN, reason: M.bulkR })
+      .then(function (r) {
+        toast(r.people + "명에게 " + r.each + "장씩 · 총 " + r.total + "장 지급했어요");
+        M.groups = null; M.found = null; load(false);
+      })
+      .catch(function (e) { bulk.disabled = false; toast(e.message); });
+  };
 }
 
 /* ═══════════════════════════════════════════════════════════════
