@@ -735,7 +735,7 @@ function purse(d, me) {
   var ticket =
     '<div class="w' + (t ? " gold" : " zero") + '"><span class="k">이용권</span>' +
       "<b>" + t + "장</b>" +
-      '<span class="s">1장당 1편 수강(' + hours + "시간)<br>강의에 따라 여러 장이 들 수 있어요</span></div>";
+      '<span class="s">강의 수강(' + hours + "시간)에 써요<br>여러 장이 드는 강의도 있어요</span></div>";
 
   if (!me.membership) return '<div class="purse">' + ticket + "</div>";
 
