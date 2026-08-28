@@ -78,6 +78,11 @@ input:focus,button:focus{outline:2px solid var(--mint);outline-offset:2px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:16px;margin-bottom:10px;overflow:hidden}
 .card.locked{background:#FBFCFC}
 .head{display:flex;gap:12px;align-items:flex-start;padding:16px;width:100%;border:none;background:none;text-align:left;cursor:pointer}
+/* 끌어서 순서 바꾸기 (관리자 · 분류가 '전체'일 때만) */
+.grip{flex:0 0 auto;color:#C4CCCA;font-size:15px;line-height:1.4;cursor:grab;user-select:none;padding-top:2px}
+.grip:active{cursor:grabbing}
+.card[draggable="true"]{transition:opacity .12s,box-shadow .12s}
+.card.dragging{opacity:.45;box-shadow:0 8px 24px -12px rgba(28,35,51,.4)}
 .mark{width:28px;height:28px;border-radius:9px;flex:0 0 28px;display:grid;place-items:center;font-size:13px;background:var(--gradSoft)}
 .card.locked .mark{background:#EFF2F1}
 .meta{font-size:11px;color:var(--sub);font-weight:700;letter-spacing:.01em;margin-bottom:3px}
@@ -635,6 +640,7 @@ function render() {
   if (nb) nb.onclick = function () { openEditor(null); };
   bindMember();
   bindCats();
+  bindDrag();
   Array.prototype.forEach.call(document.querySelectorAll("[data-edit]"), function (b) {
     b.onclick = function (e) {
       e.stopPropagation();
@@ -741,9 +747,12 @@ function card(l) {  var open = ST.openId === l.id;
   if (d.staff && l.access) tags += '<span class="tag">' + esc(l.access) + "</span>";
   if (d.staff && l.hide) tags += '<span class="tag">숨김</span>';
 
+  var drag = d.staff && ST.atab !== "mem" && ST.cat === "전체";
   var h =
-    '<div class="card' + (l.open ? "" : " locked") + (open ? " on" : "") + '">' +
+    '<div class="card' + (l.open ? "" : " locked") + (open ? " on" : "") + '"' +
+      (drag ? ' draggable="true" data-drag="' + l.id + '"' : "") + ">" +
       '<div class="head" role="button" tabindex="0" data-id="' + l.id + '" aria-expanded="' + open + '">' +
+        (drag ? '<span class="grip" title="끌어서 순서 바꾸기">⠿</span>' : "") +
         '<span class="mark">' + (l.open ? "▶" : "🔒") + "</span>" +
         "<span style=\"flex:1;min-width:0\">" +
           '<span class="meta">' + esc(l.catLabel || l.cat) + (l.date ? " · " + esc(l.date) : "") + "</span>" +
@@ -938,6 +947,49 @@ function confirmUse() {
       toast(e.message);
       load(false); // 잔액·권한이 어긋났을 수 있다
     });
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   순서 바꾸기 (관리자 · 끌어서 놓기)
+
+   분류를 걸러둔 상태에서는 손잡이를 달지 않는다 —
+   화면에 없는 강의와 순서가 엉키기 때문. '전체'일 때만 옮길 수 있다.
+   놓는 순간 보이는 순서대로 id 배열을 보내고, 서버가 10·20·30… 을 다시 매긴다.
+   ═══════════════════════════════════════════════════════════════ */
+function bindDrag() {
+  var cards = document.querySelectorAll("[data-drag]");
+  if (!cards.length) return;
+  var from = null;
+
+  Array.prototype.forEach.call(cards, function (c) {
+    c.ondragstart = function (e) {
+      from = c;
+      c.classList.add("dragging");
+      try { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", c.dataset.drag); } catch (x) {}
+    };
+    c.ondragend = function () {
+      c.classList.remove("dragging");
+      Array.prototype.forEach.call(document.querySelectorAll(".card"), function (x) { x.classList.remove("over"); });
+      from = null;
+    };
+    c.ondragover = function (e) {
+      if (!from || from === c) return;
+      e.preventDefault();
+      var r = c.getBoundingClientRect();
+      var after = (e.clientY - r.top) > r.height / 2;
+      c.parentNode.insertBefore(from, after ? c.nextSibling : c);
+    };
+    c.ondrop = function (e) { e.preventDefault(); saveOrder(); };
+  });
+
+  function saveOrder() {
+    var ids = Array.prototype.map.call(document.querySelectorAll("[data-drag]"), function (x) {
+      return Number(x.dataset.drag);
+    });
+    api("archiveReorder", { adminKey: ST.pin, ids: ids })
+      .then(function (r) { toast("순서를 저장했어요 (" + r.n + "편)"); load(false); })
+      .catch(function (e) { toast(e.message); load(false); });
+  }
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -1180,11 +1232,7 @@ function renderEditor() {
           cats.map(function (c) { return '<option value="' + esc(c) + '"' + (f.cat === c ? " selected" : "") + ">" + esc(c) + "</option>"; }).join("") +
           '<option value="__new">+ 직접 입력</option></select></div>' +
         '<div class="f"><label for="e-date">날짜</label><input id="e-date" value="' + esc(f.date) + '" placeholder="2026-08-27" /></div>' +
-        '<div class="f" style="max-width:96px"><label for="e-ord">순서</label>' +
-          '<input id="e-ord" inputmode="numeric" value="' + esc(f.ord) + '" placeholder="—" /></div>' +
       "</div>" +
-      '<p class="hint" style="margin:-6px 0 12px">순서를 비우면 날짜순으로 놓입니다. 숫자를 넣으면 작은 것부터 위로 올라와요.<br>' +
-      '10 · 20 · 30 처럼 띄엄띄엄 쓰면 나중에 중간에 끼워 넣기 쉬워요.</p>' +
 
       '<div class="f"><label for="e-vimeo">비메오 주소</label>' +
         '<input id="e-vimeo" value="' + esc(f.vimeo) + '" placeholder="https://vimeo.com/123456789/abcdef" />' +
@@ -1209,6 +1257,11 @@ function renderEditor() {
         '<p class="hint' + (ED.access.length ? "" : " bad") + '">' +
           (ED.access.length ? "고른 그룹 중 하나라도 가진 멤버에게 열려요." : "아무것도 고르지 않으면 잠깁니다. 크레딧·이용권으로만 열려요.") +
           "<br>member = 지금 멤버십이 살아 있는 모든 회원 (해지하면 자동으로 잠겨요)</p></div>" +
+
+        '<div class="f" style="max-width:120px"><label for="e-ord">순서 번호</label>' +
+          '<input id="e-ord" inputmode="numeric" value="' + esc(f.ord) + '" placeholder="—" />' +
+          '<p class="hint">목록에서 손잡이를 끌어 옮기면 자동으로 매겨져요.<br>' +
+          '멀리 옮길 때만 직접 숫자를 넣으시면 됩니다 — 작을수록 위.</p></div>' +
 
         '<div class="f"><label for="e-basis">기준일</label>' +
           '<input id="e-basis" value="' + esc(f.basisDate) + '" placeholder="2026-08" />' +
