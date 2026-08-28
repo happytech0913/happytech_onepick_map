@@ -174,6 +174,12 @@ input:focus,button:focus{outline:2px solid var(--mint);outline-offset:2px}
 /* ── 관리자 탭 · 멤버 패널 ── */
 .atab{display:flex;gap:7px;padding:16px 0 4px}
 .catbox{background:#fff;border:1px solid var(--line);border-radius:16px;padding:14px 16px;margin-top:12px}
+/* 순서 저장 막대 — 위에 붙어 따라다닌다. 바꾼 걸 저장 안 하고 나가면 잃는다 */
+.ordbar{position:sticky;top:64px;z-index:15;display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+        margin-top:12px;padding:11px 14px;border-radius:14px;background:rgba(239,182,60,.14);
+        border:1px solid rgba(239,182,60,.45)}
+.ordbar span{flex:1;min-width:160px;font-size:12.5px;font-weight:700;color:#7A5809;line-height:1.5}
+.ordbar .btn{padding:9px 16px;font-size:12.5px;flex:0 0 auto}
 .cathead{font-size:12.5px;font-weight:800;color:var(--sub);margin-bottom:10px}
 .catchips{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:9px}
 .cchip{border:1px solid var(--line);background:#fff;border-radius:999px;padding:7px 12px;font-size:12.5px;font-weight:700;color:var(--ink);display:inline-flex;align-items:center;gap:6px}
@@ -384,6 +390,7 @@ var ST = {
   atab: "lec",          // 관리자 탭: lec | mem
   mem: { plan: null, found: null, groups: null },  // 멤버 탭 작업 상태
   cats: null,           // 분류 관리 목록 (관리자)
+  ordDirty: false,      // 순서를 바꿨는데 아직 저장 안 함
 };
 
 /* 게스트를 세기 위한 브라우저 표식 (v59)
@@ -565,7 +572,13 @@ function render() {
     else {
       html += '<div class="adminbar"><button class="btn primary" id="new">+ 새 강의</button>' +
         '<span style="font-size:11.5px;color:var(--sub);line-height:1.5">아카이브 시트에만 저장돼요<br>커뮤니티 강의 탭과는 별개입니다</span></div>' +
-        catPanel();
+        catPanel() +
+        /* 순서를 바꾸기 전에는 안 보인다 — 평소엔 자리를 차지할 이유가 없다 */
+        '<div class="ordbar" id="ordbar" style="display:' + (ST.ordDirty ? "" : "none") + '">' +
+          "<span>순서를 바꿨어요. 저장해야 반영됩니다.</span>" +
+          '<button class="btn ghost" id="ord-cancel">되돌리기</button>' +
+          '<button class="btn primary" id="ord-save">순서 저장</button>' +
+        "</div>";
     }
   }
 
@@ -954,7 +967,10 @@ function confirmUse() {
 
    분류를 걸러둔 상태에서는 손잡이를 달지 않는다 —
    화면에 없는 강의와 순서가 엉키기 때문. '전체'일 때만 옮길 수 있다.
-   놓는 순간 보이는 순서대로 id 배열을 보내고, 서버가 10·20·30… 을 다시 매긴다.
+
+   v79: 자동 저장을 버튼으로 바꿨다.
+   놓는 순간 저장하면 실패해도 모르고 지나가고, 카드 밖에 놓으면
+   화면만 바뀌고 저장이 안 되는 일이 있었다. 눌렀는지가 눈에 보여야 한다.
    ═══════════════════════════════════════════════════════════════ */
 function bindDrag() {
   var cards = document.querySelectorAll("[data-drag]");
@@ -969,8 +985,8 @@ function bindDrag() {
     };
     c.ondragend = function () {
       c.classList.remove("dragging");
-      Array.prototype.forEach.call(document.querySelectorAll(".card"), function (x) { x.classList.remove("over"); });
       from = null;
+      markDirty();   // 어디에 놓든 여기는 반드시 실행된다
     };
     c.ondragover = function (e) {
       if (!from || from === c) return;
@@ -979,17 +995,40 @@ function bindDrag() {
       var after = (e.clientY - r.top) > r.height / 2;
       c.parentNode.insertBefore(from, after ? c.nextSibling : c);
     };
-    c.ondrop = function (e) { e.preventDefault(); saveOrder(); };
+    c.ondrop = function (e) { e.preventDefault(); };
   });
 
-  function saveOrder() {
-    var ids = Array.prototype.map.call(document.querySelectorAll("[data-drag]"), function (x) {
-      return Number(x.dataset.drag);
-    });
-    api("archiveReorder", { adminKey: ST.pin, ids: ids })
-      .then(function (r) { toast("순서를 저장했어요 (" + r.n + "편)"); load(false); })
-      .catch(function (e) { toast(e.message); load(false); });
+  var bar = document.getElementById("ordbar");
+  if (bar) {
+    document.getElementById("ord-save").onclick = function () {
+      var ids = currentOrder();
+      var btn = this;
+      btn.disabled = true; btn.textContent = "저장 중…";
+      api("archiveReorder", { adminKey: ST.pin, ids: ids })
+        .then(function (r) { ST.ordDirty = false; toast("순서를 저장했어요 (" + r.n + "편)"); load(false); })
+        .catch(function (e) { btn.disabled = false; btn.textContent = "순서 저장"; toast(e.message); });
+    };
+    document.getElementById("ord-cancel").onclick = function () {
+      ST.ordDirty = false; render();   // 서버 순서로 되돌린다
+    };
   }
+}
+
+function currentOrder() {
+  return Array.prototype.map.call(document.querySelectorAll("[data-drag]"), function (x) {
+    return Number(x.dataset.drag);
+  });
+}
+
+/* 화면 순서가 서버 순서와 달라졌으면 저장 막대를 띄운다 */
+function markDirty() {
+  var now = currentOrder().join(",");
+  var was = (ST.data.lectures || []).map(function (l) { return l.id; }).join(",");
+  var dirty = now !== was;
+  if (dirty === ST.ordDirty) return;
+  ST.ordDirty = dirty;
+  var bar = document.getElementById("ordbar");
+  if (bar) bar.style.display = dirty ? "" : "none";
 }
 
 /* ═══════════════════════════════════════════════════════════════
