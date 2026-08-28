@@ -75,6 +75,14 @@ input:focus,button:focus{outline:2px solid var(--mint);outline-offset:2px}
 .sec{display:flex;align-items:baseline;gap:8px;padding:18px 4px 9px;font-size:12.5px;font-weight:800;letter-spacing:-.01em;color:var(--ink)}
 .sec:first-child{padding-top:4px}
 .sec span{font-size:11.5px;font-weight:700;color:var(--sub)}
+.tag.price{background:rgba(239,182,60,.16);color:#7A5809}
+/* 추천 마크 — 카드에서 유일하게 테두리를 가진 배지라 멀리서도 먼저 보인다 */
+.tag.star{background:linear-gradient(92deg,rgba(53,201,168,.16),rgba(111,123,224,.16));
+          color:#2E4A7A;border:1px solid rgba(111,123,224,.4);font-weight:800}
+.card.pickon{border-color:rgba(111,123,224,.42)}
+.pickwhy{display:block;margin-top:5px;font-size:12px;font-weight:700;color:#4A5A8A;line-height:1.5}
+.ck.star[aria-pressed="true"]{background:linear-gradient(92deg,rgba(53,201,168,.18),rgba(111,123,224,.18));
+          border-color:rgba(111,123,224,.5);color:#2E4A7A}
 .card{background:var(--card);border:1px solid var(--line);border-radius:16px;margin-bottom:10px;overflow:hidden}
 .card.locked{background:#FBFCFC}
 .head{display:flex;gap:12px;align-items:flex-start;padding:16px;width:100%;border:none;background:none;text-align:left;cursor:pointer}
@@ -212,6 +220,14 @@ input:focus,button:focus{outline:2px solid var(--mint);outline-offset:2px}
 .mname{font-size:14px;font-weight:800;letter-spacing:-.02em}
 .mname span{font-weight:700;font-size:11px;color:var(--sub);margin-left:7px}
 .mmeta{font-size:12px;color:var(--sub);line-height:1.65;margin-top:5px}
+.mcard.picked{border-color:var(--mint);background:rgba(53,201,168,.07)}
+.mpick{display:flex;align-items:flex-start;gap:9px;cursor:pointer}
+.mpick input{flex:0 0 auto;width:16px;height:16px;margin-top:2px;accent-color:var(--mint)}
+.pickbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:12px;padding:11px 13px;
+         border-radius:12px;background:rgba(53,201,168,.10);border:1px solid rgba(53,201,168,.35)}
+.pickbar span{font-size:12.5px;font-weight:800;color:#0F6E56}
+.pickbar input{flex:1;min-width:90px}
+.pickbar .btn{padding:9px 16px;font-size:12.5px;flex:0 0 auto}
 .mdrop{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin-top:6px}
 .mdrop span{font-size:11.5px;color:var(--sub);line-height:1.55}
 .mdrop .danger{padding:4px 0}
@@ -390,6 +406,8 @@ var ST = {
   atab: "lec",          // 관리자 탭: lec | mem
   mem: { plan: null, found: null, groups: null },  // 멤버 탭 작업 상태
   cats: null,           // 분류 관리 목록 (관리자)
+  cfg: null,            // 이용권·크레딧 기준 (관리자)
+  pick: {},             // 골라서 지급: 체크한 멤버 id
   ordDirty: false,      // 순서를 바꿨는데 아직 저장 안 함
 };
 
@@ -718,7 +736,7 @@ function purse(d, me) {
   var ticket =
     '<div class="w' + (t ? " gold" : " zero") + '"><span class="k">이용권</span>' +
       "<b>" + t + "장</b>" +
-      '<span class="s">1장당 1편 수강(' + hours + "시간)</span></div>";
+      '<span class="s">1장당 1편 수강(' + hours + "시간)<br>강의에 따라 여러 장이 들 수 있어요</span></div>";
 
   if (!me.membership) return '<div class="purse">' + ticket + "</div>";
 
@@ -754,15 +772,20 @@ function card(l) {  var open = ST.openId === l.id;
   var left = l.byPass && l.passExpiresMs ? remain(l.passExpiresMs) : null;
 
   var tags = "";
+  /* v81: 추천 마크를 맨 앞에 둔다 — 눈이 먼저 닿는 자리다.
+     매수와 무관하게 직접 켠 것만 붙는다. */
+  if (l.pick) tags += '<span class="tag star">★ 해피테크 추천</span>';
   if (l.open && l.byGroup) tags += '<span class="tag open">멤버십 포함</span>';
   if (l.open && l.byPass) tags += '<span class="tag time">' + esc(left || "곧 만료") + "</span>";
   if (!l.hasVideo) tags += '<span class="tag">영상 준비 중</span>';
+  /* v80: 1장짜리는 붙이지 않는다 — 대부분이 1장이라 전부 붙으면 배지가 소음이 된다 */
+  if (!l.open && (l.price || 1) > 1) tags += '<span class="tag price">이용권 ' + l.price + "장</span>";
   if (d.staff && l.access) tags += '<span class="tag">' + esc(l.access) + "</span>";
   if (d.staff && l.hide) tags += '<span class="tag">숨김</span>';
 
   var drag = d.staff && ST.atab !== "mem" && ST.cat === "전체";
   var h =
-    '<div class="card' + (l.open ? "" : " locked") + (open ? " on" : "") + '"' +
+    '<div class="card' + (l.open ? "" : " locked") + (open ? " on" : "") + (l.pick ? " pickon" : "") + '"' +
       (drag ? ' draggable="true" data-drag="' + l.id + '"' : "") + ">" +
       '<div class="head" role="button" tabindex="0" data-id="' + l.id + '" aria-expanded="' + open + '">' +
         (drag ? '<span class="grip" title="끌어서 순서 바꾸기">⠿</span>' : "") +
@@ -771,6 +794,7 @@ function card(l) {  var open = ST.openId === l.id;
           '<span class="meta">' + esc(l.catLabel || l.cat) + (l.date ? " · " + esc(l.date) : "") + "</span>" +
           '<span class="title" style="display:block">' + esc(l.title) + "</span>" +
           (l.summary ? '<span class="sum" style="display:block">' + esc(l.summary) + "</span>" : "") +
+          (l.pick && l.pickWhy ? '<span class="pickwhy">' + esc(l.pickWhy) + "</span>" : "") +
           (tags ? '<span class="tags">' + tags + "</span>" : "") +
         "</span>" +
         (d.staff ? '<button class="edit" data-edit="' + l.id + '">수정</button>' : "") +
@@ -786,34 +810,48 @@ function card(l) {  var open = ST.openId === l.id;
    크레딧은 그로인 화폐(자격)라 멤버십이 살아 있어야 쓴다. 서버 판정과 같은 순서다. */
 function lockedBody(l, me, d) {
   if (!l.hasVideo) return '<p class="why">아직 영상이 올라오지 않은 강의예요.</p>';
-  var cost = d.cost, hours = d.hours;
+  /* v80: 강의마다 이용권 매수가 다르다. 문구를 박아두지 않고 전부 이 값에서 뽑는다 */
+  var need = l.price || 1;
+  var cost = (d.cost || 100) * need, hours = d.hours;
 
   /* v59: 게스트는 상단 안내 블록이 이미 설명했다. 카드마다 반복하면 세 번째부터 안 읽힌다. */
   if (d.guest) return '<p class="why">그로인 멤버가 크레딧으로 여는 강의예요.</p>';
 
-  if (me.tickets > 0) {
-    return '<p class="why">이용권 1장으로 ' + hours + "시간 동안 볼 수 있어요. 지금 " + me.tickets + "장 있어요.</p>" +
-      '<button class="btn primary block" data-use="' + l.id + '" data-pay="ticket">이용권 1장으로 열기</button>' +
+  /* 이용권이 모자란 경우 (v80) — 3장짜리인데 1장뿐이면 "있음"도 "없음"도 아니다.
+     예전엔 매수가 늘 1장이라 이 갈래가 필요 없었다. */
+  if (me.tickets > 0 && me.tickets < need) {
+    return '<p class="why">이용권 ' + need + "장이 필요해요. 지금 " + me.tickets + "장 있어요 (" +
+      (need - me.tickets) + "장 모자라요).</p>" +
+      (me.membership
+        ? (me.credits >= cost
+            ? '<button class="btn primary block" data-use="' + l.id + '" data-pay="credit">크레딧 ' + cost.toLocaleString() + "으로 열기</button>"
+            : '<p class="why">크레딧 ' + cost.toLocaleString() + "으로도 열 수 있는데 지금 " + me.credits.toLocaleString() + " 있어요.<br>오전 프로그램·임장에 참여하시면 모을 수 있어요.</p>")
+        : "");
+  }
+
+  if (me.tickets >= need) {
+    return '<p class="why">이용권 ' + need + "장으로 " + hours + "시간 동안 볼 수 있어요. 지금 " + me.tickets + "장 있어요.</p>" +
+      '<button class="btn primary block" data-use="' + l.id + '" data-pay="ticket">이용권 ' + need + "장으로 열기</button>" +
       (me.membership && me.credits >= cost
-        ? '<button class="alt" data-use="' + l.id + '" data-pay="credit">크레딧 ' + cost + "으로 대신 쓰기</button>"
+        ? '<button class="alt" data-use="' + l.id + '" data-pay="credit">크레딧 ' + cost.toLocaleString() + "으로 대신 쓰기</button>"
         : "");
   }
 
   if (me.membership) {
     if (me.credits >= cost) {
-      return '<p class="why">크레딧 ' + cost + "으로 " + hours + "시간 동안 볼 수 있어요. 지금 " + me.credits.toLocaleString() + " 있어요.</p>" +
-        '<button class="btn primary block" data-use="' + l.id + '" data-pay="credit">크레딧 ' + cost + "으로 열기</button>";
+      return '<p class="why">크레딧 ' + cost.toLocaleString() + "으로 " + hours + "시간 동안 볼 수 있어요. 지금 " + me.credits.toLocaleString() + " 있어요.</p>" +
+        '<button class="btn primary block" data-use="' + l.id + '" data-pay="credit">크레딧 ' + cost.toLocaleString() + "으로 열기</button>";
     }
-    return '<p class="why">크레딧이 ' + cost + " 필요해요. 지금 " + me.credits.toLocaleString() + " 있어요 (" +
+    return '<p class="why">크레딧이 ' + cost.toLocaleString() + " 필요해요. 지금 " + me.credits.toLocaleString() + " 있어요 (" +
       (cost - me.credits).toLocaleString() + " 모자라요).<br>오전 프로그램·임장에 참여하시면 모을 수 있어요.</p>" +
-      '<button class="btn primary block" disabled>크레딧 ' + cost + " 필요</button>";
+      '<button class="btn primary block" disabled>크레딧 ' + cost.toLocaleString() + " 필요</button>";
   }
 
   /* 이용권도 없고 크레딧도 못 쓰는 사람 — 만료자와 수강생은 다음에 할 말이 다르다 */
   if (me.entitled === false) {
     return '<p class="why">멤버십이 만료돼서 잠겨 있어요. 연장하시면 바로 열립니다.</p>';
   }
-  return '<p class="why">이 강의는 이용권으로 열 수 있어요. 지금 가진 이용권이 없어요.</p>';
+  return '<p class="why">이 강의는 이용권 ' + need + "장으로 열 수 있어요. 지금 가진 이용권이 없어요.</p>";
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -901,6 +939,8 @@ function askUse(id, pay) {
 function renderSheet() {
   var p = ST.pending; if (!p) return;
   var d = ST.data, me = d.me, ticket = p.pay === "ticket";
+  var need = p.l.price || 1;               // v80: 이 강의에 드는 이용권 매수
+  var cost = (d.cost || 100) * need;       // 크레딧도 같은 배수로 든다
   var until = now() + d.hours * 3600000;
 
   var old = document.querySelector(".veil"); if (old) old.remove();
@@ -908,19 +948,19 @@ function renderSheet() {
   v.className = "veil";
   v.innerHTML =
     '<div class="sheet" role="dialog" aria-modal="true">' +
-      "<h3>" + (ticket ? "이용권 1장을 사용합니다" : "크레딧 " + d.cost + "을 사용합니다") + "</h3>" +
+      "<h3>" + (ticket ? "이용권 " + need + "장을 사용합니다" : "크레딧 " + cost.toLocaleString() + "을 사용합니다") + "</h3>" +
       '<div class="recap">' +
         '<div class="lec">' + esc(p.l.title) + "</div>" +
         '<div class="until">지금부터 ' + d.hours + "시간 · " + whenText(until) + "까지</div>" +
         '<div class="row"><span class="k">' + (ticket ? "이용권" : "크레딧") + '</span><span class="v">' +
           "<s>" + (ticket ? me.tickets + "장" : me.credits.toLocaleString()) + "</s>" +
-          (ticket ? (me.tickets - 1) + "장" : (me.credits - d.cost).toLocaleString()) +
+          (ticket ? (me.tickets - need) + "장" : (me.credits - cost).toLocaleString()) +
         "</span></div>" +
       "</div>" +
       '<button class="btn primary block" id="ok">사용하고 재생</button>' +
       '<button class="alt" id="no">취소</button>' +
-      (ticket && me.credits >= d.cost ? '<button class="alt" id="swap">크레딧 ' + d.cost + "으로 대신 쓰기</button>" :
-       (!ticket && me.tickets > 0 ? '<button class="alt" id="swap">이용권 1장으로 대신 쓰기</button>' : "")) +
+      (ticket && me.membership && me.credits >= cost ? '<button class="alt" id="swap">크레딧 ' + cost.toLocaleString() + "으로 대신 쓰기</button>" :
+       (!ticket && me.tickets >= need ? '<button class="alt" id="swap">이용권 ' + need + "장으로 대신 쓰기</button>" : "")) +
     "</div>";
   document.body.appendChild(v);
 
@@ -952,7 +992,9 @@ function confirmUse() {
       render();
       paint(p.l.id, v);
       lsSet(LEC_KEY, { t: Date.now(), d: ST.data });
-      toast(v.spent && v.spent.source === "ticket" ? "이용권 1장을 썼어요" : "크레딧 " + (v.spent ? v.spent.cost : ST.data.cost) + "을 썼어요");
+      toast(v.spent && v.spent.source === "ticket"
+        ? "이용권 " + (l.price || 1) + "장을 썼어요"
+        : "크레딧 " + (v.spent ? v.spent.cost : ST.data.cost).toLocaleString() + "을 썼어요");
     })
     .catch(function (e) {
       ST.busy = false;
@@ -1049,6 +1091,29 @@ function catPanel() {
       '<button class="cchip add" id="cat-add">+ 추가</button>' +
     "</div>" +
     '<p class="hint">숫자는 그 분류를 쓰는 강의 수예요. 눌러서 이름을 고치거나 지울 수 있어요.</p>' +
+  "</div>" + cfgPanel();
+}
+
+/* 크레딧 환율·열람 시간 (v80)
+   커뮤니티에 크레딧이 쌓이면 환율을 올려야 한다. 그때마다 시트를 열게 할 이유가 없다.
+   화면 문구가 전부 이 값에서 나오므로 바꾸는 즉시 안내도 따라간다. */
+function cfgPanel() {
+  var c = ST.cfg;
+  if (!c) return "";
+  return '<div class="catbox"><div class="cathead">이용권·크레딧 기준</div>' +
+    '<div class="two">' +
+      '<div class="f"><label for="c-cost">이용권 1장 값</label>' +
+        '<input id="c-cost" inputmode="numeric" value="' + esc(c.cost) + '" />' +
+        '<p class="hint">크레딧이 이만큼 있으면 한 장 몫이에요.</p></div>' +
+      '<div class="f"><label for="c-hours">열람 시간</label>' +
+        '<input id="c-hours" inputmode="numeric" value="' + esc(c.hours) + '" />' +
+        '<p class="hint">한 번 열면 이 시간 동안 볼 수 있어요.</p></div>' +
+    "</div>" +
+    '<div class="f" style="max-width:150px"><label for="c-renew">연장 혜택</label>' +
+      '<input id="c-renew" inputmode="numeric" value="' + esc(c.renewTickets) + '" />' +
+      '<p class="hint">만료 배너에 안내할 장수예요.</p></div>' +
+    '<button class="btn ghost" id="c-save">기준 저장</button>' +
+    '<p class="hint" style="margin-top:8px">바꾸면 화면 안내 문구가 모두 따라갑니다. 이미 연 강의는 그대로예요.</p>' +
   "</div>";
 }
 
@@ -1061,6 +1126,21 @@ function bindCats() {
     }).catch(function () { ST.cats = []; });
     return;
   }
+  if (!ST.cfg) {
+    api("archiveCfg", { adminKey: ST.pin }).then(function (c) {
+      ST.cfg = c; if (ST.atab !== "mem") render();
+    }).catch(function () {});
+  }
+  var cs = document.getElementById("c-save");
+  if (cs) cs.onclick = function () {
+    var g = function (id) { return Number((document.getElementById(id) || {}).value) || 0; };
+    var cfg = { cost: g("c-cost"), hours: g("c-hours"), renewTickets: g("c-renew") };
+    cs.disabled = true; cs.textContent = "저장 중…";
+    api("archiveCfgSave", { adminKey: ST.pin, cfg: cfg })
+      .then(function (c) { ST.cfg = c; toast("기준을 저장했어요"); load(false); })
+      .catch(function (e) { cs.disabled = false; cs.textContent = "기준 저장"; toast(e.message); });
+  };
+
   var add = document.getElementById("cat-add");
   if (add) add.onclick = function () {
     var n = prompt("새 분류 이름"); if (!n || !n.trim()) return;
@@ -1164,6 +1244,16 @@ function memberPanel() {
         '<button class="btn ghost" id="m-find">찾기</button>' +
       "</div>" +
       (found ? (found.length ? found.map(memberCard).join("") : '<p class="hint" style="margin-top:12px">찾지 못했어요.</p>') : "") +
+      /* 여러 명을 골라 한 번에 (v80)
+         그룹 전체는 너무 넓고 한 명씩은 60번 눌러야 했다.
+         연장 혜택처럼 "연장한 사람들에게만" 주는 일이 그 사이에 있다. */
+      (pickCount() ? '<div class="pickbar">' +
+        "<span>" + pickCount() + "명 골랐어요</span>" +
+        '<input class="pk-n" inputmode="numeric" placeholder="장수" style="max-width:84px" />' +
+        '<input class="pk-r" placeholder="사유" />' +
+        '<button class="btn primary" id="pk-go">지급</button>' +
+        '<button class="linkbtn" id="pk-clear">선택 해제</button>' +
+      "</div>" : "") +
     "</div>" +
 
     /* ③ 일괄 지급 */
@@ -1195,9 +1285,13 @@ function bulkLabel(g, key, n) {
   return t.n + "명에게 " + n + "장씩 · 총 " + (t.n * n) + "장";
 }
 
+function pickCount() { return Object.keys(ST.pick).length; }
+
 function memberCard(m) {
-  return '<div class="mcard">' +
-    '<div class="mname">' + esc(m.name) + " " + esc(m.p4) + '<span>id ' + m.id + (m.joined ? " · " + esc(m.joined) + " 가입" : "") + "</span></div>" +
+  var on = !!ST.pick[m.id];
+  return '<div class="mcard' + (on ? " picked" : "") + '">' +
+    '<label class="mpick"><input type="checkbox" data-pick="' + m.id + '"' + (on ? " checked" : "") + " />" +
+      '<span class="mname">' + esc(m.name) + " " + esc(m.p4) + '<span>id ' + m.id + (m.joined ? " · " + esc(m.joined) + " 가입" : "") + "</span></span></label>" +
     '<div class="mmeta">자격 ' + (m.live.length ? esc(m.live.join(" · ")) : "없음") +
       "<br>이용권 " + m.tickets + "장 · 크레딧 " + (m.credits || 0).toLocaleString() + "</div>" +
     '<div class="mrow">' +
@@ -1230,10 +1324,13 @@ function openEditor(l) {
       body: l ? (l.body || "") : "",
       basisDate: l ? (l.basisDate || "") : "",
       ord: l && l.ord != null ? String(l.ord) : "",
+      price: l && l.price > 1 ? String(l.price) : "",
+      pickWhy: l ? (l.pickWhy || "") : "",
     },
     access: l && l.access ? String(l.access).split(",").map(function (s) { return s.trim(); }).filter(String) : [],
     hide: !!(l && l.hide),
     pin: !!(l && l.pin),
+    pick: !!(l && l.pick),
     srcCat: l ? l.cat : "",
   };
   renderEditor();
@@ -1242,7 +1339,7 @@ function openEditor(l) {
 /* 다시 그리기 전에 지금 입력된 값을 붙잡아 둔다 — 안 그러면 체크 하나 누를 때 본문이 날아간다 */
 function grabEditor() {
   if (!ED) return;
-  ["title", "cat", "date", "vimeo", "summary", "body", "basisDate", "ord"].forEach(function (k) {
+  ["title", "cat", "date", "vimeo", "summary", "body", "basisDate", "ord", "price", "pickWhy"].forEach(function (k) {
     var el = document.getElementById("e-" + (k === "basisDate" ? "basis" : k === "summary" ? "sum" : k));
     if (el) ED.f[k] = el.value;
   });
@@ -1297,10 +1394,14 @@ function renderEditor() {
           (ED.access.length ? "고른 그룹 중 하나라도 가진 멤버에게 열려요." : "아무것도 고르지 않으면 잠깁니다. 크레딧·이용권으로만 열려요.") +
           "<br>member = 지금 멤버십이 살아 있는 모든 회원 (해지하면 자동으로 잠겨요)</p></div>" +
 
-        '<div class="f" style="max-width:120px"><label for="e-ord">순서 번호</label>' +
-          '<input id="e-ord" inputmode="numeric" value="' + esc(f.ord) + '" placeholder="—" />' +
-          '<p class="hint">목록에서 손잡이를 끌어 옮기면 자동으로 매겨져요.<br>' +
-          '멀리 옮길 때만 직접 숫자를 넣으시면 됩니다 — 작을수록 위.</p></div>' +
+        '<div class="two">' +
+          '<div class="f"><label for="e-ord">순서 번호</label>' +
+            '<input id="e-ord" inputmode="numeric" value="' + esc(f.ord) + '" placeholder="—" />' +
+            '<p class="hint">손잡이를 끌어 옮기면 자동으로 매겨져요.<br>멀리 옮길 때만 직접 넣으세요 — 작을수록 위.</p></div>' +
+          '<div class="f"><label for="e-price">이용권</label>' +
+            '<input id="e-price" inputmode="numeric" value="' + esc(f.price) + '" placeholder="1" />' +
+            '<p class="hint">비우면 1장. VOD·고가 강의만 올리세요.<br>크레딧으로 열 때도 같은 배수가 듭니다.</p></div>' +
+        "</div>" +
 
         '<div class="f"><label for="e-basis">기준일</label>' +
           '<input id="e-basis" value="' + esc(f.basisDate) + '" placeholder="2026-08" />' +
@@ -1309,6 +1410,15 @@ function renderEditor() {
         '<div class="f"><div class="checks">' +
           '<button class="ck" id="e-pin" aria-pressed="' + ED.pin + '">맨 위에 고정</button>' +
           '<button class="ck" id="e-hide" aria-pressed="' + ED.hide + '">제목까지 숨기기</button>' +
+          '<button class="ck star" id="e-pick" aria-pressed="' + ED.pick + '">★ 해피테크 추천</button>' +
+        "</div>" +
+        (ED.pick
+          ? '<div class="f"><label for="e-pickWhy">추천 이유 · 한 줄</label>' +
+            '<input id="e-pickWhy" value="' + esc(ED.f.pickWhy) + '" placeholder="이 한 편이면 명도 협상은 끝납니다" maxlength="60" />' +
+            '<p class="hint">마크만 있으면 "왜?"가 남아요. 잠긴 강의에서도 보이니 열어볼 이유가 됩니다.<br>' +
+            '두세 편에만 붙이세요 — 절반에 붙으면 아무 뜻이 없어집니다.</p></div>'
+          : "") +
+        '<div class="checks" style="display:none">' +
         "</div>" +
         '<p class="hint">숨기면 권한 없는 사람의 목록에서 아예 사라져요. 개인 피드백 영상용이에요.</p></div>' +
       "</details>" +
@@ -1354,6 +1464,7 @@ function renderEditor() {
   });
   document.getElementById("e-pin").onclick = function () { grabEditor(); ED.pin = !ED.pin; renderEditor(); };
   document.getElementById("e-hide").onclick = function () { grabEditor(); ED.hide = !ED.hide; renderEditor(); };
+  document.getElementById("e-pick").onclick = function () { grabEditor(); ED.pick = !ED.pick; renderEditor(); };
 
   document.getElementById("e-cancel").onclick = close;
   v.onclick = function (e) { if (e.target === v) close(); };
@@ -1383,6 +1494,9 @@ function renderEditor() {
       body: ED.f.body,
       basisDate: ED.f.basisDate.trim(),
       ord: ED.f.ord.trim(),
+      price: ED.f.price.trim(),
+      pick: ED.pick,
+      pickWhy: ED.pick ? ED.f.pickWhy.trim() : "",
       access: ED.access,
       hide: ED.hide,
       pin: ED.pin,
@@ -1461,6 +1575,33 @@ function bindMember() {
   }
   if (fnd) fnd.onclick = doFind;
   if (q) q.onkeydown = function (e) { if (e.key === "Enter") doFind(); };
+
+  Array.prototype.forEach.call(document.querySelectorAll("[data-pick]"), function (b) {
+    b.onchange = function () {
+      var id = Number(b.dataset.pick);
+      if (b.checked) ST.pick[id] = 1; else delete ST.pick[id];
+      grabMember(); render();
+    };
+  });
+
+  var pg = document.getElementById("pk-go");
+  if (pg) pg.onclick = function () {
+    var ids = Object.keys(ST.pick).map(Number);
+    var n = Number((document.querySelector(".pk-n") || {}).value) || 0;
+    var r = (document.querySelector(".pk-r") || {}).value || "";
+    if (!n) { toast("장수를 넣어주세요"); return; }
+    if (!confirm(ids.length + "명에게 " + n + "장씩 · 총 " + (ids.length * n) + "장\n\n진행할까요?")) return;
+    pg.disabled = true; pg.textContent = "지급 중…";
+    api("ticketGrantMany", { adminKey: ST.pin, ids: ids, n: n, reason: r })
+      .then(function (res) {
+        ST.pick = {}; M.groups = null;
+        toast(res.people + "명에게 " + res.each + "장씩 · 총 " + res.total + "장 지급했어요");
+        doFind();
+      })
+      .catch(function (e) { pg.disabled = false; pg.textContent = "지급"; toast(e.message); });
+  };
+  var pc = document.getElementById("pk-clear");
+  if (pc) pc.onclick = function () { ST.pick = {}; grabMember(); render(); };
 
   Array.prototype.forEach.call(document.querySelectorAll(".mg-go"), function (b) {
     b.onclick = function () {
