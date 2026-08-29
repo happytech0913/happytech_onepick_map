@@ -457,6 +457,14 @@ const MAP_ORIGIN = "https://happytech0913.github.io";
 
    ARCHIVE_ON 이 false 이면 버튼이 아예 그려지지 않는다.
    공개할 준비가 되면 true 한 글자만 바꾸면 된다. */
+/* 살아 있는 자격 (v84)
+   서버가 expireGroups_ 로 계산해 내려준 값을 그대로 쓴다.
+   화면이 직접 계산하면 설정의 groupExpiry(기수 전체 만료일)를 못 봐서
+   실제로는 만료된 자격이 살아 있는 것처럼 보인다. 판정은 서버 한 곳에서만. */
+function liveGroups(m) {
+    return Array.isArray(m) ? m : (Array.isArray(m && m.live) ? m.live : []);
+}
+
 const ARCHIVE_ON = false;
 const ARCHIVE_URL = "happyclass.html";
 /* ── 행동 로그 (v3.20) ───────────────────────────────────────
@@ -683,7 +691,7 @@ function Leaderboard({ members, settings }) {
                     React.createElement("b", { style: { color: T.coral, marginLeft: 4 } }, "\uAD00\uB9AC\uC790 \uC9C0\uAE09"))))));
 }
 /* ── 멤버 관리 ── */
-function Members({ members, ledger, onAdjust, onAddMember, onBumpStat, onSetLevel, onResetPw, settings, staffOnly }) {
+function Members({ members, ledger, onAdjust, onAddMember, onBumpStat, onSetLevel, onResetPw, onGroupEdit, settings, staffOnly }) {
     const [q, setQ] = useState("");
     const [sel, setSel] = useState(null);
     const [amt, setAmt] = useState("");
@@ -761,6 +769,21 @@ function Members({ members, ledger, onAdjust, onAddMember, onBumpStat, onSetLeve
                             "\uCD08\uAE30\uAC12 ",
                             React.createElement("b", { style: { color: T.ink } }, selMember.phone4),
                             " (\uC804\uD654 \uB4B7 4\uC790\uB9AC)")),
+                /* ── 자격 (v84) ──
+                   groups 가 비면 커뮤니티·원픽 지도가 닫힌다.
+                   예전엔 만료 처리를 시트에서 행을 지워 했는데, 그러면 아카이브도 같이 막히고
+                   클로버·시청기록·인증글이 사라진다. 자격만 떼면 기록은 남고 문은 닫힌다.
+                   화면에서는 member 를 "그로인멤버"로 부른다 — 시트에는 member 그대로. */
+                !staffOnly && React.createElement("div", { style: { margin: "0 0 10px", padding: "10px 12px", background: "#FAFCFB", borderRadius: 12, border: `1px solid ${T.line}` } },
+                    React.createElement("div", { style: { fontSize: 12, fontWeight: 800, color: T.sub, marginBottom: 8 } }, "\uC790\uACA9"),
+                    React.createElement("div", { style: { display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" } },
+                        (liveGroups(selMember.live).length
+                            ? liveGroups(selMember.live).map((g) => (React.createElement("span", { key: g, style: { display: "inline-flex", alignItems: "center", gap: 5, border: `1px solid ${T.line}`, background: "#fff", borderRadius: 999, padding: "5px 10px", fontSize: 12, fontWeight: 700, color: T.ink } },
+                                g === "member" ? "\uADF8\uB85C\uC778\uBA64\uBC84" : g,
+                                React.createElement("button", { onClick: () => onGroupEdit(selMember.id, g, false), title: "\uC774 \uC790\uACA9\uC744 \uB965\uB2C8\uB2E4", style: { cursor: "pointer", border: "none", background: "none", color: "#C4CCCA", fontSize: 12, lineHeight: 1, padding: 0 } }, "\u2715"))))
+                            : React.createElement("span", { style: { fontSize: 12, fontWeight: 700, color: T.coral } }, "\uC790\uACA9 \uC5C6\uC74C \u2014 \uCEE4\uBBA4\uB2C8\uD2F0\u00B7\uC6D0\uD53D \uC9C0\uB3C4\uAC00 \uB2EB\uD600 \uC788\uC5B4\uC694")),
+                        React.createElement("button", { onClick: () => onGroupEdit(selMember.id, null, true), style: { cursor: "pointer", border: `1px dashed ${T.line}`, background: "#fff", borderRadius: 999, padding: "5px 10px", fontSize: 12, fontWeight: 700, color: T.sub, fontFamily: "inherit" } }, "+ \uBD99\uC774\uAE30")),
+                    React.createElement("div", { style: { fontSize: 11, color: T.sub, marginTop: 8, lineHeight: 1.6 } }, "\uADF8\uB85C\uC778\uBA64\uBC84\uB97C \uB5BC\uBA74 \uCEE4\uBBA4\uB2C8\uD2F0\u00B7\uC6D0\uD53D \uC9C0\uB3C4\uAC00 \uB2EB\uD600\uC694. \uD074\uB85C\uBC84\u00B7\uD06C\uB808\uB527\u00B7\uC778\uC99D\uAE00\uC740 \uB0A8\uACE0, \uAC15\uC758 \uC544\uCE74\uC774\uBE0C\uB294 \uACC4\uC18D \uC4F8 \uC218 \uC788\uC5B4\uC694.")),
                 staffOnly && (React.createElement("div", { style: { padding: "10px 12px", background: "#FAFCFB", borderRadius: 12, border: `1px solid ${T.line}`, fontSize: 12, color: T.sub, lineHeight: 1.6 } },
                     "\u2B50 \uC6B4\uC601\uC9C4 \uBAA8\uB4DC\uC5D0\uC11C\uB294 \uBA64\uBC84 \uB4F1\uB85D\uACFC \uC785\uC7A5 \uC815\uBCF4 \uD655\uC778\uB9CC \uAC00\uB2A5\uD574\uC694.",
                     React.createElement("br", null),
@@ -5533,6 +5556,45 @@ function App() {
             fail(e);
         }
     };
+    /* 자격 붙이고 떼기 (v84)
+       group 이 null 이면 "붙이기" — 이미 쓰이는 자격을 골라 받는다. */
+    const onGroupEdit = async (memberId, group, on) => {
+        try {
+            let g = group;
+            let until = "";
+            if (on) {
+                const known = [];
+                members.forEach((m) => liveGroups(m.live).forEach((x) => { if (known.indexOf(x) < 0) known.push(x); }));
+                if (known.indexOf("member") < 0) known.unshift("member");
+                const list = known.map((x, i) => `${i + 1}. ${x === "member" ? "그로인멤버" : x}`).join("\n");
+                const pick = window.prompt(`붙일 자격을 고르세요.\n\n${list}\n\n번호를 넣거나 새 이름을 직접 쓰세요.`);
+                if (pick === null) return;
+                const t = pick.trim();
+                if (!t) return;
+                const n = Number(t);
+                g = (n >= 1 && n <= known.length) ? known[n - 1] : t;
+                if (g === "그로인멤버") g = "member";
+                const u = window.prompt(`'${g === "member" ? "그로인멤버" : g}' 만료일 (yyyy-MM-dd)\n\n비우면 무기한입니다.`, "");
+                if (u === null) return;
+                until = u.trim();
+            }
+            else {
+                const label = g === "member" ? "그로인멤버" : g;
+                const warn = g === "member"
+                    ? "\n\n커뮤니티·원픽 지도·경매통계가 닫힙니다.\n클로버·크레딧·인증글·랭킹은 그대로 남고,\n강의 아카이브는 계속 쓸 수 있어요."
+                    : "\n\n이 자격으로 열리던 강의가 잠깁니다.";
+                if (!window.confirm(`'${label}' 자격을 뗄까요?${warn}`))
+                    return;
+            }
+            const r = live ? await api("memberGroupEdit", { adminKey, id: memberId, group: g, on: !!on, until })
+                           : { groups: "", live: [] };
+            setMembers((M) => M.map((m) => m.id === memberId ? { ...m, groups: r.groups, live: r.live || [] } : m));
+            say(on ? `'${g === "member" ? "그로인멤버" : g}' 을 붙였어요` : "자격을 뗐어요");
+        }
+        catch (e) {
+            fail(e);
+        }
+    };
     const onSetLevel = async (memberId, level) => {
         try {
             if (live)
@@ -5938,7 +6000,7 @@ function App() {
                         fontWeight: 800, fontSize: 13.5, letterSpacing: "-0.01em", fontFamily: "inherit", whiteSpace: "nowrap",
                         background: effTab === k ? T.grad : "transparent", color: effTab === k ? "#fff" : T.sub, transition: "all .15s ease" } }, label)))),
                 effTab === "board" && React.createElement(Leaderboard, { members: members, settings: settings }),
-                effTab === "members" && React.createElement(Members, { members: members, ledger: ledger, onAdjust: onAdjust, onAddMember: onAddMember, onBumpStat: onBumpStat, onSetLevel: onSetLevel, onResetPw: onResetPw, settings: settings, staffOnly: isStaff }),
+                effTab === "members" && React.createElement(Members, { members: members, ledger: ledger, onAdjust: onAdjust, onAddMember: onAddMember, onBumpStat: onBumpStat, onSetLevel: onSetLevel, onResetPw: onResetPw, onGroupEdit: onGroupEdit, settings: settings, staffOnly: isStaff }),
                 effTab === "events" && React.createElement(Events, { members: members, log: eventLog, onLogEvent: onLogEvent, settings: settings }),
                 effTab === "mate" && React.createElement(Mate, { members: members, onApprove: onApprove, settings: settings }),
                 effTab === "insights" && React.createElement(Insights, { insights: insights, onAdd: onAddInsight, onDelete: onDeleteInsight, onUpload: onUploadImage, onTogglePin: onTogglePinInsight, onEdit: onEditInsight, cats: catsOf(settings, "insightCats", INSIGHT_CATS), onSaveCats: (c) => onSaveCats("insights", c) }),
