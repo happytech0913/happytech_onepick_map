@@ -465,6 +465,19 @@ function liveGroups(m) {
     return Array.isArray(m) ? m : (Array.isArray(m && m.live) ? m.live : []);
 }
 
+/* 랭킹·시상에 들어갈 사람만 추린다 (v85)
+   기수 수강생과 만료자가 섞이면 "왜 저 사람이 1위지?"가 된다.
+   기록 자체는 시트에 남으므로, 나중에 그로인에 가입하면 그때 순위에 들어온다.
+
+   live 는 관리자 응답에만 실린다 — 서버가 일반 조회에는 키 자체를 넣지 않는다.
+   빈 배열을 넣으면 화면이 "자격 정보가 있는데 비어 있다"로 읽어
+   랭킹에서 전원을 걸러낸다. 없는 것과 비어 있는 것은 다르다. */
+function rankable(members) {
+    if (!Array.isArray(members)) return [];
+    const hasInfo = members.some((m) => m && "live" in m);
+    return hasInfo ? members.filter((m) => liveGroups(m.live).indexOf("member") >= 0) : members;
+}
+
 const ARCHIVE_ON = false;
 const ARCHIVE_URL = "happyclass.html";
 /* ── 행동 로그 (v3.20) ───────────────────────────────────────
@@ -631,7 +644,7 @@ async function api(action, payload = {}) {
 }
 /* ── 리더보드 (관리자용) ── */
 function Leaderboard({ members, settings }) {
-    const ranked = [...members].sort((a, b) => b.credits - a.credits);
+    const ranked = rankable(members).sort((a, b) => b.credits - a.credits);   // v85
     const top3 = ranked.slice(0, 3);
     const rest = ranked.slice(3);
     const medal = ["🥇", "🥈", "🥉"];
@@ -797,7 +810,15 @@ function Members({ members, ledger, onAdjust, onAddMember, onBumpStat, onSetLeve
                             " ",
                             React.createElement("b", { style: { color: T.coral } }, cnt),
                             " +1")))),
-                        React.createElement("div", { style: { fontSize: 11, color: T.sub, marginTop: 6 } }, "\uC798\uBABB \uB20C\uB800\uB2E4\uBA74 \uAD6C\uAE00 \uC2DC\uD2B8 \uBA64\uBC84 \uD0ED\uC5D0\uC11C \uC22B\uC790\uB97C \uC9C1\uC811 \uC218\uC815\uD558\uC138\uC694.")),
+                        React.createElement("div", { style: { fontSize: 11, color: T.sub, marginTop: 6 } }, "\uC798\uBABB \uB20C\uB800\uB2E4\uBA74 \uAD6C\uAE00 \uC2DC\uD2B8 \uBA64\uBC84 \uD0ED\uC5D0\uC11C \uC22B\uC790\uB97C \uC9C1\uC811 \uC218\uC815\uD558\uC138\uC694."),
+                        /* v85: 자격이 없으면 기록을 쌓아도 랭킹·등급에 안 뜬다.
+                           막지는 않는다 — 관리자는 만료자의 과거 기록도 고칠 수 있어야 하고,
+                           나중에 그로인에 가입하면 그동안의 기록이 그대로 살아난다.
+                           다만 "안 보인다"는 사실은 알려야 한다. */
+                        liveGroups(selMember.live).indexOf("member") < 0 && React.createElement("div", { style: { marginTop: 8, padding: "8px 10px", borderRadius: 10, background: "rgba(239,182,60,.14)", border: "1px solid rgba(239,182,60,.4)", fontSize: 11.5, color: "#7A5809", lineHeight: 1.6, fontWeight: 700 } },
+                            "\u26A0 \uADF8\uB85C\uC778\uBA64\uBC84 \uC790\uACA9\uC774 \uC5C6\uC5B4 \uB7AD\uD0B9\u00B7\uB4F1\uAE09\uC5D0 \uD45C\uC2DC\uB418\uC9C0 \uC54A\uC544\uC694.",
+                            React.createElement("br", null),
+                            "\uAE30\uB85D\uC740 \uC313\uC774\uACE0, \uC790\uACA9\uC744 \uBD99\uC774\uBA74 \uADF8\uB54C \uBC18\uC601\uB429\uB2C8\uB2E4.")),
                     React.createElement("div", { style: { margin: "0 0 10px", padding: "10px 12px", background: "#FAFCFB", borderRadius: 12, border: `1px solid ${T.line}` } },
                         React.createElement("div", { style: { fontSize: 12, fontWeight: 800, color: T.sub, marginBottom: 8 } },
                             "\uB4F1\uAE09 \uC9C0\uC815 ",
@@ -2395,7 +2416,8 @@ function RankingAdmin({ members, events, ledger, acts, visitlog }) {
 }
 /* ── 시상식 (개근왕 = 최다 참가) ── */
 function Awards({ members, settings }) {
-    const by = (f) => [...members].sort(f)[0];
+    const pool = rankable(members);   // v85: 자격 없는 사람은 수상 대상이 아니다
+    const by = (f) => [...pool].sort(f)[0];
     const master = by((a, b) => b.auctions - a.auctions || b.bids - a.bids);
     const diligent = by((a, b) => b.parts - a.parts); /* 개근왕: 최다 참가 */
     const champ = by((a, b) => b.wins - a.wins);
@@ -4450,8 +4472,9 @@ function PublicPage({ members, ledger, log, insights, lectures, settings, certs,
             React.createElement("div", { style: { fontSize: 34 } }, "\uD83C\uDF31"),
             React.createElement("div", { style: { fontSize: 14, fontWeight: 800, marginTop: 12, color: T.ink } }, "\uBD88\uB7EC\uC624\uB294 \uC911\u2026"),
             React.createElement("div", { style: { fontSize: 12, marginTop: 6, textAlign: "center", lineHeight: 1.6 } }, "\uC815\uBCF4\uB97C \uAC00\uC838\uC624\uACE0 \uC788\uC5B4\uC694. \uC7A0\uC2DC\uB9CC \uAE30\uB2E4\uB824\uC8FC\uC138\uC694.")));
-    const ranked = [...members].sort((a, b) => b.credits - a.credits);
-    const growthRanked = [...members].map((m) => ({ ...m, gs: growthScore(m) })).sort((a, b) => b.gs - a.gs);
+    const rankPool = rankable(members);   // v85: 자격 없는 사람 제외
+    const ranked = [...rankPool].sort((a, b) => b.credits - a.credits);
+    const growthRanked = [...rankPool].map((m) => ({ ...m, gs: growthScore(m) })).sort((a, b) => b.gs - a.gs);
     const myRank = ranked.findIndex((m) => m.id === meMember.id) + 1;
     const myGrowthRank = growthRanked.findIndex((m) => m.id === meMember.id) + 1;
     const myGS = growthScore(meMember);
