@@ -568,8 +568,8 @@ function render() {
        지갑에서 뺀 "연장하면 n장" 안내가 원래 있어야 할 자리가 여기다 —
        연장할 것이 있는 사람에게만, 연장을 생각하는 순간에 보인다. */
     html += '<div class="banner"><b>멤버십이 만료됐어요</b><p>연장하시면 ' +
-      locked + "편이 다시 열리고, 이용권 " + (d.renewTickets || 3) + "장을 드려요." +
-      (me.tickets > 0 ? "<br>가지고 계신 이용권 " + me.tickets + "장은 그대로 쓰실 수 있어요." : "") +
+      locked + "편이 다시 열리고, 클로버 " + (d.renewTickets || 3) + "개를 드려요." +
+      (me.tickets > 0 ? "<br>가지고 계신 클로버 " + me.tickets + "개는 그대로 쓰실 수 있어요." : "") +
       "</p></div>";
   }
 
@@ -728,21 +728,24 @@ function purse(d, me) {
   var t = me.tickets || 0;
 
   /* 이용권이 아카이브의 통화다 (v62)
+     v82: 회원 화면에서는 "클로버 🍀" 로 부른다 (도토리·쿠키처럼 이름이 붙으면 아깝게 쓴다).
+     시트·서버는 tickets·이용권기록 그대로다 — 표시만 바꾼 것이라 기록은 이어진다.
+     크레딧은 커뮤니티 전체가 쓰는 화폐라 그대로 둔다. 둘 다 애칭이면 구분이 안 된다.
      크레딧은 그로인 안에서만 뜻이 통하는 화폐이고, 여기서는 이용권으로 바꾸는 경로일 뿐이다.
      그래서 이용권을 앞에 두고, 크레딧은 그로인 멤버에게만 보여준다 —
      수강생·만료자는 벌 방법이 없는 화폐를 0으로 보게 되고, 그건
      "나는 뭔가 부족한 사람"처럼 읽힌다. */
   var ticket =
-    '<div class="w' + (t ? " gold" : " zero") + '"><span class="k">이용권</span>' +
-      "<b>" + t + "장</b>" +
-      '<span class="s">강의 수강(' + hours + "시간)에 써요<br>여러 장이 드는 강의도 있어요</span></div>";
+    '<div class="w' + (t ? " gold" : " zero") + '"><span class="k">클로버 🍀</span>' +
+      "<b>" + t + "개</b>" +
+      '<span class="s">강의 수강(' + hours + "시간)에 써요<br>여러 개가 드는 강의도 있어요</span></div>";
 
   if (!me.membership) return '<div class="purse">' + ticket + "</div>";
 
   var credit =
     '<div class="w' + (me.credits >= cost ? "" : " zero") + '"><span class="k">크레딧</span>' +
       "<b>" + (me.credits || 0).toLocaleString() + "</b>" +
-      '<span class="s">' + cost.toLocaleString() + " → 이용권 1장</span></div>";
+      '<span class="s">' + cost.toLocaleString() + " → 클로버 1개</span></div>";
 
   return '<div class="purse">' + ticket + credit + "</div>";
 }
@@ -778,7 +781,7 @@ function card(l) {  var open = ST.openId === l.id;
   if (l.open && l.byPass) tags += '<span class="tag time">' + esc(left || "곧 만료") + "</span>";
   if (!l.hasVideo) tags += '<span class="tag">영상 준비 중</span>';
   /* v80: 1장짜리는 붙이지 않는다 — 대부분이 1장이라 전부 붙으면 배지가 소음이 된다 */
-  if (!l.open && (l.price || 1) > 1) tags += '<span class="tag price">이용권 ' + l.price + "장</span>";
+  if (!l.open && (l.price || 1) > 1) tags += '<span class="tag price">클로버 ' + l.price + "개</span>";
   if (d.staff && l.access) tags += '<span class="tag">' + esc(l.access) + "</span>";
   if (d.staff && l.hide) tags += '<span class="tag">숨김</span>';
 
@@ -818,8 +821,8 @@ function lockedBody(l, me, d) {
   /* 이용권이 모자란 경우 (v80) — 3장짜리인데 1장뿐이면 "있음"도 "없음"도 아니다.
      예전엔 매수가 늘 1장이라 이 갈래가 필요 없었다. */
   if (me.tickets > 0 && me.tickets < need) {
-    return '<p class="why">이용권 ' + need + "장이 필요해요. 지금 " + me.tickets + "장 있어요 (" +
-      (need - me.tickets) + "장 모자라요).</p>" +
+    return '<p class="why">클로버가 ' + need + "개 필요해요. 지금 " + me.tickets + "개 있어요 (" +
+      (need - me.tickets) + "개 모자라요).</p>" +
       (me.membership
         ? (me.credits >= cost
             ? '<button class="btn primary block" data-use="' + l.id + '" data-pay="credit">크레딧 ' + cost.toLocaleString() + "으로 열기</button>"
@@ -828,8 +831,8 @@ function lockedBody(l, me, d) {
   }
 
   if (me.tickets >= need) {
-    return '<p class="why">이용권 ' + need + "장으로 " + hours + "시간 동안 볼 수 있어요. 지금 " + me.tickets + "장 있어요.</p>" +
-      '<button class="btn primary block" data-use="' + l.id + '" data-pay="ticket">이용권 ' + need + "장으로 열기</button>" +
+    return '<p class="why">클로버 ' + need + "개로 " + hours + "시간 동안 볼 수 있어요. 지금 " + me.tickets + "개 있어요.</p>" +
+      '<button class="btn primary block" data-use="' + l.id + '" data-pay="ticket">클로버 ' + need + "개로 열기</button>" +
       (me.membership && me.credits >= cost
         ? '<button class="alt" data-use="' + l.id + '" data-pay="credit">크레딧 ' + cost.toLocaleString() + "으로 대신 쓰기</button>"
         : "");
@@ -849,7 +852,7 @@ function lockedBody(l, me, d) {
   if (me.entitled === false) {
     return '<p class="why">멤버십이 만료돼서 잠겨 있어요. 연장하시면 바로 열립니다.</p>';
   }
-  return '<p class="why">이 강의는 이용권 ' + need + "장으로 열 수 있어요. 지금 가진 이용권이 없어요.</p>";
+  return '<p class="why">이 강의는 클로버 ' + need + "개로 열 수 있어요. 지금 가진 클로버가 없어요.</p>";
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -946,19 +949,19 @@ function renderSheet() {
   v.className = "veil";
   v.innerHTML =
     '<div class="sheet" role="dialog" aria-modal="true">' +
-      "<h3>" + (ticket ? "이용권 " + need + "장을 사용합니다" : "크레딧 " + cost.toLocaleString() + "을 사용합니다") + "</h3>" +
+      "<h3>" + (ticket ? "클로버 " + need + "개를 사용합니다" : "크레딧 " + cost.toLocaleString() + "을 사용합니다") + "</h3>" +
       '<div class="recap">' +
         '<div class="lec">' + esc(p.l.title) + "</div>" +
         '<div class="until">지금부터 ' + d.hours + "시간 · " + whenText(until) + "까지</div>" +
-        '<div class="row"><span class="k">' + (ticket ? "이용권" : "크레딧") + '</span><span class="v">' +
+        '<div class="row"><span class="k">' + (ticket ? "클로버" : "크레딧") + '</span><span class="v">' +
           "<s>" + (ticket ? me.tickets + "장" : me.credits.toLocaleString()) + "</s>" +
-          (ticket ? (me.tickets - need) + "장" : (me.credits - cost).toLocaleString()) +
+          (ticket ? (me.tickets - need) + "개" : (me.credits - cost).toLocaleString()) +
         "</span></div>" +
       "</div>" +
       '<button class="btn primary block" id="ok">사용하고 재생</button>' +
       '<button class="alt" id="no">취소</button>' +
       (ticket && me.membership && me.credits >= cost ? '<button class="alt" id="swap">크레딧 ' + cost.toLocaleString() + "으로 대신 쓰기</button>" :
-       (!ticket && me.tickets >= need ? '<button class="alt" id="swap">이용권 ' + need + "장으로 대신 쓰기</button>" : "")) +
+       (!ticket && me.tickets >= need ? '<button class="alt" id="swap">클로버 ' + need + "개로 대신 쓰기</button>" : "")) +
     "</div>";
   document.body.appendChild(v);
 
@@ -991,7 +994,7 @@ function confirmUse() {
       paint(p.l.id, v);
       lsSet(LEC_KEY, { t: Date.now(), d: ST.data });
       toast(v.spent && v.spent.source === "ticket"
-        ? "이용권 " + (l.price || 1) + "장을 썼어요"
+        ? "클로버 " + (l.price || 1) + "개를 썼어요"
         : "크레딧 " + (v.spent ? v.spent.cost : ST.data.cost).toLocaleString() + "을 썼어요");
     })
     .catch(function (e) {
@@ -1291,7 +1294,7 @@ function memberCard(m) {
     '<label class="mpick"><input type="checkbox" data-pick="' + m.id + '"' + (on ? " checked" : "") + " />" +
       '<span class="mname">' + esc(m.name) + " " + esc(m.p4) + '<span>id ' + m.id + (m.joined ? " · " + esc(m.joined) + " 가입" : "") + "</span></span></label>" +
     '<div class="mmeta">자격 ' + (m.live.length ? esc(m.live.join(" · ")) : "없음") +
-      "<br>이용권 " + m.tickets + "장 · 크레딧 " + (m.credits || 0).toLocaleString() + "</div>" +
+      "<br>클로버 " + m.tickets + "개 · 크레딧 " + (m.credits || 0).toLocaleString() + "</div>" +
     '<div class="mrow">' +
       '<input class="mg-n" data-id="' + m.id + '" inputmode="numeric" placeholder="장수" style="max-width:90px" />' +
       '<input class="mg-r" data-id="' + m.id + '" placeholder="사유" />' +
@@ -1388,7 +1391,7 @@ function renderEditor() {
           }).join("") +
         "</div>" +
         '<p class="hint' + (ED.access.length ? "" : " bad") + '">' +
-          (ED.access.length ? "고른 그룹 중 하나라도 가진 멤버에게 열려요." : "아무것도 고르지 않으면 잠깁니다. 크레딧·이용권으로만 열려요.") +
+          (ED.access.length ? "고른 그룹 중 하나라도 가진 멤버에게 열려요." : "아무것도 고르지 않으면 잠깁니다. 크레딧·클로버로만 열려요.") +
           "<br>member = 지금 멤버십이 살아 있는 모든 회원 (해지하면 자동으로 잠겨요)</p></div>" +
 
         '<div class="two">' +
