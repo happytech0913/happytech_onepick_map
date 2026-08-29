@@ -228,6 +228,14 @@ input:focus,button:focus{outline:2px solid var(--mint);outline-offset:2px}
 .pickbar input{flex:1;min-width:90px}
 .pickbar .btn{padding:9px 16px;font-size:12.5px;flex:0 0 auto}
 .mdrop{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin-top:6px}
+/* 자격 칩 — 하나씩 떼고 붙인다 */
+.gchips{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:8px}
+.gchip{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line);background:#fff;
+       border-radius:999px;padding:5px 10px;font-size:12px;font-weight:700;color:var(--ink)}
+.gchip.add{border-style:dashed;color:var(--sub);cursor:pointer}
+.gx{border:none;background:none;color:#C4CCCA;font-size:12px;line-height:1;padding:0 0 0 1px;cursor:pointer}
+.gx:hover{color:var(--coral)}
+.gnone{font-size:12px;color:var(--coral);font-weight:700}
 .mdrop span{font-size:11.5px;color:var(--sub);line-height:1.55}
 .mdrop .danger{padding:4px 0}
 .edit{border:none;background:none;color:var(--peri);font-size:11.5px;font-weight:800;text-decoration:underline;padding:6px 8px;margin-left:auto;flex:0 0 auto}
@@ -1288,21 +1296,33 @@ function bulkLabel(g, key, n) {
 
 function pickCount() { return Object.keys(ST.pick).length; }
 
+/* member 는 운영자가 알아보기 어렵다 — 화면에서만 바꿔 부른다 */
+function gLabel(g) { return String(g) === "member" ? "그로인멤버" : String(g); }
+
 function memberCard(m) {
   var on = !!ST.pick[m.id];
   return '<div class="mcard' + (on ? " picked" : "") + '">' +
     '<label class="mpick"><input type="checkbox" data-pick="' + m.id + '"' + (on ? " checked" : "") + " />" +
       '<span class="mname">' + esc(m.name) + " " + esc(m.p4) + '<span>id ' + m.id + (m.joined ? " · " + esc(m.joined) + " 가입" : "") + "</span></span></label>" +
-    '<div class="mmeta">자격 ' + (m.live.length ? esc(m.live.join(" · ")) : "없음") +
-      "<br>클로버 " + m.tickets + "개 · 크레딧 " + (m.credits || 0).toLocaleString() + "</div>" +
+    '<div class="mmeta">클로버 ' + m.tickets + "개 · 크레딧 " + (m.credits || 0).toLocaleString() + "</div>" +
+    /* 자격을 하나씩 떼고 붙인다 (v83)
+       member 는 화면에서만 "그로인멤버"로 부른다 — 시트에는 member 그대로 저장된다. */
+    '<div class="gchips">' +
+      (m.live.length
+        ? m.live.map(function (g) {
+            return '<span class="gchip">' + esc(gLabel(g)) +
+              '<button class="gx" data-goff="' + m.id + '" data-g="' + esc(g) + '" title="이 자격을 뗍니다">✕</button></span>';
+          }).join("")
+        : '<span class="gnone">자격 없음 — 아무 데도 못 들어가요</span>') +
+      '<button class="gchip add" data-gadd="' + m.id + '">+ 붙이기</button>' +
+    "</div>" +
     '<div class="mrow">' +
       '<input class="mg-n" data-id="' + m.id + '" inputmode="numeric" placeholder="장수" style="max-width:90px" />' +
       '<input class="mg-r" data-id="' + m.id + '" placeholder="사유" />' +
       '<button class="btn ghost mg-go" data-id="' + m.id + '">지급</button>' +
     "</div>" +
     (m.live.indexOf("member") >= 0
-      ? '<div class="mdrop"><button class="danger mg-drop" data-id="' + m.id + '">멤버십만 빼기</button>' +
-        "<span>커뮤니티·원픽 지도가 닫혀요. 크레딧·인증글·랭킹은 남아요.</span></div>"
+      ? '<div class="mdrop"><span>그로인멤버를 떼면 커뮤니티·원픽 지도가 닫혀요. 클로버·크레딧·인증글은 남아요.</span></div>'
       : "") +
   "</div>";
 }
@@ -1608,12 +1628,37 @@ function bindMember() {
     };
   });
 
-  Array.prototype.forEach.call(document.querySelectorAll(".mg-drop"), function (b) {
+  /* 자격 떼기 (v83) */
+  Array.prototype.forEach.call(document.querySelectorAll("[data-goff]"), function (b) {
     b.onclick = function () {
-      var id = Number(b.dataset.id);
-      if (!confirm("이 분의 멤버십(member)을 뺄까요?\n\n커뮤니티·원픽 지도·경매통계가 닫힙니다.\n크레딧·인증글·랭킹은 그대로 남아요.")) return;
-      api("memberDropMembership", { adminKey: ST.pin, id: id })
-        .then(function () { toast("멤버십을 뺐어요"); doFind(); })
+      var id = Number(b.dataset.goff), g = b.dataset.g;
+      var label = gLabel(g);
+      var warn = g === "member"
+        ? "\n\n커뮤니티·원픽 지도·경매통계가 닫힙니다.\n클로버·크레딧·인증글·랭킹은 그대로 남아요."
+        : "\n\n이 자격으로 열리던 강의가 잠깁니다.\n클로버는 그대로 남아요.";
+      if (!confirm("'" + label + "' 자격을 뗄까요?" + warn)) return;
+      api("memberGroupEdit", { adminKey: ST.pin, id: id, group: g, on: false })
+        .then(function () { toast("'" + label + "' 을 뗐어요"); doFind(); })
+        .catch(function (e) { toast(e.message); });
+    };
+  });
+
+  /* 자격 붙이기 — 이미 쓰는 그룹에서 고르거나 직접 입력 */
+  Array.prototype.forEach.call(document.querySelectorAll("[data-gadd]"), function (b) {
+    b.onclick = function () {
+      var id = Number(b.dataset.gadd);
+      var known = (ST.mem.groups || []).map(function (x) { return x.key; });
+      var list = known.map(function (g, i) { return (i + 1) + ". " + gLabel(g); }).join("\n");
+      var pick = prompt("붙일 자격을 고르세요.\n\n" + list + "\n\n번호를 넣거나 새 이름을 직접 쓰세요.");
+      if (pick === null) return;
+      pick = pick.trim(); if (!pick) return;
+      var n = Number(pick);
+      var g = (n >= 1 && n <= known.length) ? known[n - 1] : pick;
+      if (g === "그로인멤버") g = "member";   // 화면 이름으로 적었을 때
+      var until = prompt("'" + gLabel(g) + "' 만료일 (yyyy-MM-dd)\n\n비우면 무기한입니다.", "");
+      if (until === null) return;
+      api("memberGroupEdit", { adminKey: ST.pin, id: id, group: g, on: true, until: until.trim() })
+        .then(function () { toast("'" + gLabel(g) + "' 을 붙였어요"); doFind(); })
         .catch(function (e) { toast(e.message); });
     };
   });
