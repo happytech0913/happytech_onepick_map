@@ -717,7 +717,7 @@ function Members({ members, ledger, onAdjust, onAddMember, onBumpStat, onSetLeve
     const selMember = members.find((m) => m.id === sel);
     const selLedger = ledger.filter((l) => l.m === sel);
     return (React.createElement("div", null,
-        React.createElement(SectionTitle, { eyebrow: `총 ${members.length}명 · 활성`, title: "\uBA64\uBC84 \uAD00\uB9AC", right: React.createElement(Input, { value: q, onChange: (e) => setQ(e.target.value), placeholder: "\uC774\uB984 \uAC80\uC0C9", style: { width: 150, padding: "8px 16px", borderRadius: 999 } }) }),
+        React.createElement(SectionTitle, { eyebrow: `총 ${members.length}명 · 수강생 포함`, title: "\uBA64\uBC84 \uAD00\uB9AC", right: React.createElement(Input, { value: q, onChange: (e) => setQ(e.target.value), placeholder: "\uC774\uB984 \uAC80\uC0C9", style: { width: 150, padding: "8px 16px", borderRadius: 999 } }) }),
         React.createElement(Card, { pad: 16, style: { marginBottom: 14, background: T.gradSoft, border: "none" } },
             React.createElement("div", { style: { fontWeight: 800, fontSize: 14, letterSpacing: "-0.01em" } }, "\uC2E0\uADDC \uBA64\uBC84 \uB4F1\uB85D (\uACF5\uAC1C \uD398\uC774\uC9C0 \uC785\uC7A5 \uD5C8\uC6A9)"),
             React.createElement("div", { style: { fontSize: 12, color: T.sub, marginTop: 2, marginBottom: 10 } }, "\uB4F1\uB85D\uB41C \uC774\uB984 + \uCD08\uAE30 \uBE44\uBC00\uBC88\uD638(\uC804\uD654 \uB4B7 4\uC790\uB9AC)\uB85C \uC785\uC7A5\uD569\uB2C8\uB2E4. \uBA64\uBC84\uB294 \uC785\uC7A5 \uD6C4 \uBE44\uBC00\uBC88\uD638\uB97C \uC6D0\uD558\uB294 4\uC790\uB9AC\uB85C \uBC14\uAFC0 \uC218 \uC788\uC5B4\uC694."),
@@ -893,7 +893,7 @@ function Events({ members, log, onLogEvent, settings }) {
             w[id] = 3000;
         setWinAmt(w);
     };
-    const filtered = members
+    const filtered = rankable(members)   /* v86: 그로인 멤버만 당첨 대상 */
         .filter((m) => m.realName.includes(filter) || m.name.includes(filter))
         .sort((a, b) => String(a.realName || "").localeCompare(String(b.realName || ""), "ko")); // 가나다순 정렬
     const selectAllFiltered = () => setParts([...new Set([...parts, ...filtered.map((m) => m.id)])]);
@@ -1027,7 +1027,7 @@ function Events({ members, log, onLogEvent, settings }) {
 function Mate({ members, onApprove, settings }) {
     const [inviterId, setInviterId] = useState("");
     const [newbie, setNewbie] = useState("");
-    const inviters = [...members].filter((m) => m.invites > 0).sort((a, b) => b.invites - a.invites);
+    const inviters = rankable(members).filter((m) => m.invites > 0).sort((a, b) => b.invites - a.invites);   /* v86 */
     const BASE_PRICE = 29000;
     const paidPrice = Math.max(0, BASE_PRICE - settings.mateCoupon);
     return (React.createElement("div", null,
@@ -1064,7 +1064,7 @@ function Mate({ members, onApprove, settings }) {
                 React.createElement("div", { style: { fontSize: 12, fontWeight: 800, color: T.sub, marginBottom: 4 } }, "\uC18C\uAC1C\uD55C \uBA64\uBC84"),
                 React.createElement("select", { value: inviterId, onChange: (e) => setInviterId(e.target.value), style: { width: "100%", border: `1.5px solid ${T.line}`, borderRadius: 10, padding: "10px 12px", fontSize: 14, fontFamily: "inherit", outline: "none", background: "#fff", marginBottom: 10 } },
                     React.createElement("option", { value: "" }, "\u2014 \uBA64\uBC84 \uC120\uD0DD \u2014"),
-                    [...members].sort((a, b) => a.realName.localeCompare(b.realName, "ko")).map((m) => (React.createElement("option", { key: m.id, value: m.id }, m.name)))),
+                    rankable(members).sort((a, b) => a.realName.localeCompare(b.realName, "ko")).map((m) => (React.createElement("option", { key: m.id, value: m.id }, m.name)))),   /* v86 */
                 React.createElement("div", { style: { fontSize: 12, fontWeight: 800, color: T.sub, marginBottom: 4 } }, "\uC18C\uAC1C\uBC1B\uC740 \uC2E0\uADDC \uBA64\uBC84 \uC774\uB984"),
                 React.createElement(Input, { value: newbie, onChange: (e) => setNewbie(e.target.value), placeholder: "\uC608: \uAE40\uC11C\uC5F0", style: { width: "100%", boxSizing: "border-box", marginBottom: 12 } }),
                 React.createElement(Btn, { style: { width: "100%" }, disabled: !inviterId || !newbie.trim(), onClick: () => { onApprove(Number(inviterId), newbie.trim()); setInviterId(""); setNewbie(""); } },
@@ -2269,7 +2269,10 @@ function RankingAdmin({ members, events, ledger, acts, visitlog }) {
         ledger.forEach((l) => { if (l.amount > 0 && inWindow(l.date))
             st(l.m).credits += l.amount; });
     }
-    const scored = members
+    /* v86: 시상 참고표에서도 자격 없는 사람을 뺀다.
+       여기는 활동기록으로 점수를 다시 계산하는 곳이라 회원 화면과 경로가 다르다.
+       빠뜨리면 수강생이 1위로 떠서 그대로 시상해버릴 수 있다. */
+    const scored = rankable(members)
         .map((m) => ({ ...m, s: st(m.id), score: growthScore(st(m.id)) }))
         .sort((a, b) => b.score - a.score || b.s.credits - a.s.credits);
     const ranked = scored.filter((m) => m.score > 0 || m.s.credits > 0);
@@ -5957,8 +5960,10 @@ function App() {
         if (live)
             api("saveSettings", { adminKey, settings: s }).then(() => say("설정 저장 완료")).catch(fail);
     };
-    const total = members.reduce((s, m) => s + m.credits, 0);
-    const usable = members.filter((m) => canUse(m.credits, settings)).length;
+    /* v86: 요약 숫자도 그로인 멤버 기준. 수강생이 섞이면 "멤버 74명"이 실제와 어긋난다. */
+    const pool = rankable(members);
+    const total = pool.reduce((s, m) => s + m.credits, 0);
+    const usable = pool.filter((m) => canUse(m.credits, settings)).length;
     const isStaff = adminRole === "staff";
     const STAFF_TABS = ["members", "insights", "lectures", "certs", "austats", "tools"]; // 운영진 허용 탭 (크레딧 관련 제외)
     const TABS = [
@@ -6002,7 +6007,7 @@ function App() {
                         React.createElement("div", { style: { display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" } },
                             React.createElement(Pill, { style: { background: "rgba(255,255,255,.18)", fontSize: 12.5 } },
                                 "\uBA64\uBC84 ",
-                                members.length,
+                                pool.length,   /* v86: 그로인 멤버 기준 */
                                 "\uBA85"),
                             isStaff
                                 ? React.createElement(Pill, { tone: "gold", style: { fontSize: 12.5 } }, "\u2B50 \uC6B4\uC601\uC9C4")
