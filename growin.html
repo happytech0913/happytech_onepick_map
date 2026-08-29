@@ -717,7 +717,10 @@ function Members({ members, ledger, onAdjust, onAddMember, onBumpStat, onSetLeve
     const selMember = members.find((m) => m.id === sel);
     const selLedger = ledger.filter((l) => l.m === sel);
     return (React.createElement("div", null,
-        React.createElement(SectionTitle, { eyebrow: `총 ${members.length}명 · 수강생 포함`, title: "\uBA64\uBC84 \uAD00\uB9AC", right: React.createElement(Input, { value: q, onChange: (e) => setQ(e.target.value), placeholder: "\uC774\uB984 \uAC80\uC0C9", style: { width: 150, padding: "8px 16px", borderRadius: 999 } }) }),
+        /* v86: 두 숫자를 나눠 보여준다.
+           여기는 자격을 붙이고 떼는 곳이라 전원이 보여야 하는데,
+           "총 74명"만 쓰면 그로인 멤버 수로 오해한다. 실제로 궁금한 건 앞의 숫자다. */
+        React.createElement(SectionTitle, { eyebrow: `그로인 ${rankable(members).length}명 · 전체 ${members.length}명 (수강생·만료자 포함)`, title: "\uBA64\uBC84 \uAD00\uB9AC", right: React.createElement(Input, { value: q, onChange: (e) => setQ(e.target.value), placeholder: "\uC774\uB984 \uAC80\uC0C9", style: { width: 150, padding: "8px 16px", borderRadius: 999 } }) }),
         React.createElement(Card, { pad: 16, style: { marginBottom: 14, background: T.gradSoft, border: "none" } },
             React.createElement("div", { style: { fontWeight: 800, fontSize: 14, letterSpacing: "-0.01em" } }, "\uC2E0\uADDC \uBA64\uBC84 \uB4F1\uB85D (\uACF5\uAC1C \uD398\uC774\uC9C0 \uC785\uC7A5 \uD5C8\uC6A9)"),
             React.createElement("div", { style: { fontSize: 12, color: T.sub, marginTop: 2, marginBottom: 10 } }, "\uB4F1\uB85D\uB41C \uC774\uB984 + \uCD08\uAE30 \uBE44\uBC00\uBC88\uD638(\uC804\uD654 \uB4B7 4\uC790\uB9AC)\uB85C \uC785\uC7A5\uD569\uB2C8\uB2E4. \uBA64\uBC84\uB294 \uC785\uC7A5 \uD6C4 \uBE44\uBC00\uBC88\uD638\uB97C \uC6D0\uD558\uB294 4\uC790\uB9AC\uB85C \uBC14\uAFC0 \uC218 \uC788\uC5B4\uC694."),
