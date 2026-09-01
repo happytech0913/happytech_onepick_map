@@ -478,7 +478,7 @@ function rankable(members) {
     return hasInfo ? members.filter((m) => liveGroups(m.live).indexOf("member") >= 0) : members;
 }
 
-const ARCHIVE_ON = false;
+const ARCHIVE_ON = true;
 const ARCHIVE_URL = "happyclass.html";
 /* ── 행동 로그 (v3.20) ───────────────────────────────────────
    멤버가 어느 탭에 얼마나 머물렀는지 기록한다. 부하 원칙 3가지:
@@ -4894,10 +4894,10 @@ function PublicPage({ members, ledger, log, insights, lectures, settings, certs,
             ARCHIVE_ON && React.createElement("a", { href: ARCHIVE_URL, target: "_blank", rel: "noopener",
                 style: { display: "flex", alignItems: "center", gap: 10, textDecoration: "none",
                     border: `1.5px solid ${T.line}`, borderRadius: 14, padding: "13px 16px", marginBottom: 14, background: "#fff" } },
-                React.createElement("div", { style: { fontSize: 20 } }, "\uD83D\uDDC3\uFE0F"),
+                React.createElement("div", { style: { fontSize: 20 } }, "\uD83C\uDF40"),
                 React.createElement("div", { style: { flex: 1, minWidth: 0 } },
-                    React.createElement("div", { style: { fontSize: 13.5, fontWeight: 800, color: T.ink, letterSpacing: "-0.02em" } }, "\uAC15\uC758 \uC544\uCE74\uC774\uBE0C"),
-                    React.createElement("div", { style: { fontSize: 11.5, color: T.sub, marginTop: 2, lineHeight: 1.5 } }, "\uC9C0\uB09C \uAC15\uC758\uB97C \uD06C\uB808\uB527\u00B7\uC774\uC6A9\uAD8C\uC73C\uB85C \uD55C \uD3B8\uC529 \uC5F4\uC5B4\uBCFC \uC218 \uC788\uC5B4\uC694")),
+                    React.createElement("div", { style: { fontSize: 13.5, fontWeight: 800, color: T.ink, letterSpacing: "-0.02em" } }, "\uD574\uD53C\uD074\uB798\uC2A4"),
+                    React.createElement("div", { style: { fontSize: 11.5, color: T.sub, marginTop: 2, lineHeight: 1.5 } }, "\uC9C0\uB09C \uAC15\uC758\uB97C \uD074\uB85C\uBC84\uB85C \uD55C \uD3B8\uC529 \uC5F4\uC5B4\uBCFC \uC218 \uC788\uC5B4\uC694")),
                 React.createElement("div", { style: { color: T.sub, fontSize: 15 } }, "\u2192")),
             React.createElement(SearchBox, { value: q, onChange: setQ, count: list.length, placeholder: "\uAC80\uC0C9 \u2014 \uAC15\uC758 \uC81C\uBAA9 \u00B7 \uC124\uBA85 \u00B7 \uBD84\uB958" }),
             cats.length > 1 && (React.createElement("div", { style: { display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12, overflowX: "auto" } }, cats.map((c) => (React.createElement("button", { key: c, onClick: () => setFilter(c), style: { cursor: "pointer", borderRadius: 999, padding: "6px 12px", fontWeight: 700, fontSize: 12, fontFamily: "inherit", whiteSpace: "nowrap",
