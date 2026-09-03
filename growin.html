@@ -119,7 +119,10 @@ const T = {
 const DEFAULT_SETTINGS = {
     mateReward: 5000,
     mateCoupon: 5000,
-    minUse: 5000,
+    /* v89: 5,000 → 1,000. 실제 값은 설정 시트의 minUse 가 정한다.
+       여기 숫자는 서버 응답이 오기 전 아주 짧은 순간에만 보인다.
+       옛 값을 두면 그 찰나에 5,000이 깜빡인다. */
+    minUse: 1000,
     lv2Pts: 3, // 등급 자동 업그레이드 기준 (활동 점수)
     lv3Pts: 8,
     lv4Pts: 15,
@@ -875,7 +878,8 @@ function Events({ members, log, onLogEvent, settings }) {
     const [note, setNote] = useState("");
     const [filter, setFilter] = useState("");
     const [parts, setParts] = useState([]); // 참가자 id 배열
-    const [winAmt, setWinAmt] = useState({}); // { id: amount } — 당첨자만
+    const [winAmt, setWinAmt] = useState({});
+    const [partAmt, setPartAmt] = useState(5);   // v90: 참가 크레딧 (당첨자 제외) // { id: amount } — 당첨자만
     const togglePart = (id) => {
         if (parts.includes(id)) {
             setParts(parts.filter((x) => x !== id));
@@ -902,12 +906,16 @@ function Events({ members, log, onLogEvent, settings }) {
     const selectAllFiltered = () => setParts([...new Set([...parts, ...filtered.map((m) => m.id)])]);
     const clearAll = () => { setParts([]); setWinAmt({}); };
     const winners = Object.entries(winAmt).map(([id, amount]) => ({ m: Number(id), amount: Number(amount) || 0 }));
-    const total = winners.reduce((s, w) => s + w.amount, 0);
+    /* v90: 참가 크레딧은 당첨자에게 주지 않는다 — 서버도 같은 규칙이다.
+       한 사람이 당첨과 참가를 둘 다 받으면 이중 지급이 된다. */
+    const partOnly = parts.filter((id) => winAmt[id] == null);
+    const partTotal = (Number(partAmt) || 0) * partOnly.length;
+    const total = winners.reduce((s, w) => s + w.amount, 0) + partTotal;
     const canSubmit = parts.length > 0; // 0 지급 허용 (기록만) · 제목 미입력 시 자동 생성
     const submit = () => {
         const d = new Date();
         const autoTitle = `${d.getMonth() + 1}/${d.getDate()} ${typeMeta.label}`;
-        onLogEvent({ type, title: title.trim() || autoTitle, note: note.trim(), participants: parts, winners });
+        onLogEvent({ type, title: title.trim() || autoTitle, note: note.trim(), participants: parts, winners, partAmount: Number(partAmt) || 0 });
         setTitle("");
         setNote("");
         setParts([]);
@@ -954,9 +962,25 @@ function Events({ members, log, onLogEvent, settings }) {
                     }),
                     filtered.length === 0 && React.createElement("div", { style: { fontSize: 12.5, color: T.sub, padding: 6 } }, "\uAC80\uC0C9 \uACB0\uACFC\uAC00 \uC5C6\uC5B4\uC694")),
                 parts.length > 0 && (React.createElement(React.Fragment, null,
+                    /* ── 참가 크레딧 (v90) ──
+                       참가만 해도 크레딧을 주기로 바뀌었다.
+                       예전엔 전원을 당첨 처리해야 했는데 그러면 wins 가 올라가 그로인 랭킹이 왜곡된다.
+                       여기서 한 번에 주면 당첨 기록 없이 크레딧만 나간다. */
+                    React.createElement("div", { style: { margin: "14px 0 8px", padding: "12px 14px", borderRadius: 12, background: "rgba(53,201,168,.10)", border: "1px solid rgba(53,201,168,.35)" } },
+                        React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" } },
+                            React.createElement("div", { style: { fontWeight: 800, fontSize: 13, color: T.ink } }, "\uCC38\uAC00 \uD06C\uB808\uB527"),
+                            React.createElement(Input, { type: "number", value: partAmt, onChange: (e) => setPartAmt(e.target.value), style: { width: 88, padding: "5px 9px", textAlign: "right", fontSize: 12.5 } }),
+                            React.createElement("span", { style: { fontSize: 12, color: T.sub, fontWeight: 700 } },
+                                `\uD06C\uB808\uB527 \u00D7 ${partOnly.length}\uBA85 = ${partTotal.toLocaleString()}`)),
+                        React.createElement("div", { style: { fontSize: 11.5, color: T.sub, marginTop: 6, lineHeight: 1.6 } },
+                            "\uCC38\uAC00\uC790 \uC804\uC6D0\uC5D0\uAC8C \uB098\uAC11\uB2C8\uB2E4. \uB2F9\uCCA8 \uAE30\uB85D\uC740 \uB0A8\uC9C0 \uC54A\uC544\uC694 \u2014 \uADF8\uB85C\uC778 \uB7AD\uD0B9\uC5D0 \uC601\uD5A5\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.",
+                            React.createElement("br", null),
+                            "\uC544\uB798\uC5D0\uC11C \uB2F9\uCCA8\uC73C\uB85C \uC9C0\uC815\uD55C \uBD84\uC740 \uC81C\uC678\uB429\uB2C8\uB2E4 \u2014 \uB458 \uB2E4 \uBC1B\uC73C\uBA74 \uC774\uC911 \uC9C0\uAE09\uC774\uC5D0\uC694.",
+                            React.createElement("br", null),
+                            "0 \uC73C\uB85C \uB450\uBA74 \uCC38\uAC00 \uD06C\uB808\uB527\uC744 \uC8FC\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4.")),
                     React.createElement("div", { style: { fontWeight: 800, fontSize: 13, margin: "14px 0 8px" } },
                         "\uB2F9\uCCA8\uC790 \uC9C0\uC815 ",
-                        React.createElement("span", { style: { fontSize: 11.5, color: T.sub, fontWeight: 600 } }, "\u00B7 \uD06C\uB808\uB527 0\uC73C\uB85C \uB450\uBA74 \uB2F9\uCCA8 \uAE30\uB85D\uB9CC \uB0A8\uC2B5\uB2C8\uB2E4")),
+                        React.createElement("span", { style: { fontSize: 11.5, color: T.sub, fontWeight: 600 } }, "\u00B7 \uD06C\uB808\uB527 0\uC73C\uB85C \uB450\uBA74 \uB2F9\uCCA8 \uAE30\uB85D\uB9CC \uB0A8\uC2B5\uB2C8\uB2E4 \u00B7 \uCC38\uAC00 \uD06C\uB808\uB527\uC740 \uC548 \uBC1B\uC544\uC694")),
                     parts.map((id) => {
                         const m = members.find((x) => x.id === id);
                         const won = winAmt[id] != null;
@@ -973,7 +997,7 @@ function Events({ members, log, onLogEvent, settings }) {
                     }))),
                 React.createElement("div", { style: { marginTop: 14, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 } },
                     React.createElement("div", { style: { fontSize: 13, color: T.sub } },
-                        parts.length === 0 && React.createElement(React.Fragment, null, "\uCC38\uAC00\uC790\uB97C \uC120\uD0DD\uD558\uBA74 \uAE30\uB85D\uD560 \uC218 \uC788\uC5B4\uC694 \u00B7 \uD06C\uB808\uB527 0 \uC9C0\uAE09\uB3C4 \uAC00\uB2A5\uD569\uB2C8\uB2E4"),
+                        parts.length === 0 && React.createElement(React.Fragment, null, "\uCC38\uAC00\uC790\uB97C \uC120\uD0DD\uD558\uBA74 \uCC38\uAC00 \uD06C\uB808\uB527\uACFC \uB2F9\uCCA8\uC744 \uC815\uD560 \uC218 \uC788\uC5B4\uC694"),
                         parts.length > 0 && React.createElement(React.Fragment, null,
                             "\uCC38\uAC00 ",
                             parts.length,
@@ -982,6 +1006,9 @@ function Events({ members, log, onLogEvent, settings }) {
                             "\uBA85 \u00B7 \uCD1D \uC9C0\uAE09 ",
                             React.createElement("b", { style: { color: T.ink } }, total.toLocaleString()),
                             " \uD06C\uB808\uB527",
+                            /* v90: 어떻게 나뉘어 나가는지 한 줄로 보여준다 */
+                            React.createElement("span", { style: { display: "block", fontSize: 11.5, marginTop: 2 } },
+                                `\uB2F9\uCCA8 ${winners.length}\uBA85 ${winners.reduce((s, w) => s + w.amount, 0).toLocaleString()} + \uCC38\uAC00\uB9CC ${partOnly.length}\uBA85 \u00D7 ${Number(partAmt) || 0} = ${partTotal.toLocaleString()}`),
                             !title.trim() && React.createElement("span", { style: { display: "block", fontSize: 11.5, marginTop: 2 } },
                                 "\uC81C\uBAA9 \uBBF8\uC785\uB825 \uC2DC \u300C",
                                 new Date().getMonth() + 1,
