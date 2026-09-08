@@ -729,7 +729,7 @@ function loadPosts(quiet){
   if(!API) return;
   call({action:'list', token:myToken||''}, function(res){
     if(!res||!res.ok){
-      if(postsTry < 2){ postsTry++; setTimeout(function(){ loadPosts(true); }, 1200); return; }
+      if(postsTry < 3){ postsTry++; console.warn('[해피테크] 목록 재시도', postsTry); setTimeout(function(){ loadPosts(true); }, 800); return; }
       if(!quiet) toast('목록을 불러오지 못했습니다');
       return;
     }
@@ -917,14 +917,22 @@ function call(params, cb){
 
   sc.src = API + '?' + qs + '&callback=' + name;
   sc.onerror = function(){
-    if(!done){ done=true; delete window[name]; try{ cb(null); }catch(e){} }
+    if(!done){
+      done=true; delete window[name];
+      console.warn('[해피테크] 스크립트 로드 실패:', sc.src);
+      try{ cb(null); }catch(e){}
+    }
     if(sc.parentNode) sc.parentNode.removeChild(sc);
   };
   document.head.appendChild(sc);
 
   setTimeout(function(){
-    if(!done && window[name]){ done=true; delete window[name]; try{ cb(null); }catch(e){} }
-  }, 15000);
+    if(!done && window[name]){
+      done=true; delete window[name];
+      console.warn('[해피테크] 응답 없음:', sc.src);
+      try{ cb(null); }catch(e){}
+    }
+  }, 6000);
 }
 
 /* ───────── 방문 기록 ───────── */
