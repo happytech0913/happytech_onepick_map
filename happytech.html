@@ -701,7 +701,7 @@ function doLogin(){
   if(phone.length<10){ $('mErr').textContent='전화번호를 정확히 입력해주세요.'; return; }
   if(!/^[0-9]{4}$/.test(pw)){ $('mErr').textContent='비밀번호는 숫자 4자리입니다.'; return; }
   $('mErr').textContent='확인 중…';
-  api('POST',{action:'signup',name:name,phone:phone,pw:pw},function(res){
+  call({action:'signup',name:name,phone:phone,pw:pw},function(res){
     if(!res||!res.ok){ $('mErr').textContent=(res&&res.error)||'실패했습니다.'; return; }
     myToken=res.token; myName=res.name||name; saveAuth(); track('login', '');
     $('mErr').textContent='';
@@ -713,7 +713,7 @@ function doWrite(){
   var q=$('wQ').value.trim();
   if(q.length<10){ $('wErr').textContent='질문을 조금 더 자세히 적어주세요.'; return; }
   $('wErr').textContent='등록 중…';
-  api('POST',{action:'write',token:myToken,cat:$('wCat').value,nick:$('wNick').value.trim(),q:q},
+  call({action:'write',token:myToken,cat:$('wCat').value,nick:$('wNick').value.trim(),q:q},
   function(res){
     if(!res||!res.ok){ $('wErr').textContent=(res&&res.error)||'등록하지 못했습니다.'; return; }
     $('wQ').value=''; $('wErr').textContent='';
@@ -725,13 +725,11 @@ function doWrite(){
 
 function loadPosts(){
   if(!API) return;
-  var q='action=list';
-  if(myToken) q+='&token='+encodeURIComponent(myToken);
-  fetch(API+'?'+q).then(function(r){return r.json();}).then(function(res){
+  call({action:'list', token:myToken||''}, function(res){
     if(!res||!res.ok){ toast('목록을 불러오지 못했습니다'); return; }
     QA = res.items;
     renderMeBar(); renderChips(); renderList();
-  }).catch(function(){ toast('서버 연결에 실패했습니다'); });
+  });
 }
 
 /* ───────── 관리자 ───────── */
@@ -748,19 +746,21 @@ $('ht').addEventListener('click', function(){
 function closeAdminModal(){ $('amodal').classList.remove('on'); $('aerr').textContent=''; }
 
 function api(method, payload, cb){
-  if(!API){ toast('백엔드 주소(API)가 아직 비어 있습니다'); return; }
-  var opt = method==='GET'
-    ? {method:'GET'}
-    : {method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify(payload)};
-  var url = method==='GET' ? API+'?'+payload : API;
-  fetch(url, opt).then(function(r){return r.json();}).then(cb)
-    .catch(function(){ toast('연결에 실패했습니다'); });
+  if(typeof payload === 'string'){
+    var o={};
+    payload.split('&').forEach(function(kv){
+      var i=kv.indexOf('='); if(i<0) return;
+      o[decodeURIComponent(kv.slice(0,i))] = decodeURIComponent(kv.slice(i+1));
+    });
+    payload = o;
+  }
+  call(payload, cb);
 }
 
 function adminLogin(){
   var pw=$('apw').value.trim();
   if(!pw){ $('aerr').textContent='비밀번호를 입력해주세요.'; return; }
-  api('POST', {action:'adminLogin', pw:pw}, function(res){
+  call({action:'adminLogin', pw:pw}, function(res){
     if(!res || !res.ok){ $('aerr').textContent=(res&&res.error)||'실패했습니다.'; return; }
     adminToken=res.token; closeAdminModal(); enterAdmin();
   });
@@ -792,7 +792,7 @@ function exitAdmin(){
 }
 
 function loadAdmin(){
-  api('GET', 'action=adminList&token='+encodeURIComponent(adminToken), function(res){
+  call({action:'adminList', token:adminToken}, function(res){
     if(!res || !res.ok){ toast((res&&res.error)||'불러오지 못했습니다'); return; }
     adminItems=res.items;
     $('astat').textContent='전체 '+res.stat['전체']+' · 대기 '+res.stat['대기']
@@ -842,7 +842,7 @@ function renderAdmin(){
 }
 
 function saveRow(id){
-  api('POST', {
+  call({
     action:'adminSave', token:adminToken, id:id,
     pub:$('p-'+id).value, priv:$('v-'+id).value,
     cat:$('c-'+id).value, status:$('s-'+id).value
@@ -885,6 +885,41 @@ function updateBar(){
 window.addEventListener('scroll', updateBar, {passive:true});
 window.addEventListener('resize', updateBar);
 
+
+/* ───────── 서버 통신 (JSONP · CORS 회피) ───────── */
+
+var _jseq = 0;
+
+function call(params, cb){
+  if(!API){ toast('백엔드 주소가 비어 있습니다'); return; }
+  var name = '__cb' + (++_jseq) + '_' + Date.now().toString(36);
+  var done = false;
+  var sc = document.createElement('script');
+
+  window[name] = function(res){
+    done = true;
+    try{ cb(res); } finally {
+      delete window[name];
+      if(sc.parentNode) sc.parentNode.removeChild(sc);
+    }
+  };
+
+  var qs = Object.keys(params).map(function(k){
+    return encodeURIComponent(k)+'='+encodeURIComponent(params[k]==null?'':params[k]);
+  }).join('&');
+
+  sc.src = API + '?' + qs + '&callback=' + name;
+  sc.onerror = function(){
+    if(!done){ delete window[name]; toast('서버에 연결하지 못했습니다'); }
+    if(sc.parentNode) sc.parentNode.removeChild(sc);
+  };
+  document.head.appendChild(sc);
+
+  setTimeout(function(){
+    if(!done && window[name]){ delete window[name]; toast('서버 응답이 없습니다'); }
+  }, 15000);
+}
+
 /* ───────── 방문 기록 ───────── */
 
 var VID = (function(){
@@ -912,9 +947,9 @@ function track(evt, target){
         + '&r='+encodeURIComponent(SRC)
         + '&m='+DEVICE;
   try{
-    if(navigator.sendBeacon){ navigator.sendBeacon(API+'?'+q); return; }
+    var img=new Image();
+    img.src = API+'?'+q+'&_='+Date.now();
   }catch(e){}
-  try{ fetch(API+'?'+q, {mode:'no-cors', keepalive:true}); }catch(e){}
 }
 
 
@@ -937,7 +972,7 @@ function setATab(t){
 }
 
 function loadAdminDocs(){
-  api('GET','action=adminDocs&token='+encodeURIComponent(adminToken), function(res){
+  call({action:'adminDocs', token:adminToken}, function(res){
     if(!res||!res.ok){ toast((res&&res.error)||'불러오지 못했습니다'); return; }
     adminDocs=res.items; renderAdminDocs();
   });
@@ -988,7 +1023,7 @@ function saveDoc(id){
     link:$('dLink').value, summary:$('dSum').value, rel:$('dRel').value,
     open:$('dOpen').checked};
   if(!body.title.trim()){ toast('제목을 입력해주세요'); return; }
-  api('POST', body, function(res){
+  call(body, function(res){
     if(res&&res.ok){ toast('저장했습니다'); editingDoc=null; loadAdminDocs(); DOCS=[]; loadDocs(); }
     else toast((res&&res.error)||'저장하지 못했습니다');
   });
@@ -1019,10 +1054,10 @@ function showView(v){
 
 function loadDocs(){
   if(!API) return;
-  fetch(API+'?action=docs').then(function(r){return r.json();}).then(function(res){
+  call({action:'docs'}, function(res){
     if(!res||!res.ok) return;
     DOCS=res.items; renderDocs();
-  }).catch(function(){});
+  });
 }
 
 function renderDocs(){
