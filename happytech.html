@@ -1172,6 +1172,7 @@ function openDoc(i){
       if(!el) return;
       if(res && res.ok && res.html){
         el.innerHTML = res.html;
+        loadDocImages(el);
         track('open_file', d.id);
       } else {
         var msg = (res && res.error) ? res.error : '서버에 연결하지 못했습니다';
@@ -1181,6 +1182,32 @@ function openDoc(i){
                      + '<b>📄 '+esc(d.title)+'</b><span>새 탭에서 열기</span></a>';
       }
     });
+  }
+}
+
+
+/* 구글 문서 이미지는 서버를 거쳐 불러옵니다 */
+function loadDocImages(root){
+  var imgs = root.querySelectorAll('img');
+  for(var i=0;i<imgs.length;i++){
+    (function(img){
+      var src = img.getAttribute('src') || '';
+      if(!src || src.indexOf('data:') === 0) return;
+      if(src.indexOf('docs.google.com') < 0 && src.indexOf('googleusercontent.com') < 0) return;
+
+      img.style.opacity = '.35';
+      fetch(API + '?action=docimg&u=' + encodeURIComponent(src))
+        .then(function(r){ return r.text(); })
+        .then(function(data){
+          if(data && data.indexOf('data:image') === 0){
+            img.src = data;
+            img.style.opacity = '1';
+          } else {
+            img.remove();
+          }
+        })
+        .catch(function(){ img.remove(); });
+    })(imgs[i]);
   }
 }
 
