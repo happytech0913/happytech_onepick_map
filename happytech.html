@@ -1170,7 +1170,10 @@ function openDoc(i){
         el.innerHTML = res.html;
         track('open_file', d.id);
       } else {
-        el.innerHTML = '<a class="opencard" href="'+esc(d.link)+'" target="_blank" rel="noopener">'
+        var msg = (res && res.error) ? res.error : '서버에 연결하지 못했습니다';
+        console.warn('[해피테크] 문서 불러오기 실패:', msg);
+        el.innerHTML = '<div class="wait" style="margin-bottom:12px">'+esc(msg)+'</div>'
+                     + '<a class="opencard" href="'+esc(d.link)+'" target="_blank" rel="noopener">'
                      + '<b>📄 '+esc(d.title)+'</b><span>새 탭에서 열기</span></a>';
       }
     });
