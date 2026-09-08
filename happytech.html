@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>해피테크 질문 게시판</title>
+<title>해피테크</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -253,8 +253,8 @@ footer{text-align:center;padding:30px 0 30px;font-size:12.5px;color:#8194A8;line
   <div class="hero">
   <div class="sprout">🌱</div>
   <div class="eyebrow">해피테크 · GROW IN</div>
-  <h1 id="heroTitle">질문 게시판</h1>
-   <div class="sub" id="heroSub">낙찰 전후에 막히는 것들, 여기 물어보세요</div>
+  <h1 id="heroTitle">해피테크</h1>
+   <div class="sub" id="heroSub">낙찰 전후에 막히는 것들, 여기서 풀어갑니다</div>
   </div>
  </div>
 </div>
@@ -723,10 +723,17 @@ function doWrite(){
   });
 }
 
-function loadPosts(){
+var postsTry = 0;
+
+function loadPosts(quiet){
   if(!API) return;
   call({action:'list', token:myToken||''}, function(res){
-    if(!res||!res.ok){ toast('목록을 불러오지 못했습니다'); return; }
+    if(!res||!res.ok){
+      if(postsTry < 2){ postsTry++; setTimeout(function(){ loadPosts(true); }, 1200); return; }
+      if(!quiet) toast('목록을 불러오지 못했습니다');
+      return;
+    }
+    postsTry = 0;
     QA = res.items;
     renderMeBar(); renderChips(); renderList();
   });
@@ -910,13 +917,13 @@ function call(params, cb){
 
   sc.src = API + '?' + qs + '&callback=' + name;
   sc.onerror = function(){
-    if(!done){ delete window[name]; toast('서버에 연결하지 못했습니다'); }
+    if(!done){ done=true; delete window[name]; try{ cb(null); }catch(e){} }
     if(sc.parentNode) sc.parentNode.removeChild(sc);
   };
   document.head.appendChild(sc);
 
   setTimeout(function(){
-    if(!done && window[name]){ delete window[name]; toast('서버 응답이 없습니다'); }
+    if(!done && window[name]){ done=true; delete window[name]; try{ cb(null); }catch(e){} }
   }, 15000);
 }
 
@@ -1040,9 +1047,8 @@ function showView(v){
   $('docsView').style.display  = board ? 'none' : '';
   $('navBoard').className = 'pill' + (board ? ' on' : '');
   $('navDocs').className  = 'pill' + (board ? '' : ' on');
-  $('heroTitle').textContent = board ? '질문 게시판' : '자료실';
   $('heroSub').textContent = board
-    ? '낙찰 전후에 막히는 것들, 여기 물어보세요'
+    ? '낙찰 전후에 막히는 것들, 여기서 풀어갑니다'
     : '경매 실무에 바로 쓰는 자료를 모아둡니다';
   boardTab = board;
   updateBar();
@@ -1143,9 +1149,9 @@ loadAuth();
 renderMeBar();
 renderChips();
 renderList();
-loadPosts();
-loadDocs();
-track('enter', location.hash || '');
+setTimeout(function(){ loadPosts(); }, 60);
+setTimeout(function(){ loadDocs(); }, 900);
+setTimeout(function(){ track('enter', location.hash || ''); }, 1800);
 updateBar();
 
 document.addEventListener('click', function(e){
