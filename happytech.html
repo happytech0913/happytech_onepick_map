@@ -138,9 +138,21 @@ body{font-family:Pretendard,-apple-system,sans-serif;color:var(--ink);line-heigh
 .toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);background:var(--bar);color:#fff;
  padding:11px 20px;border-radius:22px;font-size:14px;z-index:200;opacity:0;pointer-events:none;transition:.25s}
 .toast.on{opacity:1}
-.fab{position:fixed;right:22px;bottom:22px;z-index:40;background:var(--bar);color:#fff;border:none;
- border-radius:26px;padding:14px 22px;font-family:inherit;font-size:14.5px;font-weight:700;cursor:pointer;
- box-shadow:0 6px 20px rgba(34,48,62,.3)}
+.fab{position:fixed;left:0;right:0;bottom:0;z-index:40;background:var(--bar);
+ border-top:1px solid rgba(255,255,255,.08);padding:11px 18px;
+ box-shadow:0 -4px 20px rgba(34,48,62,.18);
+ transform:translateY(110%);transition:transform .28s ease;will-change:transform}
+.fab.show{transform:translateY(0)}
+.fabin{max-width:900px;margin:0 auto;display:flex;align-items:center;gap:14px}
+.fabtxt{flex:1;min-width:0;color:#fff;font-size:15px;font-weight:700}
+.fabtxt b{font-weight:700}
+.fabbtn{flex:0 0 auto;background:var(--grad);color:#17392B;border:none;border-radius:11px;
+ padding:12px 20px;font-family:inherit;font-size:14.5px;font-weight:700;cursor:pointer;white-space:nowrap}
+body{padding-bottom:20px}
+@media(max-width:520px){
+ .fabtxt{font-size:14px}
+ .fabbtn{padding:11px 15px;font-size:13.5px}
+}
 
 .modal{position:fixed;inset:0;background:rgba(30,48,66,.45);display:none;align-items:center;
  justify-content:center;z-index:100;padding:18px}
@@ -155,8 +167,41 @@ body{font-family:Pretendard,-apple-system,sans-serif;color:var(--ink);line-heigh
  font-family:inherit;font-size:15px;background:#F7FAFC}
 .field input:focus{outline:none;border-color:#7E90A3;background:#fff}
 .hint{font-size:12.5px;color:var(--mute);line-height:1.55;margin-top:14px;text-align:center}
-footer{text-align:center;padding:30px 0 80px;font-size:12.5px;color:#8194A8;line-height:1.75}
+footer{text-align:center;padding:30px 0 30px;font-size:12.5px;color:#8194A8;line-height:1.75}
 #ht{cursor:pointer}
+.mebar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:18px;
+ padding:11px 15px;border-radius:12px;background:#F2F7FC;border:1px solid #E2EAF3;font-size:14px}
+.mebar b{font-weight:700}
+.mebar .grow{flex:1}
+.mebar button{border:1px solid var(--line);background:#fff;border-radius:9px;padding:6px 12px;
+ font-family:inherit;font-size:13px;color:var(--ink-2);cursor:pointer}
+.mebar button:hover{border-color:#B9C7D6}
+.newdot{background:#E24C4C;color:#fff;border-radius:20px;padding:2px 9px;font-size:11.5px;font-weight:700}
+.tagnew{background:#FDE7E7;color:#B03636;border-radius:6px;padding:2px 8px;font-size:11.5px;font-weight:700}
+.doc{border:1px solid var(--line);border-radius:16px;padding:18px 20px;margin-top:10px;
+ background:#fff;cursor:pointer}
+.doc:hover{border-color:#C3D0DC;background:#FAFCFE}
+.doc h3{font-size:16.5px;font-weight:700;letter-spacing:-.01em}
+.doc p{font-size:14px;color:var(--mute);margin-top:5px}
+.docmeta{font-size:12.5px;color:var(--mute);margin-top:9px;display:flex;gap:9px;align-items:center}
+.dsec{margin-top:24px}
+.dsec h4{font-size:13px;font-weight:700;color:var(--mute);letter-spacing:.04em;margin-bottom:10px}
+.opencard{display:block;border:1px solid var(--line);border-radius:14px;padding:18px 20px;
+ background:linear-gradient(135deg,#F4FFF7,#F0F5FF);text-decoration:none;color:var(--ink)}
+.opencard:hover{border-color:var(--peri)}
+.opencard b{font-size:15.5px;font-weight:700}
+.opencard span{display:block;font-size:13px;color:var(--mute);margin-top:4px}
+.dsum{white-space:pre-wrap;font-size:15.5px;line-height:1.75}
+.relq{border:1px solid var(--line);border-radius:12px;padding:13px 15px;margin-top:8px;
+ background:#fff;cursor:pointer;font-size:14.5px}
+.relq:hover{border-color:#C3D0DC;background:#FAFCFE}
+.relq b{display:block;font-size:11.5px;color:var(--mute);font-weight:600;margin-bottom:4px}
+.nextrow{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
+.nextrow a{flex:1;min-width:190px;border:1px solid var(--line);border-radius:14px;padding:15px 17px;
+ text-decoration:none;color:var(--ink);background:#fff}
+.nextrow a:hover{border-color:var(--peri)}
+.nextrow b{display:block;font-size:14.5px;font-weight:700}
+.nextrow span{display:block;font-size:13px;color:var(--mute);margin-top:3px}
 .wait{border:1px dashed #CBD6E1;border-radius:14px;padding:18px;background:#FBFDFF;
  font-size:14.5px;color:var(--mute);text-align:center}
 .tagwait{background:#FDF1DC;color:#8A6212;border-radius:6px;padding:2px 8px;font-size:11.5px;font-weight:700}
@@ -175,24 +220,35 @@ footer{text-align:center;padding:30px 0 80px;font-size:12.5px;color:#8194A8;line
 
 <div class="topbar">
  <div class="pills">
-  <button class="pill on">질문 게시판</button>
+  <button class="pill on" id="navBoard" onclick="showView('board')">질문 게시판</button>
+  <button class="pill" id="navDocs" onclick="showView('docs')">자료실</button>
   <a class="pill" href="https://happytech0913.github.io/happytech_onepick_map/happyclass.html" target="_blank" rel="noopener">해피클래스</a>
   <a class="pill" href="https://m.site.naver.com/2bq9R" target="_blank" rel="noopener">그로인</a>
  </div>
 </div>
 
 <div class="herobg">
+<div class="wrap" id="docsView" style="display:none">
+ <div class="panel first">
+  <div class="intro">
+   <div><h2 id="docsHead">자료실</h2><p id="docsSub">경매 실무에 바로 쓰는 자료를 모아둡니다.</p></div>
+   <button class="btn" id="docsBack" style="display:none" onclick="showDocList()">목록으로</button>
+  </div>
+  <div id="docList"></div>
+  <div id="docDetail" style="display:none"></div>
+ </div>
+</div>
  <div class="wrap">
   <div class="hero">
   <div class="sprout">🌱</div>
   <div class="eyebrow">해피테크 · GROW IN</div>
-  <h1>질문 게시판</h1>
-   <div class="sub">낙찰 전후에 막히는 것들, 여기 물어보세요</div>
+  <h1 id="heroTitle">질문 게시판</h1>
+   <div class="sub" id="heroSub">낙찰 전후에 막히는 것들, 여기 물어보세요</div>
   </div>
  </div>
 </div>
 
-<div class="wrap">
+<div class="wrap" id="boardView">
  <div class="panel first">
   <div class="intro">
    <div>
@@ -200,10 +256,11 @@ footer{text-align:center;padding:30px 0 80px;font-size:12.5px;color:#8194A8;line
     <p>읽는 건 가입 없이 가능합니다.</p>
    </div>
    <div class="stat">
-    <div><b id="cnt">17</b>개 답변</div>
+    <div><b id="cnt">17</b>개 질문</div>
     <div><b>6</b>개 분야</div>
    </div>
   </div>
+  <div id="meBar" style="display:none"></div>
   <div class="chips" id="chips"></div>
   <div id="list"></div>
  </div>
@@ -239,15 +296,14 @@ footer{text-align:center;padding:30px 0 80px;font-size:12.5px;color:#8194A8;line
   </div></div>
   <ol class="steps">
    <li><b>읽기는 가입이 필요 없습니다.</b> 분야를 골라 질문을 눌러보세요. 답변 앞부분은 누구나 볼 수 있습니다.</li>
-   <li><b>뒷부분이 궁금하면 직접 물어보세요.</b> 이름과 비밀번호 4자리로 글을 남기시면, 그 글의 답변은 전체를 보실 수 있습니다.</li>
-   <li><b>비슷한 글이 있으면 거기에 이어 물어보셔도 됩니다.</b> 상황이 조금 달라도 괜찮습니다.</li>
+   <li><b>뒷부분이 궁금하면 직접 물어보세요.</b> 이름·전화번호·비밀번호 4자리로 글을 남기시면, 그 글의 답변은 전체를 보실 수 있습니다.</li>
+   <li><b>먼저 비슷한 글이 있는지 찾아보세요.</b> 분야로 걸러 보시면 빠릅니다. 없으면 새로 남기시면 됩니다.</li>
    <li><b>사건번호·주소·연락처는 적지 마세요.</b> 공개되는 글입니다. 필요한 정보는 따로 여쭤보겠습니다.</li>
    <li><b>답변은 올라온 순서대로 답니다.</b> 게시판으로 다루기 어려운 사안이면 개별로 연락드릴 수 있습니다.</li>
   </ol>
  </div>
 
  <footer>
-  영상과 자료는 회원 본인 이용에 한합니다.<br><br>
   <span id="ht">© 해피테크</span>. 이 페이지의 질문과 답변은 해피테크가 직접 작성한 자료로 저작권법의 보호를 받습니다.<br>
   무단 복제·배포·재판매는 법적 책임을 물을 수 있습니다.
  </footer>
@@ -276,7 +332,12 @@ footer{text-align:center;padding:30px 0 80px;font-size:12.5px;color:#8194A8;line
 
 <div class="toast" id="toast"></div>
 
-<button class="fab" id="fab" onclick="openModal()">질문 남기기</button>
+<div class="fab" id="fab">
+ <div class="fabin">
+  <div class="fabtxt"><b>지금 바로 물어보세요</b></div>
+  <button class="fabbtn" onclick="openModal()">질문 남기기 →</button>
+ </div>
+</div>
 
 <div class="modal" id="modal" onclick="if(event.target===this)closeModal()">
  <div class="sheet">
@@ -287,7 +348,7 @@ footer{text-align:center;padding:30px 0 80px;font-size:12.5px;color:#8194A8;line
    <div class="field"><label>전화번호</label><input id="mPhone" inputmode="numeric" placeholder="01012345678"></div>
    <div class="field"><label>비밀번호 4자리</label><input id="mPw" type="password" inputmode="numeric" maxlength="4" placeholder="••••"></div>
    <button class="btn btn-fill" style="width:100%;padding:13px;margin-top:6px" onclick="doLogin()">시작하기</button>
-   <div class="hint" id="mErr">답변이 등록되면 문자로 알려드립니다.<br>게시판으로 다루기 어려운 사안이면 따로 연락드릴 수 있어요.</div>
+   <div class="hint" id="mErr">전화번호는 추가 정보가 필요할 때만 씁니다.<br>답변은 이 페이지에서 확인하실 수 있어요.</div>
   </div>
   <div id="step2" style="display:none">
    <h3>질문 남기기</h3>
@@ -479,6 +540,9 @@ const QA = [
 /* ── 백엔드 주소. 배포 후 아래 한 줄만 바꾸면 실서비스로 붙습니다 ── */
 var API = 'https://script.google.com/macros/s/AKfycbwpJZyMZqi8uZIM59JkHP_xPtQRKjsuHrkTirrtWkxs0P1oWr5g7F2mSeI6xLvkbhCtVQ/exec';
 
+var CLASS_URL='https://happytech0913.github.io/happytech_onepick_map/happyclass.html';
+var GROWIN_URL='https://m.site.naver.com/2bq9R';
+
 var CATS=['전체','입찰 전','권리분석','낙찰 후·명도','공매','대출·자금','세금'];
 var cur='전체';
 var esc=function(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;');};
@@ -492,24 +556,33 @@ function toast(msg){
 /* ───────── 게시판 ───────── */
 
 function renderChips(){
-  $('chips').innerHTML=CATS.map(function(c,i){
+  var html=CATS.map(function(c,i){
     var n = c==='전체' ? QA.length : QA.filter(function(x){return x.cat===c;}).length;
     return '<button class="chip'+(c===cur?' on':'')+'" onclick="setCat('+i+')">'+c+' '+n+'</button>';
   }).join('');
+  if(myToken){
+    var mine=QA.filter(function(x){return x.mine;}).length;
+    html += '<button class="chip'+(cur==='내 글'?' on':'')+'" onclick="setMine()">내 글 '+mine+'</button>';
+  }
+  $('chips').innerHTML=html;
 }
 function setCat(i){ cur=CATS[i]; renderChips(); renderList(); }
+function setMine(){ cur='내 글'; renderChips(); renderList(); }
 
 function renderList(){
-  var items = cur==='전체' ? QA : QA.filter(function(x){return x.cat===cur;});
+  var items = cur==='전체' ? QA
+            : cur==='내 글' ? QA.filter(function(x){return x.mine;})
+            : QA.filter(function(x){return x.cat===cur;});
   $('cnt').textContent = items.length;
   $('list').innerHTML = items.map(function(x){
     var answered = !!x.pub;
     var meta = '<span class="tag">'+esc(x.cat)+'</span><span>'+esc(x.date)+'</span>'
              + '<span>'+esc(x.name||'비공개')+'</span>'
-             + (answered ? '<span>답변 1</span>' : '<span class="tagwait">답변 준비 중</span>');
+             + (answered ? '<span>답변 1</span>' : '<span class="tagwait">답변 준비 중</span>')
+             + (isNew(x) ? '<span class="tagnew">새 답변</span>' : '');
     var ansBlock;
     if(!answered){
-      ansBlock = '<div class="wait">아직 답변이 등록되지 않았습니다.<br>답변이 달리면 글쓴이에게 문자로 알려드립니다.</div>';
+      ansBlock = '<div class="wait">아직 답변이 등록되지 않았습니다.<br>보통 2~3일 안에 올라옵니다.</div>';
     } else {
       ansBlock = '<div class="ans"><div class="ava">해피</div><div class="ansbody">'
         + '<div class="ansname">해피테크<em>운영자</em></div>'
@@ -541,19 +614,66 @@ function renderList(){
 
 function toggle(id){
   var el=$('i-'+id);
+  if(!el.classList.contains('open')) track('open_post', id);
   var was=el.classList.contains('open');
   var op=document.querySelectorAll('.item.open');
   for(var k=0;k<op.length;k++){ op[k].classList.remove('open'); }
-  if(!was){ el.classList.add('open'); el.scrollIntoView({block:'nearest',behavior:'smooth'}); }
+  if(!was){
+    el.classList.add('open');
+    el.scrollIntoView({block:'nearest',behavior:'smooth'});
+    markSeen(id); renderMeBar();
+  }
+  updateBar();
 }
 
 var myToken='', myName='';
 
+function saveAuth(){
+  try{ localStorage.setItem('ht_auth', JSON.stringify({t:myToken,n:myName})); }catch(e){}
+}
+function loadAuth(){
+  try{
+    var a=JSON.parse(localStorage.getItem('ht_auth')||'null');
+    if(a && a.t){ myToken=a.t; myName=a.n||''; }
+  }catch(e){}
+}
+function clearAuth(){
+  myToken=''; myName='';
+  try{ localStorage.removeItem('ht_auth'); }catch(e){}
+  renderMeBar(); renderChips(); renderList();
+}
+
+/* 읽은 답변 기록 — 새 답변 표시용 */
+function seenMap(){
+  try{ return JSON.parse(localStorage.getItem('ht_seen')||'{}'); }catch(e){ return {}; }
+}
+function markSeen(id){
+  try{ var m=seenMap(); m[id]=1; localStorage.setItem('ht_seen', JSON.stringify(m)); }catch(e){}
+}
+function isNew(x){
+  return x.mine && x.pub && !seenMap()[x.id];
+}
+
+function renderMeBar(){
+  var bar=$('meBar');
+  if(!myToken){ bar.style.display='none'; return; }
+  var mine=QA.filter(function(x){return x.mine;});
+  var news=mine.filter(isNew).length;
+  bar.style.display='';
+  bar.innerHTML='<div class="mebar">'
+    + '<b>'+esc(myName)+' 님</b>'
+    + '<span class="grow">내 글 '+mine.length+'개'
+    +   (news?' <span class="newdot">새 답변 '+news+'</span>':'')+'</span>'
+    + '<button onclick="clearAuth()">나가기</button></div>';
+}
+
 function openModal(){
+  track('click_write', '');
   $('modal').classList.add('on');
+  updateBar();
   if(myToken){ showStep2(); } else { $('step1').style.display=''; $('step2').style.display='none'; }
 }
-function closeModal(){ $('modal').classList.remove('on'); }
+function closeModal(){ $('modal').classList.remove('on'); updateBar(); }
 
 function showStep2(){
   $('step1').style.display='none';
@@ -570,7 +690,7 @@ function doLogin(){
   $('mErr').textContent='확인 중…';
   api('POST',{action:'signup',name:name,phone:phone,pw:pw},function(res){
     if(!res||!res.ok){ $('mErr').textContent=(res&&res.error)||'실패했습니다.'; return; }
-    myToken=res.token; myName=res.name||name;
+    myToken=res.token; myName=res.name||name; saveAuth(); track('login', '');
     $('mErr').textContent='';
     showStep2(); loadPosts();
   });
@@ -584,7 +704,8 @@ function doWrite(){
   function(res){
     if(!res||!res.ok){ $('wErr').textContent=(res&&res.error)||'등록하지 못했습니다.'; return; }
     $('wQ').value=''; $('wErr').textContent='';
-    closeModal(); toast('등록했습니다. 답변이 달리면 문자로 알려드릴게요.');
+    track('write_done', res.id);
+    closeModal(); toast('등록했습니다. 답변은 보통 2~3일 안에 올라옵니다.');
     loadPosts();
   });
 }
@@ -596,7 +717,7 @@ function loadPosts(){
   fetch(API+'?'+q).then(function(r){return r.json();}).then(function(res){
     if(!res||!res.ok) return;
     QA = res.items;
-    renderChips(); renderList();
+    renderMeBar(); renderChips(); renderList();
   }).catch(function(){});
 }
 
@@ -643,6 +764,7 @@ function enterAdmin(){
 }
 function exitAdmin(){
   adminToken='';
+  setTimeout(updateBar,50);
   document.querySelectorAll('.wrap').forEach(function(w){ w.style.display=''; });
   document.querySelector('.herobg').style.display='';
   $('adminView').style.display='none';
@@ -721,13 +843,204 @@ function copySms(idx){
   copyText(msg);
 }
 
+
+
+
+/* ───────── 하단 바 노출 제어 ───────── */
+
+var boardTab = true;
+
+function updateBar(){
+  var fab = $('fab');
+  var reading = document.querySelector('.item.open');       // 글을 읽는 중
+  var modalOn = $('modal').classList.contains('on') || $('amodal').classList.contains('on');
+  var adminOn = $('adminView').style.display === 'block';
+  var scrolled = window.scrollY > 420;                       // 첫 화면은 비워둠
+  var atBottom = (window.innerHeight + window.scrollY) > (document.body.scrollHeight - 140);
+
+  var show = boardTab && scrolled && !reading && !modalOn && !adminOn && !atBottom;
+  if(show) fab.classList.add('show'); else fab.classList.remove('show');
+}
+
+window.addEventListener('scroll', updateBar, {passive:true});
+window.addEventListener('resize', updateBar);
+
+/* ───────── 방문 기록 ───────── */
+
+var VID = (function(){
+  try{
+    var k='ht_vid', v=localStorage.getItem(k);
+    if(!v){ v=Math.random().toString(36).slice(2,10)+Date.now().toString(36).slice(-4);
+            localStorage.setItem(k,v); }
+    return v;
+  }catch(e){ return 's'+Math.random().toString(36).slice(2,10); }
+})();
+
+var DEVICE = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent) ? 'mobile' : 'desktop';
+var SRC = (function(){
+  try{
+    var u=new URLSearchParams(location.search);
+    return u.get('from') || u.get('utm_source') || (document.referrer||'').slice(0,80) || 'direct';
+  }catch(e){ return 'direct'; }
+})();
+
+function track(evt, target){
+  if(!API) return;
+  var q = 'action=track&e='+encodeURIComponent(evt)
+        + '&t='+encodeURIComponent(target||'')
+        + '&v='+encodeURIComponent(VID)
+        + '&r='+encodeURIComponent(SRC)
+        + '&m='+DEVICE;
+  try{
+    if(navigator.sendBeacon){ navigator.sendBeacon(API+'?'+q); return; }
+  }catch(e){}
+  try{ fetch(API+'?'+q, {mode:'no-cors', keepalive:true}); }catch(e){}
+}
+
+/* ───────── 자료실 ───────── */
+
+var DOCS=[], curDoc=null;
+
+function showView(v){
+  var board = v==='board';
+  $('boardView').style.display = board ? '' : 'none';
+  $('docsView').style.display  = board ? 'none' : '';
+  $('navBoard').className = 'pill' + (board ? ' on' : '');
+  $('navDocs').className  = 'pill' + (board ? '' : ' on');
+  $('heroTitle').textContent = board ? '질문 게시판' : '자료실';
+  $('heroSub').textContent = board
+    ? '낙찰 전후에 막히는 것들, 여기 물어보세요'
+    : '경매 실무에 바로 쓰는 자료를 모아둡니다';
+  boardTab = board;
+  updateBar();
+  if(!board && !DOCS.length) loadDocs();
+  if(!board) showDocList();
+  track(board ? 'view_board' : 'view_docs', '');
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+
+function loadDocs(){
+  if(!API) return;
+  fetch(API+'?action=docs').then(function(r){return r.json();}).then(function(res){
+    if(!res||!res.ok) return;
+    DOCS=res.items; renderDocs();
+  }).catch(function(){});
+}
+
+function renderDocs(){
+  if(!DOCS.length){
+    $('docList').innerHTML='<div class="wait" style="margin-top:14px">준비 중입니다.</div>';
+    return;
+  }
+  $('docList').innerHTML = DOCS.map(function(d,i){
+    return '<div class="doc" onclick="openDoc('+i+')">'
+      + '<h3>'+esc(d.title)+'</h3>'
+      + (d.desc?'<p>'+esc(d.desc)+'</p>':'')
+      + '<div class="docmeta"><span class="tag">'+esc(d.cat)+'</span><span>'+esc(d.date)+'</span></div>'
+      + '</div>';
+  }).join('');
+}
+
+function showDocList(){
+  curDoc=null;
+  $('docList').style.display='';
+  $('docDetail').style.display='none';
+  $('docsBack').style.display='none';
+  $('docsHead').textContent='자료실';
+  $('docsSub').textContent='경매 실무에 바로 쓰는 자료를 모아둡니다.';
+}
+
+function openDoc(i){
+  var d=DOCS[i]; curDoc=i;
+  track('open_doc', d.id + ' ' + d.title);
+  $('docList').style.display='none';
+  $('docDetail').style.display='';
+  $('docsBack').style.display='';
+  $('docsHead').textContent=d.title;
+  $('docsSub').textContent=d.desc||'';
+
+  var rel = (d.rel||[]).map(function(id){
+    var q=null;
+    for(var k=0;k<QA.length;k++){ if(QA[k].id===id){ q=QA[k]; break; } }
+    if(!q) return '';
+    return '<div class="relq" onclick="goQuestion(\''+q.id+'\')">'
+         + '<b>'+esc(q.cat)+'</b>'+esc(String(q.q).split('\n')[0])+'</div>';
+  }).join('');
+
+  var others = DOCS.map(function(o,k){
+    if(k===i) return '';
+    return '<div class="relq" onclick="openDoc('+k+')"><b>'+esc(o.cat)+' · '+esc(o.date)+'</b>'
+         + esc(o.title)+'</div>';
+  }).join('');
+
+  $('docDetail').innerHTML =
+      (d.link ? '<div class="dsec"><h4>자료 열기</h4>'
+        + '<a class="opencard" href="'+esc(d.link)+'" target="_blank" rel="noopener"'
+        + ' onclick="track(\'open_file\',\''+esc(d.id)+'\')">'
+        + '<b>📄 '+esc(d.title)+'</b><span>새 탭에서 열립니다</span></a></div>' : '')
+    + (d.summary ? '<div class="dsec"><h4>핵심 요약</h4><div class="dsum">'+esc(d.summary)+'</div></div>' : '')
+    + (rel ? '<div class="dsec"><h4>이 자료와 관련된 질문</h4>'+rel+'</div>' : '')
+    + '<div class="dsec"><h4>다음으로</h4><div class="nextrow">'
+    +   '<a href="javascript:void(0)" onclick="showView(\'board\')"><b>질문 게시판</b>'
+    +     '<span>같은 상황이면 직접 물어보세요</span></a>'
+    +   '<a href="'+CLASS_URL+'" target="_blank" rel="noopener"><b>해피클래스</b>'
+    +     '<span>강의 하나는 가입 없이 볼 수 있습니다</span></a>'
+    +   '<a href="'+GROWIN_URL+'" target="_blank" rel="noopener"><b>그로인</b>'
+    +     '<span>도구와 물건까지 함께 씁니다</span></a>'
+    + '</div></div>'
+    + (others ? '<div class="dsec"><h4>이어서 볼 자료</h4>'+others+'</div>' : '');
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+
+function goQuestion(id){
+  track('open_question', id);
+  showView('board');
+  setTimeout(function(){
+    cur='전체'; renderChips(); renderList();
+    var el=$('i-'+id);
+    if(el){ el.classList.add('open'); el.scrollIntoView({block:'center',behavior:'smooth'}); }
+  }, 250);
+}
+
 document.addEventListener('keydown', function(e){
   if(e.key==='Escape'){ closeModal(); closeAdminModal(); }
 });
 
+loadAuth();
+renderMeBar();
 renderChips();
 renderList();
 loadPosts();
+loadDocs();
+track('enter', location.hash || '');
+updateBar();
+
+document.addEventListener('click', function(e){
+  var a = e.target.closest ? e.target.closest('a[href^="http"]') : null;
+  if(!a) return;
+  if(a.href.indexOf('happyclass') >= 0) track('click_class','');
+  else if(a.href.indexOf('site.naver') >= 0) track('click_growin','');
+});
+
+/* ?d=자료id · ?q=질문id 로 바로 열기 (자동 DM 링크용) */
+(function(){
+  var p;
+  try{ p = new URLSearchParams(location.search); }catch(e){ return; }
+  var d = p.get('d'), q = p.get('q');
+  if(d){
+    var t0 = setInterval(function(){
+      if(!DOCS.length) return;
+      clearInterval(t0);
+      for(var i=0;i<DOCS.length;i++){
+        if(DOCS[i].id === d){ showView('docs'); openDoc(i); track('deeplink_doc', d); return; }
+      }
+      showView('docs');
+    }, 200);
+    setTimeout(function(){ clearInterval(t0); }, 6000);
+  } else if(q){
+    setTimeout(function(){ goQuestion(q); track('deeplink_q', q); }, 600);
+  }
+})();
 </script>
 </body>
 </html>
