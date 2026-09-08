@@ -205,6 +205,22 @@ footer{text-align:center;padding:30px 0 30px;font-size:12.5px;color:#8194A8;line
 .opencard b{font-size:15.5px;font-weight:700}
 .opencard span{display:block;font-size:13px;color:var(--mute);margin-top:4px}
 .dsum{white-space:pre-wrap;font-size:15.5px;line-height:1.75}
+.docbody{font-size:15.5px;line-height:1.8;color:var(--ink)}
+.docbody h1{font-size:22px;font-weight:800;margin:26px 0 10px;letter-spacing:-.02em}
+.docbody h2{font-size:19px;font-weight:700;margin:24px 0 9px;letter-spacing:-.02em}
+.docbody h3{font-size:16.5px;font-weight:700;margin:20px 0 7px}
+.docbody h4{font-size:15px;font-weight:700;margin:16px 0 6px;color:var(--ink);letter-spacing:0}
+.docbody p{margin:9px 0}
+.docbody ul,.docbody ol{margin:9px 0 9px 20px}
+.docbody li{margin:5px 0}
+.docbody img{max-width:100%;height:auto;border-radius:12px;border:1px solid var(--line);margin:14px 0;display:block}
+.docbody table{width:100%;border-collapse:collapse;margin:14px 0;font-size:14.5px}
+.docbody td,.docbody th{border:1px solid var(--line);padding:9px 11px;text-align:left}
+.docbody th{background:#F4F8FC;font-weight:700}
+.docbody hr{border:none;border-top:1px solid var(--line);margin:22px 0}
+.docbody a{color:var(--peri)}
+.docbody b,.docbody strong{font-weight:700}
+.docbody blockquote{border-left:3px solid var(--peri);padding:2px 0 2px 14px;margin:14px 0;color:var(--ink-2)}
 .relq{border:1px solid var(--line);border-radius:12px;padding:13px 15px;margin-top:8px;
  background:#fff;cursor:pointer;font-size:14.5px}
 .relq:hover{border-color:#C3D0DC;background:#FAFCFE}
@@ -1125,12 +1141,15 @@ function openDoc(i){
          + esc(o.title)+'</div>';
   }).join('');
 
+  var isPub = d.link && d.link.indexOf('docs.google.com/document/d/e/') >= 0;
+
   $('docDetail').innerHTML =
-      (d.link ? '<div class="dsec"><h4>자료 열기</h4>'
+      (isPub ? '<div class="dsec"><div id="docBody" class="docbody">불러오는 중…</div></div>' : '')
+    + (d.link && !isPub ? '<div class="dsec"><h4>자료 열기</h4>'
         + '<a class="opencard" href="'+esc(d.link)+'" target="_blank" rel="noopener"'
         + ' onclick="track(\'open_file\',\''+esc(d.id)+'\')">'
         + '<b>📄 '+esc(d.title)+'</b><span>새 탭에서 열립니다</span></a></div>' : '')
-    + (d.summary ? '<div class="dsec"><h4>핵심 요약</h4><div class="dsum">'+esc(d.summary)+'</div></div>' : '')
+    + (!isPub && d.summary ? '<div class="dsec"><h4>핵심 요약</h4><div class="dsum">'+esc(d.summary)+'</div></div>' : '')
     + (rel ? '<div class="dsec"><h4>이 자료와 관련된 질문</h4>'+rel+'</div>' : '')
     + '<div class="dsec"><h4>다음으로</h4><div class="nextrow">'
     +   '<a href="javascript:void(0)" onclick="showView(\'board\')"><b>질문 게시판</b>'
@@ -1142,6 +1161,20 @@ function openDoc(i){
     + '</div></div>'
     + (others ? '<div class="dsec"><h4>이어서 볼 자료</h4>'+others+'</div>' : '');
   window.scrollTo({top:0,behavior:'smooth'});
+
+  if(isPub){
+    call({action:'docbody', url:d.link}, function(res){
+      var el=$('docBody');
+      if(!el) return;
+      if(res && res.ok && res.html){
+        el.innerHTML = res.html;
+        track('open_file', d.id);
+      } else {
+        el.innerHTML = '<a class="opencard" href="'+esc(d.link)+'" target="_blank" rel="noopener">'
+                     + '<b>📄 '+esc(d.title)+'</b><span>새 탭에서 열기</span></a>';
+      }
+    });
+  }
 }
 
 function goQuestion(id){
