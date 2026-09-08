@@ -254,7 +254,7 @@ footer{text-align:center;padding:30px 0 30px;font-size:12.5px;color:#8194A8;line
   <div class="sprout">🌱</div>
   <div class="eyebrow">해피테크 · GROW IN</div>
   <h1 id="heroTitle">해피테크</h1>
-   <div class="sub" id="heroSub">낙찰 전후에 막히는 것들, 여기서 풀어갑니다</div>
+   <div class="sub" id="heroSub">먼저 가본 경험을 나눕니다</div>
   </div>
  </div>
 </div>
@@ -729,7 +729,7 @@ function loadPosts(quiet){
   if(!API) return;
   call({action:'list', token:myToken||''}, function(res){
     if(!res||!res.ok){
-      if(postsTry < 3){ postsTry++; console.warn('[해피테크] 목록 재시도', postsTry); setTimeout(function(){ loadPosts(true); }, 800); return; }
+      if(postsTry < 2){ postsTry++; setTimeout(function(){ loadPosts(true); }, 1000); return; }
       if(!quiet) toast('목록을 불러오지 못했습니다');
       return;
     }
@@ -893,46 +893,21 @@ window.addEventListener('scroll', updateBar, {passive:true});
 window.addEventListener('resize', updateBar);
 
 
-/* ───────── 서버 통신 (JSONP · CORS 회피) ───────── */
-
-var _jseq = 0;
+/* ───────── 서버 통신 ───────── */
 
 function call(params, cb){
   if(!API){ toast('백엔드 주소가 비어 있습니다'); return; }
-  var name = '__cb' + (++_jseq) + '_' + Date.now().toString(36);
-  var done = false;
-  var sc = document.createElement('script');
-
-  window[name] = function(res){
-    done = true;
-    try{ cb(res); } finally {
-      delete window[name];
-      if(sc.parentNode) sc.parentNode.removeChild(sc);
-    }
-  };
-
   var qs = Object.keys(params).map(function(k){
     return encodeURIComponent(k)+'='+encodeURIComponent(params[k]==null?'':params[k]);
   }).join('&');
 
-  sc.src = API + '?' + qs + '&callback=' + name;
-  sc.onerror = function(){
-    if(!done){
-      done=true; delete window[name];
-      console.warn('[해피테크] 스크립트 로드 실패:', sc.src);
+  fetch(API + '?' + qs)
+    .then(function(r){ return r.json(); })
+    .then(function(res){ cb(res); })
+    .catch(function(err){
+      console.warn('[해피테크] 요청 실패:', qs, err && err.message);
       try{ cb(null); }catch(e){}
-    }
-    if(sc.parentNode) sc.parentNode.removeChild(sc);
-  };
-  document.head.appendChild(sc);
-
-  setTimeout(function(){
-    if(!done && window[name]){
-      done=true; delete window[name];
-      console.warn('[해피테크] 응답 없음:', sc.src);
-      try{ cb(null); }catch(e){}
-    }
-  }, 6000);
+    });
 }
 
 /* ───────── 방문 기록 ───────── */
@@ -961,10 +936,7 @@ function track(evt, target){
         + '&v='+encodeURIComponent(VID)
         + '&r='+encodeURIComponent(SRC)
         + '&m='+DEVICE;
-  try{
-    var img=new Image();
-    img.src = API+'?'+q+'&_='+Date.now();
-  }catch(e){}
+  try{ fetch(API+'?'+q, {keepalive:true}); }catch(e){}
 }
 
 
@@ -1056,7 +1028,7 @@ function showView(v){
   $('navBoard').className = 'pill' + (board ? ' on' : '');
   $('navDocs').className  = 'pill' + (board ? '' : ' on');
   $('heroSub').textContent = board
-    ? '낙찰 전후에 막히는 것들, 여기서 풀어갑니다'
+    ? '먼저 가본 경험을 나눕니다'
     : '경매 실무에 바로 쓰는 자료를 모아둡니다';
   boardTab = board;
   updateBar();
@@ -1157,9 +1129,9 @@ loadAuth();
 renderMeBar();
 renderChips();
 renderList();
-setTimeout(function(){ loadPosts(); }, 60);
-setTimeout(function(){ loadDocs(); }, 900);
-setTimeout(function(){ track('enter', location.hash || ''); }, 1800);
+loadPosts();
+loadDocs();
+track('enter', location.hash || '');
 updateBar();
 
 document.addEventListener('click', function(e){
