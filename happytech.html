@@ -178,6 +178,17 @@ footer{text-align:center;padding:30px 0 30px;font-size:12.5px;color:#8194A8;line
 .mebar button:hover{border-color:#B9C7D6}
 .newdot{background:#E24C4C;color:#fff;border-radius:20px;padding:2px 9px;font-size:11.5px;font-weight:700}
 .tagnew{background:#FDE7E7;color:#B03636;border-radius:6px;padding:2px 8px;font-size:11.5px;font-weight:700}
+#atabs{border-bottom:1px solid var(--line);padding-bottom:14px;margin-bottom:4px}
+.docform{border:1px solid var(--line);border-radius:14px;padding:18px;margin-top:12px;background:#fff}
+.docform label{display:block;font-size:12.5px;font-weight:700;color:var(--ink-2);margin:10px 0 5px}
+.docform input,.docform textarea{width:100%;border:1px solid var(--line);border-radius:10px;
+ padding:10px 12px;font-family:inherit;font-size:14px;background:#F7FAFC}
+.docform textarea{line-height:1.6;resize:vertical}
+.docform input:focus,.docform textarea:focus{outline:none;border-color:#7E90A3;background:#fff}
+.docform .row{display:flex;gap:10px;flex-wrap:wrap}
+.docform .row>div{flex:1;min-width:150px}
+.dbtns{display:flex;gap:8px;align-items:center;margin-top:14px;flex-wrap:wrap}
+.hidden{display:none!important}
 .doc{border:1px solid var(--line);border-radius:16px;padding:18px 20px;margin-top:10px;
  background:#fff;cursor:pointer}
 .doc:hover{border-color:#C3D0DC;background:#FAFCFE}
@@ -315,8 +326,10 @@ footer{text-align:center;padding:30px 0 30px;font-size:12.5px;color:#8194A8;line
    <div><h2>관리자</h2><p id="astat">불러오는 중…</p></div>
    <button class="btn" onclick="exitAdmin()">나가기</button>
   </div>
+  <div class="chips" id="atabs"></div>
   <div class="chips" id="achips"></div>
   <div id="alist"></div>
+  <div id="adocs" style="display:none"></div>
  </div>
 </div>
 
@@ -715,10 +728,10 @@ function loadPosts(){
   var q='action=list';
   if(myToken) q+='&token='+encodeURIComponent(myToken);
   fetch(API+'?'+q).then(function(r){return r.json();}).then(function(res){
-    if(!res||!res.ok) return;
+    if(!res||!res.ok){ toast('목록을 불러오지 못했습니다'); return; }
     QA = res.items;
     renderMeBar(); renderChips(); renderList();
-  }).catch(function(){});
+  }).catch(function(){ toast('서버 연결에 실패했습니다'); });
 }
 
 /* ───────── 관리자 ───────── */
@@ -753,22 +766,29 @@ function adminLogin(){
   });
 }
 
+var inAdmin=false;
+
 function enterAdmin(){
+  inAdmin=true;
   document.querySelectorAll('.wrap').forEach(function(w){
     if(w.id!=='adminView') w.style.display='none';
   });
   document.querySelector('.herobg').style.display='none';
+  document.querySelector('.topbar').style.display='none';
   $('adminView').style.display='block';
-  $('fab').style.display='none';
+  $('fab').classList.remove('show');
+  renderATabs();
   loadAdmin();
 }
 function exitAdmin(){
-  adminToken='';
-  setTimeout(updateBar,50);
+  inAdmin=false; adminToken='';
   document.querySelectorAll('.wrap').forEach(function(w){ w.style.display=''; });
   document.querySelector('.herobg').style.display='';
+  document.querySelector('.topbar').style.display='';
   $('adminView').style.display='none';
-  $('fab').style.display='';
+  $('docsView').style.display = boardTab ? 'none' : '';
+  $('boardView').style.display = boardTab ? '' : 'none';
+  setTimeout(updateBar,50);
 }
 
 function loadAdmin(){
@@ -854,7 +874,7 @@ function updateBar(){
   var fab = $('fab');
   var reading = document.querySelector('.item.open');       // 글을 읽는 중
   var modalOn = $('modal').classList.contains('on') || $('amodal').classList.contains('on');
-  var adminOn = $('adminView').style.display === 'block';
+  var adminOn = inAdmin;
   var scrolled = window.scrollY > 420;                       // 첫 화면은 비워둠
   var atBottom = (window.innerHeight + window.scrollY) > (document.body.scrollHeight - 140);
 
@@ -897,11 +917,89 @@ function track(evt, target){
   try{ fetch(API+'?'+q, {mode:'no-cors', keepalive:true}); }catch(e){}
 }
 
+
+/* ───────── 관리자 · 자료 관리 ───────── */
+
+var aTab='posts', adminDocs=[], editingDoc=null;
+
+function renderATabs(){
+  $('atabs').innerHTML =
+      '<button class="chip'+(aTab==='posts'?' on':'')+'" onclick="setATab(\'posts\')">질문 관리</button>'
+    + '<button class="chip'+(aTab==='docs'?' on':'')+'" onclick="setATab(\'docs\')">자료 관리</button>';
+}
+function setATab(t){
+  aTab=t; renderATabs();
+  var posts = t==='posts';
+  $('achips').style.display = posts ? '' : 'none';
+  $('alist').style.display  = posts ? '' : 'none';
+  $('adocs').style.display  = posts ? 'none' : '';
+  if(posts){ loadAdmin(); } else { loadAdminDocs(); }
+}
+
+function loadAdminDocs(){
+  api('GET','action=adminDocs&token='+encodeURIComponent(adminToken), function(res){
+    if(!res||!res.ok){ toast((res&&res.error)||'불러오지 못했습니다'); return; }
+    adminDocs=res.items; renderAdminDocs();
+  });
+}
+
+function docForm(d){
+  d = d || {id:'',cat:'자료',title:'',desc:'',link:'',summary:'',rel:'',open:true};
+  return '<div class="docform">'
+    + '<div class="row">'
+    +  '<div><label>제목</label><input id="dTitle" value="'+esc(d.title)+'"></div>'
+    +  '<div style="flex:0 0 130px"><label>분류</label><input id="dCat" value="'+esc(d.cat)+'"></div>'
+    + '</div>'
+    + '<label>한 줄 설명</label><input id="dDesc" value="'+esc(d.desc)+'">'
+    + '<label>자료 링크 (구글 문서·드라이브 등)</label><input id="dLink" value="'+esc(d.link)+'">'
+    + '<label>핵심 요약</label><textarea id="dSum" rows="5">'+esc(d.summary)+'</textarea>'
+    + '<label>관련 질문 id (쉼표로 구분 · 예: Q001,Q003)</label><input id="dRel" value="'+esc(d.rel)+'">'
+    + '<div class="dbtns">'
+    +  '<label style="margin:0;display:flex;align-items:center;gap:6px;font-weight:600">'
+    +   '<input type="checkbox" id="dOpen" '+(d.open?'checked':'')+' style="width:auto"> 노출</label>'
+    +  '<button class="btn btn-fill" onclick="saveDoc(\''+esc(d.id)+'\')">'+(d.id?'수정 저장':'등록')+'</button>'
+    +  (d.id?'<button class="btn" onclick="cancelEdit()">취소</button>':'')
+    + '</div></div>';
+}
+
+function renderAdminDocs(){
+  var list = adminDocs.map(function(d,i){
+    if(editingDoc===d.id) return docForm(d);
+    return '<div class="arow">'
+      + '<div class="ameta">'
+      +  '<span class="st '+(d.open?'st-답변완료':'st-대기')+'">'+(d.open?'노출':'숨김')+'</span>'
+      +  '<span>'+esc(d.date)+'</span><span class="tag">'+esc(d.cat)+'</span>'
+      +  '<span style="flex:1"></span>'
+      +  '<button class="mini" onclick="editDoc(\''+esc(d.id)+'\')">수정</button>'
+      +  '<button class="mini" onclick="copyText(location.origin+location.pathname+\'?d='+esc(d.id)+'\')">DM 링크 복사</button>'
+      + '</div>'
+      + '<div class="aq"><b>'+esc(d.title)+'</b>'+(d.desc?'<br>'+esc(d.desc):'')+'</div>'
+      + '</div>';
+  }).join('');
+  $('adocs').innerHTML = (editingDoc===null ? docForm(null) : '') + list;
+}
+
+function editDoc(id){ editingDoc=id; renderAdminDocs(); }
+function cancelEdit(){ editingDoc=null; renderAdminDocs(); }
+
+function saveDoc(id){
+  var body={action:'adminSaveDoc', token:adminToken,
+    id:id||'', cat:$('dCat').value, title:$('dTitle').value, desc:$('dDesc').value,
+    link:$('dLink').value, summary:$('dSum').value, rel:$('dRel').value,
+    open:$('dOpen').checked};
+  if(!body.title.trim()){ toast('제목을 입력해주세요'); return; }
+  api('POST', body, function(res){
+    if(res&&res.ok){ toast('저장했습니다'); editingDoc=null; loadAdminDocs(); DOCS=[]; loadDocs(); }
+    else toast((res&&res.error)||'저장하지 못했습니다');
+  });
+}
+
 /* ───────── 자료실 ───────── */
 
 var DOCS=[], curDoc=null;
 
 function showView(v){
+  if(inAdmin) return;
   var board = v==='board';
   $('boardView').style.display = board ? '' : 'none';
   $('docsView').style.display  = board ? 'none' : '';
