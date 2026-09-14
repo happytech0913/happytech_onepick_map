@@ -497,7 +497,6 @@ function htPeriodEndMonth(start, months) {
     return htYmd(y, mo + 1, new Date(Date.UTC(y, mo + 1, 0)).getUTCDate());
 }
 function htEndFor(start, months, fit) { return fit === "day" ? htPeriodEnd(start, months) : htPeriodEndMonth(start, months); }
-function htNextFirst() { const p = htToday().split("-").map(Number); return p[1] === 12 ? htYmd(p[0] + 1, 1, 1) : htYmd(p[0], p[1] + 1, 1); }
 function htExtendUntil(cur, months, fit) {
     const today = htToday();
     const start = htIsYmd(cur) && cur >= today ? htAddDays(cur, 1) : today;
@@ -802,7 +801,6 @@ function Members({ members, ledger, onAdjust, onAddMember, onBumpStat, onSetLeve
        날짜를 손으로 치는 건 보상 일수·오타 수정 같은 예외라 한 번 더 열게 한다. */
     const [term, setTerm] = useState(3);               // 3 · 6 · 12 · "date"
     const [termDate, setTermDate] = useState("");
-    const [startMode, setStartMode] = useState("today"); // today = 오늘 입장 · next1 = 다음 달 1일부터
     const [fit, setFit] = useState("month");             // month = 말일 마감 (기수 모집 기본) · day = 날짜 그대로
     const [dateOpen, setDateOpen] = useState(false);
     const [dateVal, setDateVal] = useState("");
@@ -819,13 +817,15 @@ function Members({ members, ledger, onAdjust, onAddMember, onBumpStat, onSetLeve
     }, [sel]);
     const pick = (id) => { jumpRef.current = true; setSel(id); setAmt(""); setReason(""); setDateOpen(false); };
     const todayYmd = htToday();
-    const startYmd = startMode === "next1" ? htNextFirst() : todayYmd;
-    const termUntil = term === "date" ? (htIsYmd(termDate) ? termDate : "") : htEndFor(startYmd, term, fit);
+    /* 시작일은 늘 오늘 — 입장 안내를 보내고 들어온 날 등록하니 등록일이 곧 입장일이다.
+       "다음 달 1일부터" 버튼이 있었지만 달이 바뀔 때마다 글자가 바뀌어 헷갈리기만 해서 뺐다.
+       다음 달 1일 시작으로 잡아야 할 일이 생기면 날짜 지정을 쓰면 된다. */
+    const termUntil = term === "date" ? (htIsYmd(termDate) ? termDate : "") : htEndFor(todayYmd, term, fit);
     const canRegister = !!newName.trim() && newP4.length === 4 && !!termUntil;
     const doRegister = () => {
         const nm = newName.trim();
         const dup = members.find((m) => m.realName === nm && m.phone4 === newP4);
-        onAddMember(nm, newP4, term === "date" ? { until: termDate } : { months: term, start: startMode, fit: fit });
+        onAddMember(nm, newP4, term === "date" ? { until: termDate } : { months: term, fit: fit });
         if (dup) { pick(dup.id); return; }   // 이미 있는 사람이면 등록 대신 그 사람 상세를 연다
         setNewName(""); setNewP4(""); setTermDate("");
     };
@@ -872,13 +872,8 @@ function Members({ members, ledger, onAdjust, onAddMember, onBumpStat, onSetLeve
                     style: { cursor: "pointer", borderRadius: 999, padding: "6px 12px", fontSize: 12.5, fontWeight: 800, fontFamily: "inherit",
                         background: term === k ? T.ink : "#fff", color: term === k ? "#fff" : T.ink, border: term === k ? `1.5px solid ${T.ink}` : `1.5px solid ${T.line}` } },
                     k === "date" ? "날짜 지정" : `${k}개월`)),
-                term === "date" && React.createElement(Input, { type: "date", value: termDate, min: todayYmd, onChange: (e) => setTermDate(e.target.value), style: { padding: "5px 10px", fontSize: 13, background: "#fff" } })),
-            term !== "date" && React.createElement("div", { style: { display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginTop: 7 } },
-                React.createElement("span", { style: { fontSize: 12, fontWeight: 800, color: T.sub, width: 52 } }, "시작"),
-                [["today", "오늘 입장"], ["next1", `${Number(htNextFirst().slice(5, 7))}월 1일부터`]].map(([k, label]) => React.createElement("button", { key: k, onClick: () => setStartMode(k), "aria-pressed": startMode === k,
-                    style: { cursor: "pointer", borderRadius: 999, padding: "6px 12px", fontSize: 12.5, fontWeight: 800, fontFamily: "inherit",
-                        background: startMode === k ? T.ink : "#fff", color: startMode === k ? "#fff" : T.ink, border: startMode === k ? `1.5px solid ${T.ink}` : `1.5px solid ${T.line}` } }, label)),
-                React.createElement("div", { style: { display: "inline-flex", background: "#EDF1F0", borderRadius: 999, padding: 3, marginLeft: 2 } }, ["month", "day"].map((k) => React.createElement("button", { key: k, onClick: () => setFit(k), "aria-pressed": fit === k,
+                term === "date" && React.createElement(Input, { type: "date", value: termDate, min: todayYmd, onChange: (e) => setTermDate(e.target.value), style: { padding: "5px 10px", fontSize: 13, background: "#fff" } }),
+                term !== "date" && React.createElement("div", { style: { display: "inline-flex", background: "#EDF1F0", borderRadius: 999, padding: 3, marginLeft: 2 } }, ["month", "day"].map((k) => React.createElement("button", { key: k, onClick: () => setFit(k), "aria-pressed": fit === k,
                     style: { cursor: "pointer", border: "none", borderRadius: 999, padding: "4px 10px", fontSize: 11.5, fontWeight: 800, fontFamily: "inherit",
                         background: fit === k ? "#fff" : "transparent", color: fit === k ? T.ink : T.sub, boxShadow: fit === k ? "0 1px 3px rgba(28,35,51,.12)" : "none" } }, k === "month" ? "말일 마감" : "날짜 그대로")))),
             React.createElement("div", { style: { display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginTop: 10, paddingTop: 10, borderTop: `1px solid rgba(28,35,51,.08)` } },
@@ -886,8 +881,7 @@ function Members({ members, ledger, onAdjust, onAddMember, onBumpStat, onSetLeve
                     React.createElement("div", { style: { fontSize: 14, fontWeight: 800, color: termUntil ? T.ink : T.sub, letterSpacing: "-0.01em", fontVariantNumeric: "tabular-nums" } },
                         termUntil ? `${htDateKo(termUntil)}까지` : "마감일을 골라주세요"),
                     term !== "date" && React.createElement("div", { style: { fontSize: 11.5, color: T.sub, marginTop: 2, lineHeight: 1.5 } },
-                        `${htDateShort(startYmd)} 시작 · ${term}개월`,
-                        startMode === "next1" && " · 등록하면 오늘부터 들어올 수 있어요 (기간은 다음 달부터)")),
+                        `오늘 입장 · ${term}개월`)),
                 React.createElement(Btn, { small: true, disabled: !canRegister, onClick: doRegister }, "+ \uB4F1\uB85D"))),
         React.createElement("div", { style: { display: "grid", gridTemplateColumns: sel ? "repeat(auto-fit, minmax(300px, 1fr))" : "1fr", gap: 14, alignItems: "start" } },
             React.createElement(Card, { pad: 0, style: { overflow: "hidden" } },
@@ -5829,10 +5823,10 @@ function App() {
         try {
             let newM;
             if (live)
-                newM = await api("addMember", { adminKey, realName, phone4, months: t.months || 0, until: t.until || "", start: t.start || "today", fit: t.fit || "month" });
+                newM = await api("addMember", { adminKey, realName, phone4, months: t.months || 0, until: t.until || "", fit: t.fit || "month" });   // 시작일은 늘 오늘 — 서버 기본값
             else {
                 const id = nid();
-                const until = t.months ? htEndFor(t.start === "next1" ? htNextFirst() : htToday(), t.months, t.fit) : (t.until || "");
+                const until = t.months ? htEndFor(htToday(), t.months, t.fit) : (t.until || "");
                 newM = { id, name: realName, realName, phone4, joined: today, founder: false, credits: 0, parts: 0, wins: 0, auctions: 0, bids: 0, invites: 0, visits: 0, staff: false, level: 0, pwCustom: false, live: ["member"], until };
             }
             setMembers((M) => [...M, newM]);
