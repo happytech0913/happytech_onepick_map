@@ -700,10 +700,16 @@ async function api(action, payload = {}) {
         }
         catch (_) {
             const head = raw.slice(0, 120).replace(/\s+/g, " ");
-            const err = new Error(res.status === 401 || res.status === 403 || /accounts\.google\.com|ServiceLogin/.test(raw)
+            /* 진단 코드를 화면에도 띄운다 (v92).
+               오류 리포트는 이 요청과 같은 주소로 나간다. 그 주소에서 JSON 이 안 오는 상황이면
+               리포트도 같이 죽어서 오류로그에 한 줄도 안 남는다 — 실제로 그런 일이 있었다.
+               그때 남는 단서는 멤버 화면뿐이라, 상태 코드와 응답 종류를 문구에 붙여
+               캡처 한 장으로 원인이 갈리게 한다. */
+            const code = `${res.status}${res.redirected ? "R" : ""}·${String(res.headers.get("content-type") || "?").split(";")[0]}`;
+            const err = new Error((res.status === 401 || res.status === 403 || /accounts\.google\.com|ServiceLogin/.test(raw)
                 ? "로그인 화면이 떠서 들어가지 못했어요. 해피테크에게 알려주세요"
-                : "서버가 잠깐 답을 못 줬어요. 몇 초 뒤에 다시 눌러주세요");
-            err.__detail = `non-JSON ${res.status} ${res.redirected ? "redirected " : ""}${head}`;
+                : "서버가 잠깐 답을 못 줬어요. 몇 초 뒤에 다시 눌러주세요") + ` (진단 ${code})`);
+            err.__detail = `non-JSON ${code} ${head}`;
             throw err;
         }
         if (!j.ok)
