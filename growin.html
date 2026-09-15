@@ -2180,9 +2180,11 @@ function AuctionStatsTab({ stats: statsRaw }) {
                 ] }),
             React.createElement("div", { style: { display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 } }, selRows.slice(-6).map((r) => (React.createElement(Pill, { key: r.month, tone: "line", style: { fontSize: 10.5, fontVariantNumeric: "tabular-nums" } },
                 r.month.slice(2).replace("-", "."),
-                " \u00B7 \uAC00\uC728 ",
+                /* 낙찰가율·매각률을 "가율"·"률"로 줄여 썼더니 데이터가 잘린 것처럼 보였다.
+                   특히 "률"은 그 자체로 뜻이 없어서 무슨 수치인지 알 수 없다. 이름을 온전히 적는다. */
+                " \u00B7 \uB099\uCC30\uAC00\uC728 ",
                 r.priceRate.toFixed(1),
-                "% \u00B7 \uB960 ",
+                "% \u00B7 \uB9E4\uAC01\uB960 ",
                 r.saleRate.toFixed(1),
                 "%")))))),
         React.createElement("div", { style: { fontSize: 10.5, color: T.sub, lineHeight: 1.6, padding: "0 4px" } }, "\uC790\uB8CC: \uB300\uD55C\uBBFC\uAD6D \uBC95\uC6D0\uACBD\uB9E4\uC815\uBCF4 \uB9E4\uAC01\uD1B5\uACC4\uB97C \uADF8\uB85C\uC778\uC774 \uB9E4\uC6D4 \uC790\uB3D9 \uC218\uC9D1\u00B7\uC815\uB9AC\uD574\uC694 \u00B7 \uACBD\uC7C1 \uC628\uB3C4\uB294 \uB9E4\uAC01\uB960\uACFC \uB099\uCC30\uAC00\uC728\uC744 \uC870\uD569\uD55C \uADF8\uB85C\uC778\uB9CC\uC758 \uCC38\uACE0 \uC9C0\uD45C\uC785\uB2C8\uB2E4. \uC2E4\uC81C \uC785\uCC30 \uC804\uC5D0\uB294 \uBB3C\uAC74\uBCC4 \uAD8C\uB9AC\uBD84\uC11D\uACFC \uC2DC\uC138\uB97C \uAF2D \uC9C1\uC811 \uD655\uC778\uD574\uC8FC\uC138\uC694 \uD83C\uDF40")));
