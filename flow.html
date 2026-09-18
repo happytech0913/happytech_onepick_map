@@ -491,15 +491,71 @@ function makeEngine(DATA, REGIONS){
       if(opts.length<4) continue;
       let ans=opts[0]; for(const o of opts) if(dir*o.next>dir*ans.next) ans=o;
       for(let k=opts.length-1;k>0;k--){const j=Math.floor(R()*(k+1));const t=opts[k];opts[k]=opts[j];opts[j]=t;}
-      return {i:i,date:DATA.dates[i],dir:dir,W:W,H:H,metric:m,
+      return {kind:'top',i:i,date:DATA.dates[i],dir:dir,W:W,H:H,metric:m,
         leader:{key:base.key,name:base.name,sido:base.sido,move:cum(m,base.key,i,W),next:cum(m,base.key,i+H,H)},
         total:cum(m,'_TOTAL',i,W),totalNext:cum(m,'_TOTAL',i+H,H),
         answer:ans.key,options:opts};
     }
     return null;
   }
+  /* 다음 흐름 퀴즈 — '가장 많이'가 아니라 '가장 먼저' 불붙은 곳 */
+  function quizNext(m,seed,W,H){
+    W=W||4; H=H||26;
+    const R=rng(seed), IG=0.50, weeks=[];
+    for(let i=60;i<N-H;i++) if(Math.abs(cum(m,'_TOTAL',i,W))>=0.30) weeks.push(i);
+    if(!weeks.length) return null;
+    for(let attempt=0;attempt<25;attempt++){
+      const i=weeks[Math.floor(R()*weeks.length)];
+      const dir=cum(m,'_TOTAL',i,W)>=0?1:-1;
+      const live=RG.filter(r=>DATA[m][r.key][i]!=null&&DATA[m][r.key][i+H]!=null);
+      if(live.length<20) continue;
+      const pool=live.filter(r=>dir*ex(m,r.key,i,13)>0);
+      if(pool.length<10) continue;
+      pool.sort((a,b)=>dir*ex(m,b.key,i,W)-dir*ex(m,a.key,i,W));
+      const base=pool[Math.floor(R()*Math.min(3,pool.length))];
+      if(dir*ex(m,base.key,i,W)<0.8) continue;
+      /* 후보를 기준 지역 주변 25곳으로 좁힌다.
+         전국에서 뽑으면 아무 상관 없는 동네가 2주 만에 불붙어 답이 되어버린다. */
+      const near=live.filter(r=>r.key!==base.key)
+        .map(r=>({r:r,d:(r.x-base.x)*(r.x-base.x)+(r.y-base.y)*(r.y-base.y)}))
+        .sort((a,b)=>a.d-b.d).slice(0,25).map(o=>o.r);
+      if(near.length<10) continue;
+      const info=[];
+      for(const r of near){
+        const pre=dir*ex(m,r.key,i,W)>=IG;
+        let ig=null;
+        for(let k=2;k<=H;k++){ if(dir*ex(m,r.key,i+k,W)>=IG){ ig=k; break; } }
+        info.push({r:r,pre:pre,ig:ig,gain:cum(m,r.key,i+H,H),gex:dir*ex(m,r.key,i+H,H)});
+      }
+      const fresh=info.filter(o=>!o.pre&&o.ig!=null).sort((a,b)=>a.ig-b.ig);
+      if(!fresh.length) continue;
+      const early=fresh[0];
+      if(fresh.length>1&&fresh[1].ig===early.ig) continue;   /* 동시에 붙으면 문제가 안 된다 */
+      const late=fresh.filter(o=>o.ig>=early.ig+5).sort((a,b)=>b.gex-a.gex)[0];
+      const never=info.filter(o=>!o.pre&&o.ig==null).sort((a,b)=>b.gex-a.gex)[0];
+      const pre=info.filter(o=>o.pre).sort((a,b)=>b.gex-a.gex)[0];
+      const picked=[early,late,never,pre].filter(Boolean);
+      if(picked.length<4) continue;
+      const used={};
+      const opts=[];
+      for(const o of picked){
+        if(used[o.r.key]) continue; used[o.r.key]=1;
+        opts.push({key:o.r.key,name:o.r.name,sido:o.r.sido,
+          role:o===early?'early':o===late?'late':o===never?'never':'pre',
+          ig:o.ig,pre:o.pre,next:o.gain});
+      }
+      if(opts.length<4) continue;
+      const ans=early.r.key;
+      for(let k=opts.length-1;k>0;k--){const j=Math.floor(R()*(k+1));const t=opts[k];opts[k]=opts[j];opts[j]=t;}
+      return {kind:'next',i:i,date:DATA.dates[i],dir:dir,W:W,H:H,metric:m,
+        leader:{key:base.key,name:base.name,sido:base.sido,move:cum(m,base.key,i,W),next:cum(m,base.key,i+H,H)},
+        total:cum(m,'_TOTAL',i,W),totalNext:cum(m,'_TOTAL',i+H,H),
+        answer:ans,options:opts};
+    }
+    return null;
+  }
   function REGBY_(k){ for(const r of RG) if(r.key===k) return r; return null; }
-  return {N:N,cum:cum,ex:ex,related:related,quiz:quiz,quizFlow:quizFlow,leadlag:leadlag,RG:RG,validWeeks:validWeeks};
+  return {N:N,cum:cum,ex:ex,related:related,quiz:quiz,quizFlow:quizFlow,quizNext:quizNext,leadlag:leadlag,RG:RG,validWeeks:validWeeks};
 }
 
 
@@ -887,20 +943,27 @@ function newQuiz(){
   if(!ENG) return;
   answered=false;
   let q=null,tries=0;
-  while(!q&&tries<6){ q=ENG.quizFlow(state.metric,(Date.now()+tries*104729)|0,4,26); tries++; }
-  if(!q){ tries=0; while(!q&&tries<6){ q=ENG.quiz(state.metric,(Date.now()+tries*7919)|0,4,26); tries++; } }
+  const wantNext=Math.random()<0.5;
+  const gen=wantNext?ENG.quizNext:ENG.quizFlow;
+  while(!q&&tries<6){ q=gen(state.metric,(Date.now()+tries*104729)|0,4,26); tries++; }
+  if(!q){ tries=0; const alt=wantNext?ENG.quizFlow:ENG.quizNext;
+    while(!q&&tries<6){ q=alt(state.metric,(Date.now()+tries*7919)|0,4,26); tries++; } }
   curQ=q;
   const box=document.getElementById('qbox');
   if(!q){ box.innerHTML='<p>문제를 만들 데이터가 부족합니다.</p>'; return; }
   const up=q.dir>0;
   const ld=q.leader;
   const dFrom=DATA.dates[Math.max(0,q.i-q.W+1)], dTo=q.date, dEnd=DATA.dates[Math.min(N-1,q.i+q.H)];
+  const isNext=q.kind==='next';
   box.innerHTML=
-   '<p class="qmeta">'+(state.metric==='sale'?'매매':'전세')+'</p>'+
+   '<p class="qmeta">'+(state.metric==='sale'?'매매':'전세')+' · '+(isNext?'흐름의 순서':'크기 비교')+'</p>'+
    '<p class="qtext">타임머신을 타고 <b>'+kdate(q.date)+'</b>로 가봅시다.<br>'+
    '이 시점 직전 4주('+dFrom.slice(5)+' → '+dTo.slice(5)+') 동안 <b>'+ld.sido+' '+ld.name+'</b>가 '+
    pct(ld.move)+' '+(up?'올랐':'내렸')+'습니다. 같은 기간 전국은 '+pct(q.total)+'.<br>'+
-   '여기서 <b>'+q.H+'주 뒤('+dEnd.slice(5)+')</b>까지, 가장 많이 '+(up?'오른':'내린')+' 곳은 어디였을까요?</p>'+
+   (isNext
+     ? '이 다음으로 <b>가장 먼저 움직이기 시작한</b> 곳은 어디였을까요?</p>'+
+       '<p class="qmeta" style="margin:-8px 0 12px">가장 많이 '+(up?'오른':'내린')+' 곳이 아닙니다. 불이 다음으로 옮겨붙은 곳입니다.</p>'
+     : '여기서 <b>'+q.H+'주 뒤('+dEnd.slice(5)+')</b>까지, 가장 많이 '+(up?'오른':'내린')+' 곳은 어디였을까요?</p>')+
    '<div class="opts" id="opts"></div><div id="expl"></div>';
   const o=document.getElementById('opts');
   q.options.forEach(op=>{
@@ -928,7 +991,11 @@ function answer(key){
     follow:o=>'평균 <b>'+o.lag+'주 뒤따라</b> 움직이던 곳',
     lead:o=>'평균 <b>'+Math.abs(o.lag)+'주 먼저</b> 움직이던 곳 — 이미 지나간 자리',
     hot:()=>'직전 12주에 <b>이미 크게 움직인</b> 곳',
-    near:()=>'바로 <b>옆 동네</b>지만 흐름은 따로 놀던 곳'
+    near:()=>'바로 <b>옆 동네</b>지만 흐름은 따로 놀던 곳',
+    early:o=>'<b>+'+o.ig+'주</b> 만에 불이 붙음 — 흐름이 다음으로 닿은 곳',
+    late:o=>'<b>+'+o.ig+'주</b>나 지나서 불이 붙음',
+    never:()=>q.H+'주 안에 <b>끝내 불붙지 않음</b>',
+    pre:()=>'기준 시점에 <b>이미 움직이는 중</b> — 이미 지나간 자리'
   };
   const roleLines=q.options.map(o=>{
     const f=ROLE[o.role]; if(!f) return '';
@@ -939,9 +1006,13 @@ function answer(key){
   }).join('');
   document.getElementById('expl').innerHTML=
    '<div class="exp"><span class="big" style="color:'+(ok?'var(--ok)':'var(--no)')+'">'+(ok?'맞았습니다':'틀렸습니다')+'</span><br><br>'+
-   '정답은 <b>'+ans.sido+' '+ans.name+'</b> — '+q.H+'주 동안 '+pct(ans.next)+' (전국 '+pct(q.totalNext)+')<br>'+
+   '정답은 <b>'+ans.sido+' '+ans.name+'</b>'+
+   (q.kind==='next'? ' — 기준 시점에서 <b>'+ans.ig+'주</b> 만에 움직이기 시작했습니다.'
+                   : ' — '+q.H+'주 동안 '+pct(ans.next)+' (전국 '+pct(q.totalNext)+')')+'<br>'+
    '기준이 된 '+q.leader.sido+' '+q.leader.name+'는 같은 기간 '+pct(q.leader.next)+'.<br><br>'+
-   '<span style="color:var(--dim);font-size:11px">네 곳은 각각 이런 자리였습니다 — 18년치에서 계산한 시차입니다</span>'+
+   '<span style="color:var(--dim);font-size:11px">'+(q.kind==='next'
+     ? '네 곳이 각각 언제 움직였는지 — 오른쪽은 '+q.H+'주 총 변동입니다. 제일 많이 오른 곳과 제일 먼저 오른 곳은 다를 수 있습니다'
+     : '네 곳은 각각 이런 자리였습니다 — 18년치에서 계산한 시차입니다')+'</span>'+
    roleLines+'<br>'+
    '<span style="color:var(--dim)">이건 예측 문제가 아니라 기록 확인입니다. 당시 실제로 이렇게 흘렀다는 것뿐이고, 같은 조건이 다시 와도 같은 결과가 나온다는 뜻은 아닙니다.</span><br><br>'+
    '<button id="gomap">이 시점 지도 보기</button> <button id="next">다음 문제</button></div>';
@@ -949,7 +1020,7 @@ function answer(key){
   document.getElementById('gomap').onclick=()=>{ setIdx(Math.min(N-1,q.i+q.H)); tab('map'); };
   const log=loadLog();
   const picked=q.options.find(o=>o.key===key);
-  log.push({d:q.date,ok:ok,dir:q.dir,m:q.metric,role:picked?picked.role:null,lead:q.leader.sido+' '+q.leader.name,
+  log.push({d:q.date,ok:ok,dir:q.dir,m:q.metric,kind:q.kind||'top',role:picked?picked.role:null,lead:q.leader.sido+' '+q.leader.name,
     pick:(REGBY[key]?REGBY[key].sido+' '+REGBY[key].name:key),ans:ans.sido+' '+ans.name,ts:Date.now()});
   saveLog(log);
 }
@@ -962,8 +1033,10 @@ function drawReport(){
   const card=(t,[o,n])=>'<div class="card"><em>'+t+'</em><span class="big">'+(n?Math.round(o/n*100):0)+'%</span> <span style="color:var(--dim);font-size:12px">'+o+'/'+n+'</span></div>';
   let h='<div class="cards">'+
     card('전체',cnt(()=>true))+card('상승 국면',cnt(x=>x.dir>0))+card('하락 국면',cnt(x=>x.dir<0))+
+    card('흐름의 순서',cnt(x=>x.kind==='next'))+card('크기 비교',cnt(x=>x.kind!=='next'))+
     card('매매',cnt(x=>x.m==='sale'))+card('전세',cnt(x=>x.m==='jeonse'))+'</div>';
-  const roles={lead:'이미 지나간 곳을 고름',hot:'이미 오른 곳을 고름',near:'옆 동네를 고름',follow:'뒤따르는 곳을 고름'};
+  const roles={lead:'이미 지나간 곳을 고름',hot:'이미 오른 곳을 고름',near:'옆 동네를 고름',follow:'뒤따르는 곳을 고름',
+    pre:'이미 움직이던 곳을 고름',late:'뒤늦게 붙은 곳을 고름',never:'끝내 안 움직인 곳을 고름',early:'먼저 붙은 곳을 고름'};
   const wrong=log.filter(x=>!x.ok&&x.role);
   if(wrong.length>=3){
     const cnt={}; for(const x of wrong) cnt[x.role]=(cnt[x.role]||0)+1;
@@ -1163,13 +1236,14 @@ const PIN_FP=1515787531;
 function fp(s){ let h=2166136261; for(let i=0;i<s.length;i++){ h^=s.charCodeAt(i); h=Math.imul(h,16777619)>>>0; } return h>>>0; }
 let adminOn=false, lastLoaded=null;
 const adm=document.getElementById('admin');
-document.getElementById('door').onclick=()=>{
-  if(adminOn){ adm.classList.add('show'); return; }
+function askPin(){
+  if(adminOn){ adminInfo(); adm.classList.add('show'); return; }
   const v=prompt('PIN');
   if(v==null) return;
   if(fp(v.trim())!==PIN_FP) return;
   adminOn=true; adminInfo(); adm.classList.add('show');
-};
+}
+document.getElementById('door').onclick=askPin;
 function adminInfo(){
   document.getElementById('ainfo').innerHTML=
     '지금 화면: <b>'+SRCNAME+'</b> · '+DATA.dates[0]+' ~ '+DATA.dates[N-1]+' · '+N+'주';
