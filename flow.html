@@ -10,7 +10,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Gothic+A1:wght@200;400;600;800&display=swap" rel="stylesheet">
 <style>
 :root{--ink:#10151C;--panel:#161D26;--panel2:#1C2530;--line:rgba(255,255,255,.09);
- --txt:#E7EAEE;--dim:#8C97A5;--gold:#E3B863;--page:#0C1016;--pagetxt:#E7EAEE;--ok:#4FA86B;--no:#C4553F}
+ --txt:#E7EAEE;--dim:#8C97A5;--gold:#E3B863; --zone:#3FB8A0; --era:#8A8FE0;--page:#0C1016;--pagetxt:#E7EAEE;--ok:#4FA86B;--no:#C4553F}
 @media (prefers-color-scheme: light){:root:not([data-theme="dark"]){--page:#E9E6E0;--pagetxt:#1A1F26}}
 :root[data-theme="light"]{--page:#E9E6E0;--pagetxt:#1A1F26}
 :root[data-theme="dark"]{--page:#0C1016;--pagetxt:#E7EAEE}
@@ -88,8 +88,10 @@ select{font-family:inherit;font-size:12px;background:var(--panel2);color:var(--t
 .mapbox{position:relative;background:#121821;overflow:hidden}
 svg.map{display:block;position:absolute;inset:0;width:100%;height:100%}
 svg.map{touch-action:none}
-.zoomc{display:flex;gap:0;margin-left:auto;border:1px solid var(--line);border-radius:7px;overflow:hidden}
-.zoomc button{border:0;border-radius:0;border-right:1px solid var(--line);padding:5px 11px;font-size:13px;line-height:1}
+.zoomc{position:absolute;top:10px;right:10px;z-index:4;display:flex;
+ border:1px solid rgba(255,255,255,.16);border-radius:9px;overflow:hidden;background:rgba(12,17,23,.72)}
+.zoomc button{border:0;border-radius:0;border-right:1px solid rgba(255,255,255,.14);
+ padding:6px 12px;font-size:14px;line-height:1;background:transparent}
 .zoomc button:last-child{border-right:0}
 svg.map path{stroke:rgba(255,255,255,.10);stroke-width:.6;vector-effect:non-scaling-stroke;cursor:crosshair}
 svg.map path.est{stroke:rgba(255,255,255,.05)}
@@ -105,7 +107,7 @@ svg.map path.hot{stroke:var(--gold);stroke-width:1.6}
 .row b{font-variant-numeric:tabular-nums;font-weight:600;font-size:11px}
 .tl{padding:8px 12px 6px;background:var(--panel2);border-top:1px solid var(--line)}
 canvas{display:block;width:100%;touch-action:none}
-#tlc{height:clamp(54px,8vh,84px);cursor:ew-resize}
+#tlc{height:clamp(62px,9vh,88px);cursor:ew-resize}
 
 .ctl{padding:clamp(6px,1.2vh,12px) 14px;background:var(--panel2);display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 .zones{padding:clamp(5px,1vh,10px) 14px 0;background:var(--panel2);display:flex;gap:5px;
@@ -113,13 +115,23 @@ canvas{display:block;width:100%;touch-action:none}
 .zones::-webkit-scrollbar{display:none}
 .zones button{flex:none}
 .zones>span{flex:none;white-space:nowrap}
-.zones button{font-size:11px;padding:5px 10px;color:var(--dim)}
-.zones button.on{color:#151A21}
+.zones button{font-size:11px;padding:5px 10px}
 .eras{padding:0 14px clamp(6px,1.2vh,14px);background:var(--panel2);display:flex;gap:5px;
  flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch}
 .eras::-webkit-scrollbar{display:none}
 .eras button{flex:none}
-.eras button{font-size:11px;padding:5px 9px;color:var(--dim)}
+.eras button{font-size:11px;padding:5px 9px}
+/* ───── 버튼 색 가족: 금색=재생 조작, 청록=보기 권역, 보라=시대 ───── */
+.ctl button.on,.ctl .grp button.on{background:var(--gold);border-color:var(--gold);color:#151A21}
+.zones button{border-color:rgba(63,184,160,.34);color:#93CFC3}
+.zones button:hover{border-color:var(--zone);color:#CFF0E8}
+.zones button.on{background:var(--zone);border-color:var(--zone);color:#08201B;font-weight:700}
+.zones>span{color:rgba(147,207,195,.8)}
+.eras button{border-color:rgba(138,143,224,.34);color:#A9ADEA}
+.eras button:hover{border-color:var(--era);color:#D6D8FA}
+.eras button.on{background:var(--era);border-color:var(--era);color:#0D1030;font-weight:700}
+.qzone button{border-color:rgba(63,184,160,.34);color:#93CFC3}
+.qzone button.on{background:var(--zone);border-color:var(--zone);color:#08201B;font-weight:700}
 .tip{position:absolute;pointer-events:none;background:rgba(10,14,20,.95);border:1px solid var(--line);
  border-radius:8px;padding:7px 10px;font-size:12px;opacity:0;transition:opacity .12s;z-index:5;white-space:nowrap}
 .tip b{display:block;font-size:14px;font-weight:800;font-variant-numeric:tabular-nums}
@@ -210,7 +222,6 @@ th{color:var(--dim);font-weight:600;font-size:11px}
   .zones{flex-wrap:nowrap;overflow-x:auto;padding-bottom:8px;-webkit-overflow-scrolling:touch}
   .zones::-webkit-scrollbar{display:none}
   .zones button{flex:none;padding:5px 9px}
-  .zoomc{position:sticky;right:0;margin-left:6px;background:var(--panel2)}
   .ctl{padding-top:10px;padding-bottom:10px}
   .ctl button,.grp button{font-size:11px;padding:6px 8px}
   .eras button{font-size:10px;padding:4px 7px}
@@ -835,12 +846,12 @@ function drawTL(){
   for(let i=0;i<N;i++){const v=valAt('_TOTAL',i)||0; vals[i]=v; if(Math.abs(v)>mx)mx=Math.abs(v);}
   ctx.strokeStyle='rgba(255,255,255,.12)'; ctx.beginPath(); ctx.moveTo(0,mid); ctx.lineTo(w,mid); ctx.stroke();
   for(let i=0;i<N;i++){
-    const v=vals[i],hh=Math.abs(v)/mx*(v>=0?mid-3:(h-12)-mid-3);
+    const v=vals[i],hh=Math.sqrt(Math.abs(v)/mx)*(v>=0?mid-3:(h-12)-mid-3);
     ctx.fillStyle=color(v/sc);
     ctx.fillRect(i*bw,v>=0?mid-hh:mid,Math.max(bw,0.9),Math.max(hh,0.6));
   }
   const x=state.i*bw+bw/2;
-  ctx.fillStyle='rgba(227,184,99,.16)'; ctx.fillRect(0,0,x,h-12);
+  ctx.fillStyle='rgba(227,184,99,.10)'; ctx.fillRect(0,0,x,h-12);
   ctx.strokeStyle='#E3B863'; ctx.lineWidth=1.5; ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,h-12); ctx.stroke();
   /* 연도는 캔버스 안에 직접 그린다 — 따로 띄우면 아래 글자와 겹친다 */
   ctx.fillStyle='rgba(140,151,165,.85)'; ctx.font='9px Gothic A1,sans-serif'; ctx.textBaseline='alphabetic';
@@ -1401,13 +1412,13 @@ svg.addEventListener('pointerleave',e=>{ if(e.pointerType==='mouse') ptrEnd(e); 
       b.classList.add('on'); applyZone(); };
     el.appendChild(b);
   });
-  const zc=document.createElement('span'); zc.className='zoomc';
+  const zc=document.createElement('div'); zc.className='zoomc';
   zc.innerHTML='<button title="축소">−</button><button title="확대">＋</button><button title="원래대로">⤾</button>';
   const zb=zc.querySelectorAll('button');
   zb[0].onclick=()=>zoomCenter(1.4);
   zb[1].onclick=()=>zoomCenter(1/1.4);
   zb[2].onclick=()=>applyZone();
-  el.appendChild(zc);
+  document.getElementById('mapbox').appendChild(zc);
 })();
 
 /* ===== 워터마크 그리기 ===== */
