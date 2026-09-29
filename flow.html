@@ -87,7 +87,7 @@ select{font-family:inherit;font-size:12px;background:var(--panel2);color:var(--t
 
 .mapbox{position:relative;background:#121821;overflow:hidden}
 svg.map{display:block;position:absolute;inset:0;width:100%;height:100%}
-svg.map{touch-action:pan-y}
+svg.map{touch-action:none}
 .zoomc{display:flex;gap:0;margin-left:auto;border:1px solid var(--line);border-radius:7px;overflow:hidden}
 .zoomc button{border:0;border-radius:0;border-right:1px solid var(--line);padding:5px 11px;font-size:13px;line-height:1}
 .zoomc button:last-child{border-right:0}
@@ -103,16 +103,16 @@ svg.map path.hot{stroke:var(--gold);stroke-width:1.6}
 .row s{flex:1;text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .row em{font-style:normal;color:var(--dim);font-size:10px}
 .row b{font-variant-numeric:tabular-nums;font-weight:600;font-size:11px}
-.tl{padding:10px 14px 4px;background:var(--panel2);border-top:1px solid var(--line)}
+.tl{padding:8px 12px 6px;background:var(--panel2);border-top:1px solid var(--line)}
 canvas{display:block;width:100%;touch-action:none}
-#tlc{height:clamp(38px,7vh,70px);cursor:ew-resize}
-.years{position:relative;height:14px;font-size:9px;color:var(--dim)}
-.years span{position:absolute;transform:translateX(-50%);font-variant-numeric:tabular-nums}
+#tlc{height:clamp(54px,8vh,84px);cursor:ew-resize}
+
 .ctl{padding:clamp(6px,1.2vh,12px) 14px;background:var(--panel2);display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 .zones{padding:clamp(5px,1vh,10px) 14px 0;background:var(--panel2);display:flex;gap:5px;
  flex-wrap:nowrap;overflow-x:auto;align-items:center;-webkit-overflow-scrolling:touch}
 .zones::-webkit-scrollbar{display:none}
 .zones button{flex:none}
+.zones>span{flex:none;white-space:nowrap}
 .zones button{font-size:11px;padding:5px 10px;color:var(--dim)}
 .zones button.on{color:#151A21}
 .eras{padding:0 14px clamp(6px,1.2vh,14px);background:var(--panel2);display:flex;gap:5px;
@@ -256,7 +256,7 @@ th{color:var(--dim);font-weight:600;font-size:11px}
       <div class="wmc" id="wm1"></div><div class="credit" id="cr1"></div>
       <div class="tip" id="tip"></div>
     </div>
-    <div class="tl"><canvas id="tlc"></canvas><div class="years" id="yrs"></div></div>
+    <div class="tl"><canvas id="tlc"></canvas></div>
   </div>
 
   <aside class="panel">
@@ -777,7 +777,7 @@ function setData(d,name,keep){
   ENG=makeEngine(DATA,REG);
   state.i=keep?Math.min(state.i,N-1):N-1;
   document.getElementById('src').innerHTML=SRCNAME+' · <b>'+DATA.dates[0]+' ~ '+DATA.dates[N-1]+'</b> · '+N+'주';
-  drawYears(); fillRelSelect(); render();
+  fillRelSelect(); render();
 }
 function colAt(chain,i){
   const s=DATA[state.metric];
@@ -829,19 +829,27 @@ function sizeAll(){
   drawTL(); drawLadder();
 }
 function drawTL(){
-  const w=cv.clientWidth,h=cv.clientHeight,bw=w/N,mid=h*0.55,sc=SCALE[state.win];
+  const w=cv.clientWidth,h=cv.clientHeight,bw=w/N,mid=(h-12)*0.55,sc=SCALE[state.win];
   ctx.clearRect(0,0,w,h);
   let mx=0.001; const vals=new Array(N);
   for(let i=0;i<N;i++){const v=valAt('_TOTAL',i)||0; vals[i]=v; if(Math.abs(v)>mx)mx=Math.abs(v);}
   ctx.strokeStyle='rgba(255,255,255,.12)'; ctx.beginPath(); ctx.moveTo(0,mid); ctx.lineTo(w,mid); ctx.stroke();
   for(let i=0;i<N;i++){
-    const v=vals[i],hh=Math.abs(v)/mx*(v>=0?mid-3:h-mid-3);
+    const v=vals[i],hh=Math.abs(v)/mx*(v>=0?mid-3:(h-12)-mid-3);
     ctx.fillStyle=color(v/sc);
     ctx.fillRect(i*bw,v>=0?mid-hh:mid,Math.max(bw,0.9),Math.max(hh,0.6));
   }
   const x=state.i*bw+bw/2;
-  ctx.fillStyle='rgba(227,184,99,.16)'; ctx.fillRect(0,0,x,h);
-  ctx.strokeStyle='#E3B863'; ctx.lineWidth=1.5; ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,h); ctx.stroke();
+  ctx.fillStyle='rgba(227,184,99,.16)'; ctx.fillRect(0,0,x,h-12);
+  ctx.strokeStyle='#E3B863'; ctx.lineWidth=1.5; ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,h-12); ctx.stroke();
+  /* 연도는 캔버스 안에 직접 그린다 — 따로 띄우면 아래 글자와 겹친다 */
+  ctx.fillStyle='rgba(140,151,165,.85)'; ctx.font='9px Gothic A1,sans-serif'; ctx.textBaseline='alphabetic';
+  let last=null;
+  for(let i=0;i<N;i++){
+    const y=DATA.dates[i].slice(0,4);
+    if(y!==last && (+y)%2===0) ctx.fillText("'"+y.slice(2), i*bw, h-2);
+    last=y;
+  }
 }
 let drag=0;
 cv.addEventListener('pointerdown',e=>{drag=1; cv.setPointerCapture(e.pointerId); pause(); tlScrub(e);});
@@ -849,17 +857,6 @@ cv.addEventListener('pointermove',e=>{if(drag) tlScrub(e);});
 cv.addEventListener('pointerup',()=>drag=0);
 cv.addEventListener('pointercancel',()=>drag=0);
 function tlScrub(e){const b=cv.getBoundingClientRect(); setIdx(Math.round((e.clientX-b.left)/b.width*(N-1)));}
-const yrs=document.getElementById('yrs');
-function drawYears(){
-  yrs.innerHTML=''; let last=null;
-  DATA.dates.forEach((d,i)=>{
-    const y=d.slice(0,4);
-    if(y!==last&&(+y)%2===0){const s=document.createElement('span'); s.textContent="'"+y.slice(2);
-      s.style.left=(i/(N-1)*100)+'%'; yrs.appendChild(s);}
-    last=y;
-  });
-}
-
 /* ===== 순위 ===== */
 const upEl=document.getElementById('up'),dnEl=document.getElementById('dn');
 function rankRow(o,sc){const c=color(o.v/sc);
@@ -1365,7 +1362,8 @@ svg.addEventListener('wheel',e=>{
 const ptrs=new Map(); let panning=false, panLast=null, pinchD=0;
 svg.addEventListener('pointerdown',e=>{
   ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
-  if(ptrs.size===1&&e.pointerType==='mouse'){ panning=true; panLast=[e.clientX,e.clientY]; svg.setPointerCapture(e.pointerId); }
+  if(ptrs.size===1){ panning=true; panLast=[e.clientX,e.clientY];
+    try{ svg.setPointerCapture(e.pointerId); }catch(err){} }
   if(ptrs.size===2){ panning=false; const a=[...ptrs.values()];
     pinchD=Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y); }
 });
