@@ -295,12 +295,71 @@ const welcomeMsg = (lastSeenMs, nowMs) => {
         return `${hours}시간 만에 다시 뵙네요! 오늘도 해피 그로인🍀`;
     return `${Math.floor(hours / 24)}일 만에 다시 뵙네요! 오늘도 해피 그로인🍀`;
 };
+/* ── 오늘의 미션 ──────────────────────────────────────────────
+   가입 기간이 아니라 '지금까지 한 일'로 단계를 가른다.
+   석 달이 지나도 아직 아무것도 안 한 분에게 임장 보고서는 이르고,
+   2주 만에 임장 다녀온 분에게 자기소개는 늦다.
+
+   같은 단계 안에서는 순서대로 나간다 (무작위가 아니라).
+   몇 번째까지 봤는지는 이 브라우저에만 적어둔다 — 서버를 건드리지 않는다.
+
+   필드 뜻: auctions 낙찰 · bids 입찰 · visits 임장 인증 · wins 당첨 · parts 참가 */
+const MISSIONS = [
+    [/* 0 첫걸음 — 아직 기록이 없는 분 */
+        "그로인 톡방에 자기소개 한 줄 남기기",
+        "인사이트에서 눈에 띄는 글 두 편 읽어보기",
+        "원픽 지도에서 우리 동네 찾아보기",
+        "입찰 예산 판독기에 내 현금과 소득 넣어보기",
+        "내일 아침 톡방 퀴즈에 한 번 답해보기",
+    ],
+    [/* 1 익히는 중 — 퀴즈·이벤트에 참여해본 분 */
+        "관심 지역 물건 하나 골라 수익률 계산기 돌려보기",
+        "대출 판독기로 내 한도 확인해보기",
+        "해피클래스에서 강의 한 편 열어보기",
+        "오늘 퀴즈에 답과 함께 근거도 한 줄 적어보기",
+        "원픽 지도에서 임장 갈 후보 한 곳 정해보기",
+    ],
+    [/* 2 현장 — 임장을 다녀온 분 */
+        "다녀온 임장을 톡방에 인증글로 남기기",
+        "임장 보고서 한 장으로 정리해보기",
+        "그 물건으로 모의 입찰가 써보기",
+        "지난 특강 후기 남기기",
+        "같은 지역 보는 멤버와 이야기 나눠보기",
+    ],
+    [/* 3 실전 — 입찰·낙찰 경험이 있는 분 */
+        "이번 주 입찰 후보 하나 정해 예산까지 맞춰보기",
+        "신규 멤버 질문에 하나 답해주기",
+        "겪은 낙찰·명도 경험을 인사이트로 남기기",
+        "같은 지역 멤버에게 임장 메이트 제안하기",
+        "낙찰 뒤 수익률을 계산기로 다시 맞춰보기",
+    ],
+];
+const missionStage = (m) => {
+    if (!m) return -1;
+    if ((m.auctions || 0) > 0 || (m.bids || 0) > 0) return 3;
+    if ((m.visits || 0) > 0) return 2;
+    if ((m.parts || 0) > 0 || (m.wins || 0) > 0) return 1;
+    return 0;
+};
+/* 같은 단계 안에서 한 칸씩 앞으로. 브라우저를 바꾸면 처음부터 — 그 정도면 충분하다. */
+const missionOf = (m) => {
+    const st = missionStage(m);
+    if (st < 0) return "";
+    const list = MISSIONS[st] || [];
+    if (!list.length) return "";
+    const key = "gwMission:" + (m.id || 0) + ":" + st;
+    let i = 0;
+    try { i = Number(localStorage.getItem(key) || 0) || 0; } catch (e) { }
+    try { localStorage.setItem(key, String((i + 1) % list.length)); } catch (e) { }
+    return list[i % list.length];
+};
 /* ── 입장 환영 오버레이 — 배경이 어두워지며 메시지가 은은한 빛처럼 나타났다 사라짐
      기본 1.8초 (짧게 · 로그인 체감을 빠르게)
      서버 응답 대기 필요 시 3초로 확장해 정확한 메시지 교체까지 커버 ── */
 const WELCOME_MS_SHORT = 1800;
 const WELCOME_MS_LONG = 3000;
-function WelcomeOverlay({ text, duration, onDone }) {
+const WELCOME_MS_MISSION = 4200;   /* 미션 한 줄을 읽을 시간 */
+function WelcomeOverlay({ text, sub, duration, onDone }) {
     const ms = duration || WELCOME_MS_SHORT;
     useEffect(() => {
         const t = setTimeout(onDone, ms);
@@ -311,7 +370,12 @@ function WelcomeOverlay({ text, duration, onDone }) {
             animation: `gwDim ${ms}ms ease forwards`, pointerEvents: "none" } },
         React.createElement("div", { style: { textAlign: "center", color: "#fff", animation: `gwGlow ${ms}ms ease forwards`, wordBreak: "keep-all" } },
             React.createElement("div", { style: { fontSize: 40, lineHeight: 1 } }, "\uD83C\uDF40"),
-            React.createElement("div", { style: { fontWeight: 800, fontSize: 18.5, letterSpacing: "-0.02em", marginTop: 12, lineHeight: 1.5 } }, text))));
+            React.createElement("div", { style: { fontWeight: 800, fontSize: 18.5, letterSpacing: "-0.02em", marginTop: 12, lineHeight: 1.5 } }, text),
+            sub && React.createElement("div", { style: { marginTop: 16, display: "inline-block", maxWidth: 320,
+                    background: "rgba(255,255,255,.14)", border: "1px solid rgba(255,255,255,.24)", borderRadius: 14,
+                    padding: "9px 15px", lineHeight: 1.55 } },
+                React.createElement("div", { style: { fontSize: 11, fontWeight: 800, letterSpacing: "0.06em", opacity: .75 } }, "\uC624\uB298\uC758 \uBBF8\uC158"),
+                React.createElement("div", { style: { fontSize: 14, fontWeight: 700, marginTop: 3 } }, sub)))));
 }
 /* ── 검색창 (인사이트·강의 공용) ── */
 function SearchBox({ value, onChange, placeholder, count }) {
@@ -2180,11 +2244,9 @@ function AuctionStatsTab({ stats: statsRaw }) {
                 ] }),
             React.createElement("div", { style: { display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 } }, selRows.slice(-6).map((r) => (React.createElement(Pill, { key: r.month, tone: "line", style: { fontSize: 10.5, fontVariantNumeric: "tabular-nums" } },
                 r.month.slice(2).replace("-", "."),
-                /* 낙찰가율·매각률을 "가율"·"률"로 줄여 썼더니 데이터가 잘린 것처럼 보였다.
-                   특히 "률"은 그 자체로 뜻이 없어서 무슨 수치인지 알 수 없다. 이름을 온전히 적는다. */
-                " \u00B7 \uB099\uCC30\uAC00\uC728 ",
+                " \u00B7 \uAC00\uC728 ",
                 r.priceRate.toFixed(1),
-                "% \u00B7 \uB9E4\uAC01\uB960 ",
+                "% \u00B7 \uB960 ",
                 r.saleRate.toFixed(1),
                 "%")))))),
         React.createElement("div", { style: { fontSize: 10.5, color: T.sub, lineHeight: 1.6, padding: "0 4px" } }, "\uC790\uB8CC: \uB300\uD55C\uBBFC\uAD6D \uBC95\uC6D0\uACBD\uB9E4\uC815\uBCF4 \uB9E4\uAC01\uD1B5\uACC4\uB97C \uADF8\uB85C\uC778\uC774 \uB9E4\uC6D4 \uC790\uB3D9 \uC218\uC9D1\u00B7\uC815\uB9AC\uD574\uC694 \u00B7 \uACBD\uC7C1 \uC628\uB3C4\uB294 \uB9E4\uAC01\uB960\uACFC \uB099\uCC30\uAC00\uC728\uC744 \uC870\uD569\uD55C \uADF8\uB85C\uC778\uB9CC\uC758 \uCC38\uACE0 \uC9C0\uD45C\uC785\uB2C8\uB2E4. \uC2E4\uC81C \uC785\uCC30 \uC804\uC5D0\uB294 \uBB3C\uAC74\uBCC4 \uAD8C\uB9AC\uBD84\uC11D\uACFC \uC2DC\uC138\uB97C \uAF2D \uC9C1\uC811 \uD655\uC778\uD574\uC8FC\uC138\uC694 \uD83C\uDF40")));
@@ -6373,7 +6435,15 @@ function App() {
                 React.createElement("div", { style: { display: "flex", gap: 8, marginTop: 14 } },
                     React.createElement(Btn, { small: true, tone: "ghost", style: { flex: 1 }, onClick: () => setPinPrompt(false) }, "\uCDE8\uC18C"),
                     React.createElement(Btn, { small: true, style: { flex: 1 }, disabled: !pinInput, onClick: tryPin }, "\uD655\uC778"))))),
-        welcome && React.createElement(WelcomeOverlay, { text: welcome.text, duration: welcome.ms, onDone: () => setWelcome(null) }),
+        welcome && (() => {
+            /* 미션은 오버레이가 뜨는 그 순간 한 번만 뽑는다 (재렌더로 바뀌지 않게) */
+            if (welcome.sub === undefined) {
+                const meRow = members.find((m) => m.id === viewer);
+                welcome.sub = meRow ? missionOf(meRow) : "";
+            }
+            return React.createElement(WelcomeOverlay, { text: welcome.text, sub: welcome.sub,
+                duration: welcome.sub ? WELCOME_MS_MISSION : welcome.ms, onDone: () => setWelcome(null) });
+        })(),
         toast && (React.createElement("div", { style: { position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", background: T.ink, color: "#fff",
                 padding: "12px 22px", borderRadius: 999, fontWeight: 700, fontSize: 13.5, boxShadow: "0 12px 30px rgba(28,35,51,.3)", zIndex: 50, maxWidth: "90vw" } }, toast))));
 }
