@@ -304,53 +304,111 @@ const welcomeMsg = (lastSeenMs, nowMs) => {
    몇 번째까지 봤는지는 이 브라우저에만 적어둔다 — 서버를 건드리지 않는다.
 
    필드 뜻: auctions 낙찰 · bids 입찰 · visits 임장 인증 · wins 당첨 · parts 참가 */
-const MISSIONS = [
-    [/* 0 첫걸음 — 아직 기록이 없는 분 */
+const MISSIONS = {
+    /* 🅰 아직 기록 없음 — 오래됐는데 안 움직인 분일수록 미션이 가벼워진다.
+       그 시점에 큰 걸 시키면 더 멀어지기 때문이다. */
+    a0: [
         "그로인 톡방에 자기소개 한 줄 남기기",
         "인사이트에서 눈에 띄는 글 두 편 읽어보기",
         "원픽 지도에서 우리 동네 찾아보기",
         "입찰 예산 판독기에 내 현금과 소득 넣어보기",
+        "내일 아침 낙찰가 맞추기에 숫자만 적어보기",
         "내일 아침 톡방 퀴즈에 한 번 답해보기",
     ],
-    [/* 1 익히는 중 — 퀴즈·이벤트에 참여해본 분 */
+    a1: [
+        "아침 퀴즈에 한 줄만 적어보기. 틀려도 괜찮아요",
+        "낙찰가 맞추기에 숫자 하나만 적어보기",
+        "예산 판독기에 숫자만 넣어보기. 1분이면 됩니다",
+        "인사이트에서 제목만 훑어보고 하나만 열어보기",
+        "원픽 지도에서 관심 지역 하나 눌러보기",
+    ],
+    a2: [
+        "오늘은 인사이트 한 편만 읽어보기",
+        "원픽 지도 한 번 열어보기. 닫으셔도 됩니다",
+        "아침 퀴즈 답만 보고 가기",
+        "낙찰가 맞추기 결과만 확인해보기",
+        "톡방 알림 켜두기. 아침에 한 번 스칠 거예요",
+    ],
+    /* 🅱 퀴즈·이벤트 참여만 있음 */
+    b0: [
         "관심 지역 물건 하나 골라 수익률 계산기 돌려보기",
         "대출 판독기로 내 한도 확인해보기",
         "해피클래스에서 강의 한 편 열어보기",
-        "오늘 퀴즈에 답과 함께 근거도 한 줄 적어보기",
+        "오늘 퀴즈에 답과 근거를 함께 적어보기",
+        "낙찰가 맞추기에 금액과 그렇게 본 이유 함께 적어보기",
         "원픽 지도에서 임장 갈 후보 한 곳 정해보기",
     ],
-    [/* 2 현장 — 임장을 다녀온 분 */
+    b1: [
+        "후보 한 곳 정하고 주말에 가볼 수 있는지만 따져보기",
+        "관심 물건 시세를 네이버에서 한 번 맞춰보기",
+        "낙찰가 맞추기에서 다른 분들이 적은 근거 세 개만 읽어보기",
+        "퀴즈에 남들이 적은 근거 세 개만 읽어보기",
+        "임장 다녀온 분 인증글에 댓글 하나 달아보기",
+    ],
+    /* 🅲 임장 경험 있음 */
+    c0: [
         "다녀온 임장을 톡방에 인증글로 남기기",
         "임장 보고서 한 장으로 정리해보기",
         "그 물건으로 모의 입찰가 써보기",
+        "낙찰가 맞추기, 내 예상과 실제 낙찰가 차이를 복기해보기",
         "지난 특강 후기 남기기",
         "같은 지역 보는 멤버와 이야기 나눠보기",
     ],
-    [/* 3 실전 — 입찰·낙찰 경험이 있는 분 */
+    c1: [
+        "입찰까지 안 가도 좋으니 입찰가만 적어보기",
+        "지난번 물건 낙찰가 확인하고 내 예상과 비교해보기",
+        "낙찰가 맞추기에서 계속 빗나가는 방향이 있는지 살펴보기",
+        "입찰을 망설이게 하는 게 뭔지 톡방에 물어보기",
+    ],
+    /* 🅳 입찰·낙찰 경험 있음 */
+    d0: [
         "이번 주 입찰 후보 하나 정해 예산까지 맞춰보기",
         "신규 멤버 질문에 하나 답해주기",
         "겪은 낙찰·명도 경험을 인사이트로 남기기",
-        "같은 지역 멤버에게 임장 메이트 제안하기",
+        "낙찰가 맞추기 결과를 복기해 왜 그 가격에 갔는지 분석해보기",
         "낙찰 뒤 수익률을 계산기로 다시 맞춰보기",
     ],
-];
-const missionStage = (m) => {
-    if (!m) return -1;
-    if ((m.auctions || 0) > 0 || (m.bids || 0) > 0) return 3;
-    if ((m.visits || 0) > 0) return 2;
-    if ((m.parts || 0) > 0 || (m.wins || 0) > 0) return 1;
-    return 0;
+    /* 🅴 운영진 — 멤버용 미션을 억지로 입히지 않는다 */
+    staff: [
+        "오늘 올라온 인증글에 댓글 달아주기",
+        "아침 퀴즈 해설 남기기",
+        "인사이트 한 편 올리기",
+        "이번 주 활동 없는 멤버 한 명 챙기기",
+        "다음 특강 주제 한 줄 메모해두기",
+    ],
 };
-/* 같은 단계 안에서 한 칸씩 앞으로. 브라우저를 바꾸면 처음부터 — 그 정도면 충분하다. */
+/* 가입일로부터 며칠 — 연도가 없던 옛 값(MM-dd)은 판단하지 않는다 */
+const daysSinceJoin = (joined) => {
+    const s = String(joined || "").trim();
+    const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!m) return null;
+    const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+    if (isNaN(d.getTime())) return null;
+    return Math.floor((Date.now() - d.getTime()) / 86400000);
+};
+/* 활동 기록이 단계를, 가입 기간이 그 안의 묶음을 고른다.
+   한쪽만 보면 어색해진다 — 석 달 된 분에게 자기소개를 시키거나,
+   아직 아무것도 안 한 분에게 임장 보고서를 시키게 된다. */
+const missionKey = (m) => {
+    if (!m) return "";
+    if (m.staff === true || m.staff === "TRUE") return "staff";
+    const days = daysSinceJoin(m.joined);
+    if ((m.auctions || 0) > 0 || (m.bids || 0) > 0) return "d0";
+    if ((m.visits || 0) > 0) return (days != null && days >= 90) ? "c1" : "c0";
+    if ((m.parts || 0) > 0 || (m.wins || 0) > 0) return (days != null && days >= 30) ? "b1" : "b0";
+    if (days == null) return "a0";
+    if (days >= 30) return "a2";
+    if (days >= 7) return "a1";
+    return "a0";
+};
 const missionOf = (m) => {
-    const st = missionStage(m);
-    if (st < 0) return "";
-    const list = MISSIONS[st] || [];
+    const key = missionKey(m);
+    const list = MISSIONS[key] || [];
     if (!list.length) return "";
-    const key = "gwMission:" + (m.id || 0) + ":" + st;
+    const ls = "gwMission:" + (m.id || 0) + ":" + key;
     let i = 0;
-    try { i = Number(localStorage.getItem(key) || 0) || 0; } catch (e) { }
-    try { localStorage.setItem(key, String((i + 1) % list.length)); } catch (e) { }
+    try { i = Number(localStorage.getItem(ls) || 0) || 0; } catch (e) { }
+    try { localStorage.setItem(ls, String((i + 1) % list.length)); } catch (e) { }
     return list[i % list.length];
 };
 /* ── 입장 환영 오버레이 — 배경이 어두워지며 메시지가 은은한 빛처럼 나타났다 사라짐
