@@ -74,17 +74,19 @@ input[type=search]{font-family:inherit;font-size:12px;background:var(--panel2);c
 input[type=search]:focus{outline:2px solid var(--gold);outline-offset:1px}
 select{font-family:inherit;font-size:12px;background:var(--panel2);color:var(--txt);
  border:1px solid var(--line);border-radius:7px;padding:6px 9px}
-.hud{position:absolute;left:10px;bottom:10px;z-index:4;pointer-events:none;
- background:rgba(12,17,23,.66);border:1px solid rgba(255,255,255,.07);border-radius:11px;
- padding:7px 12px 8px;max-width:calc(100% - 22px)}
-/* 한 줄로 눕히되, 줄이 바뀌면 지표 덩어리째 넘어가도록 */
-.hudrow{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap;row-gap:3px}
-.hud .date{flex:none}
-.hud .stats{display:flex;flex-wrap:wrap;gap:2px 10px;min-width:0}
-.hud .stat{display:inline-flex;align-items:baseline;gap:4px;white-space:nowrap;font-size:0}
-.hud .stat i{font-style:normal;font-size:clamp(9px,1.4vh,11px);color:var(--dim);font-weight:400}
-.hud .stat b{display:inline;font-size:clamp(11px,1.9vh,14px)}
-.hud .legend{position:static;background:none;border:0;padding:0;margin-top:6px}
+/* 오른쪽 아래로 — 제주와 남해를 가리지 않는 자리.
+   폭을 절반으로 줄이는 대신 글씨를 줄여 높이는 그대로 둔다. */
+.hud{position:absolute;right:10px;bottom:10px;z-index:4;pointer-events:none;text-align:right;
+ background:rgba(12,17,23,.66);border:1px solid rgba(255,255,255,.07);border-radius:10px;
+ padding:5px 10px 6px;max-width:min(52%,300px)}
+.hudrow{display:flex;align-items:baseline;justify-content:flex-end;gap:7px;flex-wrap:wrap;row-gap:1px}
+.hud .date{flex:none;font-size:clamp(13px,2.3vh,19px);letter-spacing:-.01em}
+.hud .stats{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:0 8px;min-width:0}
+.hud .stat{display:inline-flex;align-items:baseline;gap:3px;white-space:nowrap;font-size:0}
+.hud .stat i{font-style:normal;font-size:clamp(8px,1.2vh,9.5px);color:var(--dim);font-weight:400}
+.hud .stat b{display:inline;font-size:clamp(9.5px,1.5vh,12px);font-weight:700}
+.legend{position:absolute;left:10px;top:10px;z-index:4;pointer-events:none;
+ background:rgba(12,17,23,.58);border:1px solid rgba(255,255,255,.07);border-radius:9px;padding:6px 9px 5px}
 .date{font-size:clamp(17px,3.4vh,28px);font-weight:800;line-height:1;font-variant-numeric:tabular-nums}
 .stats{display:flex;gap:14px;flex-wrap:wrap;padding-bottom:2px}
 .stat{font-size:11px;color:var(--dim);font-weight:200}
@@ -112,9 +114,9 @@ svg.map path.hot{stroke:var(--gold);stroke-width:1.6}
 .row s{flex:1;text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .row em{font-style:normal;color:var(--dim);font-size:10px}
 .row b{font-variant-numeric:tabular-nums;font-weight:600;font-size:11px}
-.tl{padding:6px 10px 4px;background:var(--panel2);border-top:1px solid var(--line)}
+.tl{padding:4px 10px 3px;background:var(--panel2);border-top:1px solid var(--line)}
 canvas{display:block;width:100%;touch-action:none}
-#tlc{height:clamp(62px,9vh,88px);min-height:58px;cursor:ew-resize}
+#tlc{height:clamp(36px,5vh,52px);min-height:34px;cursor:ew-resize}
 
 .ctl{padding:clamp(5px,1vh,11px) 12px;background:var(--panel2);display:flex;gap:5px;flex-wrap:wrap;align-items:center}
 .zones{padding:clamp(4px,.8vh,9px) 12px 0;background:var(--panel2);display:flex;gap:5px;
@@ -148,10 +150,11 @@ canvas{display:block;width:100%;touch-action:none}
 .wmc span{font-size:clamp(22px,6vw,48px);font-weight:800;letter-spacing:-.03em;color:#fff;
  text-shadow:0 2px 10px rgba(0,0,0,.45)}
 .credit{position:absolute;right:10px;bottom:9px;z-index:3;pointer-events:none;user-select:none;
- font-size:10px;font-weight:600;color:rgba(231,234,238,.45);letter-spacing:.01em;text-shadow:0 1px 3px rgba(0,0,0,.6)}
+ font-size:clamp(7px,.95vh,9px);font-weight:600;color:rgba(231,234,238,.4);text-shadow:0 1px 3px rgba(0,0,0,.6)}
+.hud .credit{position:static;margin-top:3px;text-align:right;color:rgba(231,234,238,.38)}
 
-.bar{width:clamp(120px,24vw,160px);height:6px;border-radius:2px;margin-bottom:3px}
-.legend .lb{display:flex;justify-content:space-between;font-size:9px;color:var(--dim);font-variant-numeric:tabular-nums}
+.bar{width:clamp(92px,19vw,124px);height:5px;border-radius:2px;margin-bottom:3px}
+.legend .lb{display:flex;justify-content:space-between;font-size:8.5px;color:var(--dim);font-variant-numeric:tabular-nums}
 .pad{padding:14px 16px}
 .note{flex:none;padding:6px 14px;font-size:clamp(9px,1.4vh,11px);line-height:1.7;color:var(--dim);
  background:var(--panel);border-top:1px solid var(--line);max-height:34vh;overflow-y:auto}
@@ -244,8 +247,9 @@ th{color:var(--dim);font-weight:600;font-size:11px}
 }
 @media (max-width:879px){
   h1 span{display:none}
-  .hud{left:7px;bottom:7px;padding:6px 10px 7px;max-width:calc(100% - 14px)}
-  .hud .stats{gap:2px 8px}
+  .hud{right:7px;bottom:7px;padding:4px 9px 5px;max-width:min(58%,260px)}
+  .hud .stats{gap:0 7px}
+  .legend{left:7px;top:7px;padding:5px 8px 4px}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
@@ -281,10 +285,11 @@ th{color:var(--dim);font-weight:600;font-size:11px}
             <span class="stat"><i>지방</i><b id="v4">-</b></span>
           </div>
         </div>
-        <div class="legend"><div class="bar" id="lbar"></div>
-          <div class="lb"><span id="lmin"></span><span>0</span><span id="lmax"></span></div></div>
+        <div class="credit" id="cr1"></div>
       </div>
-      <div class="wmc" id="wm1"></div><div class="credit" id="cr1"></div>
+      <div class="legend"><div class="bar" id="lbar"></div>
+        <div class="lb"><span id="lmin"></span><span>0</span><span id="lmax"></span></div></div>
+      <div class="wmc" id="wm1"></div>
       <div class="tip" id="tip"></div>
     </div>
     <div class="tl"><canvas id="tlc"></canvas></div>
@@ -850,25 +855,25 @@ function sizeAll(){
   drawTL(); drawLadder();
 }
 function drawTL(){
-  const w=cv.clientWidth,h=cv.clientHeight,bw=w/N,mid=(h-12)*0.55,sc=SCALE[state.win];
+  const w=cv.clientWidth,h=cv.clientHeight,bw=w/N,yh=11,mid=(h-yh)*0.55,sc=SCALE[state.win];
   ctx.clearRect(0,0,w,h);
   let mx=0.001; const vals=new Array(N);
   for(let i=0;i<N;i++){const v=valAt('_TOTAL',i)||0; vals[i]=v; if(Math.abs(v)>mx)mx=Math.abs(v);}
   ctx.strokeStyle='rgba(255,255,255,.12)'; ctx.beginPath(); ctx.moveTo(0,mid); ctx.lineTo(w,mid); ctx.stroke();
   for(let i=0;i<N;i++){
-    const v=vals[i],hh=Math.sqrt(Math.abs(v)/mx)*(v>=0?mid-3:(h-12)-mid-3);
+    const v=vals[i],hh=Math.sqrt(Math.abs(v)/mx)*(v>=0?mid-2:(h-yh)-mid-2);
     ctx.fillStyle=color(v/sc);
     ctx.fillRect(i*bw,v>=0?mid-hh:mid,Math.max(bw,0.9),Math.max(hh,0.6));
   }
   const x=state.i*bw+bw/2;
-  ctx.fillStyle='rgba(227,184,99,.10)'; ctx.fillRect(0,0,x,h-12);
-  ctx.strokeStyle='#E3B863'; ctx.lineWidth=1.5; ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,h-12); ctx.stroke();
+  ctx.fillStyle='rgba(227,184,99,.10)'; ctx.fillRect(0,0,x,h-yh);
+  ctx.strokeStyle='#E3B863'; ctx.lineWidth=1.5; ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,h-yh); ctx.stroke();
   /* 연도는 캔버스 안에 직접 그린다 — 따로 띄우면 아래 글자와 겹친다 */
   ctx.fillStyle='rgba(140,151,165,.85)'; ctx.font='9px Gothic A1,sans-serif'; ctx.textBaseline='alphabetic';
   let last=null;
   for(let i=0;i<N;i++){
     const y=DATA.dates[i].slice(0,4);
-    if(y!==last && (+y)%2===0) ctx.fillText("'"+y.slice(2), i*bw, h-2);
+    if(y!==last && (+y)%2===0) ctx.fillText("'"+y.slice(2), i*bw, h-1.5);
     last=y;
   }
 }
