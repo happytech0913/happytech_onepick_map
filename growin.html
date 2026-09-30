@@ -14,6 +14,14 @@
     input:focus, textarea:focus, select:focus, button:focus { outline: 2px solid #35C9A8; outline-offset: 1px; }
     button:focus { outline-offset: 2px; }
     ::selection { background: rgba(53,201,168,.25); }
+    /* 오늘의 미션 줄 — 빛이 한 번 훑고 지나간다. 세 번만 하고 조용해진다.
+       계속 깜빡이면 사흘이면 성가신 물건이 된다. */
+    .gwMission { position: relative; overflow: hidden; }
+    .gwMission::after { content: ""; position: absolute; top: 0; bottom: 0; left: -45%; width: 35%;
+      background: linear-gradient(105deg, transparent, rgba(255,255,255,.85), transparent);
+      transform: skewX(-18deg); animation: gwSheen 1s ease-in-out 3; pointer-events: none; }
+    @keyframes gwSheen { 0% { left: -45%; } 60% { left: 115%; } 100% { left: 115%; } }
+    @media (prefers-reduced-motion: reduce) { .gwMission::after { animation: none; } }
     /* 입장 환영 오버레이 — 배경이 살짝 어두워지고 메시지가 은은한 빛처럼 나타났다 사라짐 (총 1.8초) */
     @keyframes gwDim {
       0% { opacity: 0; } 15% { opacity: 1; } 72% { opacity: 1; } 100% { opacity: 0; }
@@ -411,13 +419,26 @@ const missionOf = (m) => {
     try { localStorage.setItem(ls, String((i + 1) % list.length)); } catch (e) { }
     return list[i % list.length];
 };
+/* 오늘 몫의 미션 — 하루에 한 번만 고른다.
+   탭을 오갈 때마다 다음 미션으로 넘어가면 순서가 하루에 다 소모된다. */
+const gwDay = () => { const d = new Date();
+    return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); };
+const missionToday = (m) => {
+    if (!m) return "";
+    const day = gwDay(), key = "gwMissionDay:" + (m.id || 0);
+    try { const raw = localStorage.getItem(key); if (raw) { const o = JSON.parse(raw); if (o && o.d === day) return o.t || ""; } } catch (e) { }
+    const t = missionOf(m);
+    try { localStorage.setItem(key, JSON.stringify({ d: day, t: t })); } catch (e) { }
+    return t;
+};
+const missionHidden = (m) => { try { return localStorage.getItem("gwMissionHide:" + ((m && m.id) || 0)) === gwDay(); } catch (e) { return false; } };
+const missionHide = (m) => { try { localStorage.setItem("gwMissionHide:" + ((m && m.id) || 0), gwDay()); } catch (e) { } };
 /* ── 입장 환영 오버레이 — 배경이 어두워지며 메시지가 은은한 빛처럼 나타났다 사라짐
      기본 1.8초 (짧게 · 로그인 체감을 빠르게)
      서버 응답 대기 필요 시 3초로 확장해 정확한 메시지 교체까지 커버 ── */
 const WELCOME_MS_SHORT = 1800;
 const WELCOME_MS_LONG = 3000;
-const WELCOME_MS_MISSION = 4200;   /* 미션 한 줄을 읽을 시간 */
-function WelcomeOverlay({ text, sub, duration, onDone }) {
+function WelcomeOverlay({ text, duration, onDone }) {
     const ms = duration || WELCOME_MS_SHORT;
     useEffect(() => {
         const t = setTimeout(onDone, ms);
@@ -428,12 +449,25 @@ function WelcomeOverlay({ text, sub, duration, onDone }) {
             animation: `gwDim ${ms}ms ease forwards`, pointerEvents: "none" } },
         React.createElement("div", { style: { textAlign: "center", color: "#fff", animation: `gwGlow ${ms}ms ease forwards`, wordBreak: "keep-all" } },
             React.createElement("div", { style: { fontSize: 40, lineHeight: 1 } }, "\uD83C\uDF40"),
-            React.createElement("div", { style: { fontWeight: 800, fontSize: 18.5, letterSpacing: "-0.02em", marginTop: 12, lineHeight: 1.5 } }, text),
-            sub && React.createElement("div", { style: { marginTop: 16, display: "inline-block", maxWidth: 320,
-                    background: "rgba(255,255,255,.14)", border: "1px solid rgba(255,255,255,.24)", borderRadius: 14,
-                    padding: "9px 15px", lineHeight: 1.55 } },
-                React.createElement("div", { style: { fontSize: 11, fontWeight: 800, letterSpacing: "0.06em", opacity: .75 } }, "\uC624\uB298\uC758 \uBBF8\uC158"),
-                React.createElement("div", { style: { fontSize: 14, fontWeight: 700, marginTop: 3 } }, sub)))));
+            React.createElement("div", { style: { fontWeight: 800, fontSize: 18.5, letterSpacing: "-0.02em", marginTop: 12, lineHeight: 1.5 } }, text))));
+}
+/* ── 오늘의 미션 줄 (홈 맨 위) ── */
+function MissionRow({ me }) {
+    const [text] = useState(() => missionToday(me));
+    const [gone, setGone] = useState(() => missionHidden(me));
+    if (!text || gone) return null;
+    return (React.createElement("div", { className: "gwMission", style: {
+            display: "flex", alignItems: "center", gap: 11, margin: "14px 0 0",
+            background: "linear-gradient(120deg, rgba(53,201,168,.13), rgba(111,123,224,.13))",
+            border: "1px solid rgba(53,201,168,.3)", borderRadius: 14, padding: "12px 14px" } },
+        React.createElement("div", { style: { flex: "0 0 34px", height: 34, borderRadius: 11, background: "#fff",
+                display: "grid", placeItems: "center", fontSize: 17, boxShadow: "0 2px 8px rgba(28,35,51,.07)" } },
+            me && me.staff ? "\uD83D\uDEE0" : "\uD83C\uDFAF"),
+        React.createElement("div", { style: { flex: 1, minWidth: 0 } },
+            React.createElement("div", { style: { fontSize: 10.5, fontWeight: 800, letterSpacing: "0.06em", color: "#14806B" } }, "\uC624\uB298\uC758 \uBBF8\uC158"),
+            React.createElement("div", { style: { fontSize: 14.5, fontWeight: 700, letterSpacing: "-0.01em", marginTop: 1, wordBreak: "keep-all" } }, text)),
+        React.createElement("button", { onClick: () => { missionHide(me); setGone(true); }, title: "\uC624\uB298\uC740 \uC811\uAE30",
+            style: { flex: "none", background: "none", border: 0, color: T.sub, fontSize: 16, cursor: "pointer", padding: "2px 2px 2px 6px", lineHeight: 1 } }, "\u2715")));
 }
 /* ── 검색창 (인사이트·강의 공용) ── */
 function SearchBox({ value, onChange, placeholder, count }) {
@@ -5456,6 +5490,7 @@ function PublicPage({ members, ledger, log, insights, lectures, settings, certs,
                     meMember.staff && React.createElement(Pill, { tone: "gold" }, "\u2B50 \uC6B4\uC601\uC9C4")))),
         React.createElement("div", { style: { maxWidth: 720, margin: "-18px auto 0", padding: "0 16px 60px" } },
             React.createElement(TabBar, null),
+            ptab === "home" && React.createElement(MissionRow, { me: meMember }),
             ptab === "home" && React.createElement(HomeTab, null),
             ptab === "ranking" && React.createElement(RankingTab, null),
             ptab === "growth" && React.createElement(GrowthTab, null),
@@ -6493,15 +6528,7 @@ function App() {
                 React.createElement("div", { style: { display: "flex", gap: 8, marginTop: 14 } },
                     React.createElement(Btn, { small: true, tone: "ghost", style: { flex: 1 }, onClick: () => setPinPrompt(false) }, "\uCDE8\uC18C"),
                     React.createElement(Btn, { small: true, style: { flex: 1 }, disabled: !pinInput, onClick: tryPin }, "\uD655\uC778"))))),
-        welcome && (() => {
-            /* 미션은 오버레이가 뜨는 그 순간 한 번만 뽑는다 (재렌더로 바뀌지 않게) */
-            if (welcome.sub === undefined) {
-                const meRow = members.find((m) => m.id === viewer);
-                welcome.sub = meRow ? missionOf(meRow) : "";
-            }
-            return React.createElement(WelcomeOverlay, { text: welcome.text, sub: welcome.sub,
-                duration: welcome.sub ? WELCOME_MS_MISSION : welcome.ms, onDone: () => setWelcome(null) });
-        })(),
+        welcome && React.createElement(WelcomeOverlay, { text: welcome.text, duration: welcome.ms, onDone: () => setWelcome(null) }),
         toast && (React.createElement("div", { style: { position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", background: T.ink, color: "#fff",
                 padding: "12px 22px", borderRadius: 999, fontWeight: 700, fontSize: 13.5, boxShadow: "0 12px 30px rgba(28,35,51,.3)", zIndex: 50, maxWidth: "90vw" } }, toast))));
 }
