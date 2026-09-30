@@ -1005,7 +1005,8 @@ function Members({ members, ledger, onAdjust, onAddMember, onBumpStat, onSetLeve
     const untilReady = members.some((m) => m && "until" in m);
     const adminData = members.some((m) => m && "live" in m);
     const dated = members.filter((m) => htIsYmd(m.until));
-    const monthKey = (off) => { const t = new Date(); const i = t.getMonth() + off; return htYmd(t.getFullYear() + Math.floor(i / 12), (i % 12) + 1, 1).slice(0, 7); };
+    /* 음수 off(지난달)도 받는다 — 1월에 지난달을 누르면 작년 12월이어야 한다 */
+    const monthKey = (off) => { const t = new Date(); const i = t.getMonth() + off; return htYmd(t.getFullYear() + Math.floor(i / 12), ((i % 12) + 12) % 12 + 1, 1).slice(0, 7); };
     const dueKey = monthKey(dueMonth);
     const byUntil = (a, b) => a.until.localeCompare(b.until) || String(a.realName).localeCompare(String(b.realName), "ko");
     const inMonth = dated.filter((m) => m.until.slice(0, 7) === dueKey).sort(byUntil);
@@ -1253,25 +1254,27 @@ function Members({ members, ledger, onAdjust, onAddMember, onBumpStat, onSetLeve
                             l.amount >= 0 ? "+" : "",
                             l.amount.toLocaleString()))))))))),
         /* ── 마감 관리 (v91) ──
-           연장 안내를 보낼 사람을 한 곳에서 본다. 이미 마감된 사람은 이번 달 것만 — 지난달 만료자까지 섞이면 목록이 끝없이 길어진다.
-           다음 달도 볼 수 있게 했다. 월말에 "이번 달"만 보면 사흘 뒤 마감자가 안 보인다. */
+           연장 안내를 보낼 사람을 한 곳에서 본다.
+           다음 달도 볼 수 있게 했다. 월말에 "이번 달"만 보면 사흘 뒤 마감자가 안 보인다.
+           지난달도 넣었다 (v92). 1일에 "이번 달"만 보면 며칠 전 마감된 사람이 통째로 사라진다 —
+           연장 안내는 마감 직후에 보내야 하는데 정작 그때 목록에서 없어졌다. */
         React.createElement("div", { id: "due-section", style: { marginTop: 22, scrollMarginTop: 80 } },
             React.createElement(SectionTitle, { title: `${monthName(dueKey)} 마감`, right: React.createElement("div", { style: { display: "inline-flex", background: "#fff", border: `1px solid ${T.line}`, borderRadius: 999, padding: 3 } },
-                    [0, 1].map((off) => React.createElement("button", { key: off, onClick: () => setDueMonth(off), "aria-pressed": dueMonth === off,
+                    [-1, 0, 1].map((off) => React.createElement("button", { key: off, onClick: () => setDueMonth(off), "aria-pressed": dueMonth === off,
                         style: { cursor: "pointer", border: "none", borderRadius: 999, padding: "6px 13px", fontSize: 12.5, fontWeight: 800, fontFamily: "inherit",
                             background: dueMonth === off ? T.ink : "transparent", color: dueMonth === off ? "#fff" : T.sub } },
-                        `${off === 0 ? "이번 달" : "다음 달"} ${monthName(monthKey(off))}`))) }),
+                        `${off === -1 ? "지난달" : off === 0 ? "이번 달" : "다음 달"} ${monthName(monthKey(off))}`))) }),
             adminData && !untilReady
                 ? React.createElement(Card, { pad: 16, style: { fontSize: 12.5, color: T.sub, lineHeight: 1.7 } }, "마감일 정보가 아직 오지 않았어요. 새 Code.gs 를 배포한 뒤 동기화를 눌러주세요.")
                 : React.createElement(React.Fragment, null,
-                    React.createElement("div", { style: { display: "grid", gridTemplateColumns: dueMonth === 0 ? "repeat(auto-fit, minmax(280px, 1fr))" : "1fr", gap: 14, alignItems: "start" } },
-                        [["soon", "마감 예정", dueSoon, false], ...(dueMonth === 0 ? [["gone", "이미 마감", dueGone, true]] : [])].map(([k, label, list, gone]) => React.createElement(Card, { key: k, pad: 0, style: { overflow: "hidden" } },
+                    React.createElement("div", { style: { display: "grid", gridTemplateColumns: dueMonth <= 0 ? "repeat(auto-fit, minmax(280px, 1fr))" : "1fr", gap: 14, alignItems: "start" } },
+                        [["soon", "마감 예정", dueSoon, false], ...(dueMonth <= 0 ? [["gone", "이미 마감", dueGone, true]] : [])].map(([k, label, list, gone]) => React.createElement(Card, { key: k, pad: 0, style: { overflow: "hidden" } },
                             React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "baseline", padding: "12px 16px", borderBottom: `1px solid ${T.line}`, background: "#FAFCFB" } },
                                 React.createElement("div", { style: { fontSize: 13, fontWeight: 800, color: T.ink } }, label),
                                 React.createElement("div", { style: { fontSize: 20, fontWeight: 800, letterSpacing: "-0.02em", color: list.length ? (gone ? T.coral : "#A87A12") : "#C4CCCA", fontVariantNumeric: "tabular-nums" } },
                                     list.length, React.createElement("span", { style: { fontSize: 12, fontWeight: 700, marginLeft: 2 } }, "명"))),
                             list.length === 0
-                                ? React.createElement("div", { style: { padding: "16px", fontSize: 12.5, color: T.sub } }, gone ? "이번 달 이미 마감된 분이 없어요." : `${monthName(dueKey)}에 마감 예정인 분이 없어요.`)
+                                ? React.createElement("div", { style: { padding: "16px", fontSize: 12.5, color: T.sub } }, gone ? `${monthName(dueKey)}에 이미 마감된 분이 없어요.` : `${monthName(dueKey)}에 마감 예정인 분이 없어요.`)
                                 : list.map((m) => {
                                     const d = htDaysLeft(m.until);
                                     return React.createElement("button", { key: m.id, onClick: () => pick(m.id),
