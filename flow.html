@@ -210,6 +210,9 @@ th{color:var(--dim);font-weight:600;font-size:11px}
 #admin .ainfo{font-size:12px;color:var(--dim);margin:8px 0;line-height:1.6}
 #admin .arow{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
 #admin button:disabled{opacity:.4;cursor:not-allowed}
+#admin input{font-family:inherit;font-size:14px;background:var(--panel2);color:var(--txt);
+ border:1px solid var(--line);border-radius:8px;padding:8px 11px;width:120px;letter-spacing:.2em}
+#admin input:focus{outline:2px solid var(--gold);outline-offset:1px}
 @media (max-width:640px){
   body{padding:0}
   .shell{border-radius:0;border-left:0;border-right:0}
@@ -376,6 +379,17 @@ th{color:var(--dim);font-weight:600;font-size:11px}
 <div id="drop"><div>KB 주간 시계열 엑셀 파일을 놓으세요</div></div>
 <div id="busy"><div id="busytxt"></div></div>
 <div id="admin"><div class="panel">
+  <div id="alock">
+    <p class="ah">자료 갱신</p>
+    <p class="ainfo">PIN을 입력하세요.</p>
+    <div class="arow">
+      <input id="apin" type="password" inputmode="numeric" autocomplete="off" placeholder="PIN">
+      <button class="btn" id="aok">확인</button>
+      <button class="btn" id="acancel">닫기</button>
+    </div>
+    <p class="ainfo err" id="aerr" style="display:none">PIN이 맞지 않습니다.</p>
+  </div>
+  <div id="apanel" hidden>
   <p class="ah">자료 갱신</p>
   <p class="ainfo" id="ainfo"></p>
   <button id="apick">KB 주간 시계열 엑셀 고르기</button>
@@ -387,6 +401,7 @@ th{color:var(--dim);font-weight:600;font-size:11px}
     <button id="aclose">닫기</button>
   </div>
   <p class="ainfo" style="margin-top:12px;line-height:1.7">내려받은 파일을 깃허브의 flow.html 위에 덮어쓰면 이용자 화면이 갱신됩니다.<br>페이지를 <b>깃허브 주소로 열었을 때만</b> 파일을 만들 수 있습니다.</p>
+  </div>
 </div></div>
 
 <script>/*! xlsx.js (C) 2013-present SheetJS -- http://sheetjs.com */
@@ -802,7 +817,7 @@ function setData(d,name,keep){
   }
   ENG=makeEngine(DATA,REG);
   state.i=keep?Math.min(state.i,N-1):N-1;
-  document.getElementById('src').innerHTML=SRCNAME+' · <b>'+DATA.dates[0]+' ~ '+DATA.dates[N-1]+'</b> · '+N+'주';
+  document.getElementById('src').innerHTML='<b>'+DATA.dates[0]+' ~ '+DATA.dates[N-1]+'</b> · '+N+'주';
   fillRelSelect(); render();
 }
 function colAt(chain,i){
@@ -1454,16 +1469,30 @@ const PIN_FP=1515787531;
 function fp(s){ let h=2166136261; for(let i=0;i<s.length;i++){ h^=s.charCodeAt(i); h=Math.imul(h,16777619)>>>0; } return h>>>0; }
 let adminOn=false, lastLoaded=null;
 const adm=document.getElementById('admin');
-function askPin(){
-  if(adminOn){ adminInfo(); adm.classList.add('show'); return; }
-  const v=prompt('PIN');
-  if(v==null) return;
-  if(fp(v.trim())!==PIN_FP) return;
-  adminOn=true; adminInfo(); adm.classList.add('show');
+function showAdmin(unlocked){
+  document.getElementById('alock').hidden = unlocked;
+  document.getElementById('apanel').hidden = !unlocked;
+  adm.classList.add('show');
 }
+function askPin(){
+  if(adminOn){ adminInfo(); showAdmin(true); return; }
+  document.getElementById('aerr').style.display='none';
+  document.getElementById('apin').value='';
+  showAdmin(false);
+  setTimeout(function(){ try{ document.getElementById('apin').focus(); }catch(e){} },60);
+}
+function tryPin(){
+  const v=document.getElementById('apin').value.trim();
+  if(fp(v)!==PIN_FP){ document.getElementById('aerr').style.display='block'; return; }
+  adminOn=true; adminInfo(); showAdmin(true);
+}
+document.getElementById('aok').onclick=tryPin;
+document.getElementById('apin').addEventListener('keydown',e=>{ if(e.key==='Enter') tryPin(); });
+document.getElementById('acancel').onclick=()=>adm.classList.remove('show');
 document.getElementById('door').onclick=askPin;
 function adminInfo(){
-  document.getElementById('ainfo').innerHTML=
+  const el=document.getElementById('ainfo'); if(!el) return;
+  el.innerHTML=
     '지금 화면: <b>'+SRCNAME+'</b> · '+DATA.dates[0]+' ~ '+DATA.dates[N-1]+' · '+N+'주';
 }
 document.getElementById('aclose').onclick=()=>adm.classList.remove('show');
