@@ -2872,44 +2872,181 @@ function RankingAdmin({ members, events, ledger, acts, visitlog }) {
                 React.createElement("span", { style: { fontSize: 11.5, color: T.sub, fontWeight: 700, width: 64, textAlign: "right" } }, agoText(v.lastMs))))))));
 }
 /* ── 시상식 (개근왕 = 최다 참가) ── */
-function Awards({ members, settings }) {
-    const pool = rankable(members);   // v85: 자격 없는 사람은 수상 대상이 아니다
-    const by = (f) => [...pool].sort(f)[0];
-    const master = by((a, b) => b.auctions - a.auctions || b.bids - a.bids);
-    const diligent = by((a, b) => b.parts - a.parts); /* 개근왕: 최다 참가 */
-    const champ = by((a, b) => b.wins - a.wins);
-    const ambassador = by((a, b) => b.invites - a.invites);
-    const AWARDS = [
-        { icon: "🏆", name: "그로인 마스터", desc: "분기 최다 낙찰 (법원 영수증 인증)", who: master, stat: `낙찰 ${master.auctions}건 · 입찰 ${master.bids}회` },
-        { icon: "🔥", name: "그로인 개근왕", desc: "분기 최다 퀴즈·이벤트 참가", who: diligent, stat: `참가 ${diligent.parts}회` },
-        { icon: "🎯", name: "이벤트 챔피언", desc: "톡방 이벤트 최다 우승", who: champ, stat: `${champ.wins}회 우승` },
-        { icon: "🤝", name: "그로인 앰배서더", desc: "그로인 메이트 최다 소개", who: ambassador, stat: `${ambassador.invites}명 소개` },
+/* MM-dd 를 "고른 기간 안으로" 복원한다.
+   서버가 활동기록·이벤트 날짜를 MM-dd 로만 보내서, 연말을 넘는 기간을 보면 해가 엉킨다.
+   후보 연도를 셋 놓고 기간 안에 들어오는 것을 고른다. */
+const mmddIn = (dateStr, fromMs, toMs) => {
+    const s = String(dateStr || "").trim();
+    if (!s) return null;
+    const full = /^\d{4}-\d{2}-\d{2}/.test(s) ? new Date(s.slice(0, 10) + "T12:00:00") : null;
+    if (full && !isNaN(full.getTime())) { const t = full.getTime(); return t >= fromMs && t <= toMs ? t : null; }
+    const m = s.match(/^(\d{1,2})-(\d{1,2})$/);
+    if (!m) { const d = new Date(s); if (isNaN(d.getTime())) return null;
+        const t = d.getTime(); return t >= fromMs && t <= toMs ? t : null; }
+    const y0 = new Date().getFullYear();
+    for (const y of [y0, y0 - 1, y0 + 1]) {
+        const t = new Date(y, Number(m[1]) - 1, Number(m[2]), 12).getTime();
+        if (t >= fromMs && t <= toMs) return t;
+    }
+    return null;
+};
+const ymd = (d) => d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+const qStart = (d) => new Date(d.getFullYear(), Math.floor(d.getMonth() / 3) * 3, 1);
+
+/* ── 시상식 — 기간을 직접 골라 부문별 순위를 본다 ──
+   기계가 한 명을 찍어주지 않는다. 동점이면 동점이라고 보여주고,
+   그 안에서 그로인 합산 점수를 같이 띄워 판단할 거리를 준다.
+   (낙찰 1건으로 다섯 명이 묶였을 때, 누구에게 줄지는 사람이 정한다) */
+function Awards({ members, settings, events, ledger, acts }) {
+    const today = new Date();
+    const [from, setFrom] = useState(() => ymd(qStart(today)));
+    const [to, setTo] = useState(() => ymd(today));
+    const [copied, setCopied] = useState(false);
+
+    const fromMs = new Date(from + "T00:00:00").getTime();
+    const toMs = new Date(to + "T23:59:59").getTime();
+    const valid = isFinite(fromMs) && isFinite(toMs) && fromMs <= toMs;
+
+    const preset = (f, t) => { setFrom(ymd(f)); setTo(ymd(t)); };
+    const PRESETS = [
+        ["이번 분기", () => preset(qStart(today), today)],
+        ["지난 분기", () => { const s = qStart(today); const ps = new Date(s.getFullYear(), s.getMonth() - 3, 1);
+                preset(ps, new Date(s.getFullYear(), s.getMonth(), 0)); }],
+        ["올해 전체", () => preset(new Date(today.getFullYear(), 0, 1), today)],
+        ["최근 3개월", () => preset(new Date(today.getFullYear(), today.getMonth() - 3, today.getDate()), today)],
     ];
+
+    /* 기간 안의 기록만 모은다 */
+    const stats = {};
+    const st = (id) => (stats[id] = stats[id] || { auctions: 0, bids: 0, visits: 0, wins: 0, parts: 0, credits: 0 });
+    if (valid) {
+        (events || []).forEach((e) => {
+            if (mmddIn(e.date, fromMs, toMs) == null) return;
+            const pk = e.type === "임장" ? "visits" : "parts";
+            (e.participants || []).forEach((pid) => { st(pid)[pk] += 1; });
+            (e.winners || []).forEach((w) => { st(w.m).wins += 1; });
+        });
+        (acts || []).forEach((a) => { if (mmddIn(a.date, fromMs, toMs) != null && st(a.m)[a.field] != null) st(a.m)[a.field] += a.delta; });
+        (ledger || []).forEach((l) => { if (l.amount > 0 && mmddIn(l.date, fromMs, toMs) != null) st(l.m).credits += l.amount; });
+    }
+    const scored = rankable(members).map((m) => ({ ...m, s: st(m.id), score: growthScore(st(m.id)) }));
+    const ranked = [...scored].filter((m) => m.score > 0 || m.s.credits > 0)
+        .sort((a, b) => b.score - a.score || b.s.credits - a.s.credits);
+
+    /* 부문별 — 동점은 묶어서 보여준다. 5위까지의 등수를 다 채운다 */
+    const rankBy = (val) => {
+        const list = scored.filter((m) => val(m.s) > 0)
+            .sort((a, b) => val(b.s) - val(a.s) || b.score - a.score);
+        const out = []; let rank = 0, prev = null;
+        list.forEach((m, i) => {
+            const v = val(m.s);
+            if (v !== prev) { rank = i + 1; prev = v; }
+            if (rank <= 5 && out.length < 12) out.push({ ...m, rank: rank, v: v });
+        });
+        return out;
+    };
+    const CATS = [
+        { icon: "🏠", name: "낙찰왕", desc: "기간 내 낙찰", val: (s) => s.auctions, unit: "건" },
+        { icon: "🔨", name: "입찰왕", desc: "기간 내 입찰", val: (s) => s.bids, unit: "회" },
+        { icon: "🚶", name: "임장왕", desc: "임장 인증", val: (s) => s.visits, unit: "회" },
+        { icon: "🔥", name: "개근왕", desc: "퀴즈·이벤트 참가", val: (s) => s.parts, unit: "회" },
+        { icon: "🎯", name: "이벤트 챔피언", desc: "이벤트 당첨", val: (s) => s.wins, unit: "회" },
+        { icon: "💰", name: "크레딧왕", desc: "기간 내 획득 크레딧", val: (s) => s.credits, unit: "크레딧" },
+    ].map((c) => ({ ...c, list: rankBy(c.val) }));
+
+    /* 여러 부문 1위를 쓸어가는 사람 — 상이 몰리는지 미리 본다 */
+    const crowns = {};
+    CATS.forEach((c) => c.list.filter((x) => x.rank === 1).forEach((x) => { crowns[x.name] = (crowns[x.name] || 0) + 1; }));
+    const multi = Object.keys(crowns).filter((n) => crowns[n] >= 2).sort((a, b) => crowns[b] - crowns[a]);
+
+    const rangeLabel = `${from.replace(/-/g, ".")} ~ ${to.replace(/-/g, ".")}`;
+    const copyText = () => {
+        const lines = [`🏆 그로인 시상 참고 (${rangeLabel})`, ""];
+        CATS.forEach((c) => {
+            const first = c.list.filter((x) => x.rank === 1);
+            if (!first.length) return;
+            lines.push(`${c.icon} ${c.name} — ${first.length > 1 ? `공동 1위 ${first.length}명` : first[0].name}`);
+            first.forEach((x) => lines.push(`   · ${x.name} ${x.v.toLocaleString()}${c.unit} (합산 ${fmtScore(x.score)}점)`));
+            lines.push("");
+        });
+        lines.push("— 종합 —");
+        ranked.slice(0, 3).forEach((m, i) => lines.push(`${["🥇", "🥈", "🥉"][i]} ${m.name} ${fmtScore(m.score)}점`));
+        const text = lines.join("\n");
+        const done = () => { setCopied(true); setTimeout(() => setCopied(false), 2000); };
+        if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done).catch(done);
+        else { const ta = document.createElement("textarea"); ta.value = text; document.body.appendChild(ta); ta.select();
+            try { document.execCommand("copy"); } catch (e) { } document.body.removeChild(ta); done(); }
+    };
+
+    const dateInput = { fontFamily: "inherit", fontSize: 13, padding: "7px 10px", borderRadius: 10,
+        border: `1.5px solid ${T.line}`, background: "#fff", color: T.ink };
+
     return (React.createElement("div", null,
-        React.createElement(SectionTitle, { eyebrow: "2026 3\uBD84\uAE30 \u00B7 9\uC6D4 \uB9C8\uC9C0\uB9C9 \uC8FC \uBC1C\uD45C", title: "\uBD84\uAE30 \uC2DC\uC0C1\uC2DD \uBBF8\uB9AC\uBCF4\uAE30", right: React.createElement(Pill, { tone: "line" }, "\uC5F0\uB9D0\uC5D4 \uBA85\uC608\uC758 \uC804\uB2F9 \uCD94\uAC00") }),
-        React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(230px,1fr))", gap: 12 } }, AWARDS.map((a) => (React.createElement(Card, { key: a.name, pad: 0, style: { overflow: "hidden" } },
-            React.createElement("div", { style: { background: T.grad, height: 6 } }),
-            React.createElement("div", { style: { padding: 18 } },
-                React.createElement("div", { style: { fontSize: 30 } }, a.icon),
-                React.createElement("div", { style: { fontWeight: 800, fontSize: 16, letterSpacing: "-0.02em", marginTop: 6 } }, a.name),
-                React.createElement("div", { style: { fontSize: 12, color: T.sub, marginTop: 2, lineHeight: 1.5 } }, a.desc),
-                React.createElement("div", { style: { marginTop: 12, padding: "10px 12px", background: T.gradSoft, borderRadius: 12 } },
-                    React.createElement("div", { style: { fontSize: 11, color: T.sub, fontWeight: 700 } }, "\uD604\uC7AC 1\uC704"),
-                    React.createElement("div", { style: { fontWeight: 800, fontSize: 15, letterSpacing: "-0.01em" } },
-                        levelOf(a.who).icon,
-                        " ",
-                        a.who.name),
-                    React.createElement("div", { style: { fontSize: 12, color: T.peri, fontWeight: 700, marginTop: 2 } }, a.stat))))))),
-        React.createElement(Card, { style: { marginTop: 14 }, pad: 18 },
-            React.createElement("div", { style: { fontWeight: 800, fontSize: 14, marginBottom: 8 } }, "\uBD80\uC0C1 \uAD6C\uC131 (\uC548)"),
-            React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 7 } },
-                React.createElement(Pill, { tone: "line" }, "\uD06C\uB808\uB527 \uBCF4\uB108\uC2A4 +10,000"),
-                React.createElement(Pill, { tone: "line" }, "\uB2E4\uC74C \uBD84\uAE30 \uBA64\uBC84\uC2ED \uBB34\uB8CC"),
-                React.createElement(Pill, { tone: "line" }, "\uACBD\uB9E4\uB9C8\uB2F9 \uC774\uC6A9\uAD8C"),
-                React.createElement(Pill, { tone: "line" }, "\uADF8\uB85C\uC778 \uC0C1\uD328 \u00B7 \uAD7F\uC988"),
-                React.createElement(Pill, { tone: "coral", style: { fontSize: 12 } }, "5\uB9CC\uC6D0 \uCD08\uACFC \uACBD\uD488\uC740 \uC81C\uC138\uACF5\uACFC\uAE08 22% \uD655\uC778")))));
+        React.createElement(SectionTitle, { eyebrow: `\uC9C1\uC811 \uACE8\uB77C\uC11C \uBCF4\uB294 \uAE30\uAC04 \u00B7 ${rangeLabel}`,
+            title: "\uC2DC\uC0C1\uC2DD \uCC38\uACE0\uD45C",
+            right: React.createElement(Pill, { tone: "line" }, ranked.length, "\uBA85 \uD65C\uB3D9") }),
+
+        React.createElement(Card, { pad: 14, style: { marginBottom: 12 } },
+            React.createElement("div", { style: { display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" } },
+                React.createElement("input", { type: "date", value: from, max: to, onChange: (e) => setFrom(e.target.value), style: dateInput }),
+                React.createElement("span", { style: { color: T.sub, fontWeight: 800 } }, "~"),
+                React.createElement("input", { type: "date", value: to, min: from, onChange: (e) => setTo(e.target.value), style: dateInput }),
+                React.createElement("div", { style: { flex: 1 } }),
+                React.createElement(Btn, { small: true, tone: "ghost", onClick: copyText }, copied ? "\u2705 \uBCF5\uC0AC \uC644\uB8CC" : "\uD83D\uDCCB \uBC1C\uD45C\uBB38 \uBCF5\uC0AC")),
+            React.createElement("div", { style: { display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 } },
+                PRESETS.map(([label, fn]) => React.createElement("button", { key: label, onClick: fn,
+                        style: { cursor: "pointer", fontFamily: "inherit", fontSize: 12, fontWeight: 700, color: T.ink,
+                            background: "#fff", border: `1px solid ${T.line}`, borderRadius: 999, padding: "5px 11px" } }, label))),
+            !valid && React.createElement("div", { style: { marginTop: 8, fontSize: 12, color: T.coral, fontWeight: 700 } }, "\uC2DC\uC791\uC77C\uC774 \uB05D\uB0A0\uBCF4\uB2E4 \uB2A6\uC5B4\uC694."),
+            multi.length > 0 && React.createElement("div", { style: { marginTop: 10, fontSize: 12, color: T.sub, lineHeight: 1.7 } },
+                "\u26A0\uFE0F \uC5EC\uB7EC \uBD80\uBB38 1\uC704 \u2014 ",
+                multi.map((n) => `${n} ${crowns[n]}개`).join(" · "),
+                React.createElement("br", null),
+                "\uC0C1\uC774 \uBAB0\uB9AC\uBA74 \uB098\uB220\uC8FC\uC2E4\uC9C0 \uBBF8\uB9AC \uC815\uD574\uB450\uC138\uC694.")),
+
+        React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(280px,1fr))", gap: 12 } },
+            CATS.map((c) => {
+                const first = c.list.filter((x) => x.rank === 1);
+                return React.createElement(Card, { key: c.name, pad: 0, style: { overflow: "hidden" } },
+                    React.createElement("div", { style: { background: T.grad, height: 6 } }),
+                    React.createElement("div", { style: { padding: 16 } },
+                        React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } },
+                            React.createElement("span", { style: { fontSize: 22 } }, c.icon),
+                            React.createElement("div", { style: { flex: 1, minWidth: 0 } },
+                                React.createElement("div", { style: { fontWeight: 800, fontSize: 15, letterSpacing: "-0.02em" } }, c.name),
+                                React.createElement("div", { style: { fontSize: 11.5, color: T.sub } }, c.desc)),
+                            first.length > 1 && React.createElement(Pill, { tone: "coral", style: { fontSize: 11 } }, "\uACF5\uB3D9 1\uC704 ", first.length, "\uBA85")),
+                        c.list.length === 0
+                            ? React.createElement("div", { style: { marginTop: 12, fontSize: 12.5, color: T.sub } }, "\uC774 \uAE30\uAC04\uC5D4 \uAE30\uB85D\uC774 \uC5C6\uC5B4\uC694.")
+                            : React.createElement("div", { style: { marginTop: 10 } }, c.list.map((x, i) => React.createElement("div", { key: x.id,
+                                    style: { display: "flex", alignItems: "center", gap: 9, padding: "7px 0",
+                                        borderTop: i === 0 ? "none" : `1px solid ${T.line}` } },
+                                React.createElement("div", { style: { width: 22, textAlign: "center", fontWeight: 800, fontSize: 13,
+                                        color: x.rank === 1 ? "#A87A12" : T.sub } }, x.rank),
+                                React.createElement("div", { style: { flex: 1, minWidth: 0 } },
+                                    React.createElement("div", { style: { fontWeight: 700, fontSize: 13.5 } }, levelOf(x).icon, " ", x.name),
+                                    React.createElement("div", { style: { fontSize: 11.5, color: T.peri, fontWeight: 700 } }, x.v.toLocaleString(), c.unit)),
+                                React.createElement(Pill, { tone: "line", style: { fontSize: 11 } }, "\uD569\uC0B0 ", fmtScore(x.score), "\uC810"))))));
+            })),
+
+        React.createElement(Card, { style: { marginTop: 14 }, pad: 16 },
+            React.createElement("div", { style: { fontWeight: 800, fontSize: 14, marginBottom: 4 } }, "\uC885\uD569 \uB7AD\uD0B9 \u00B7 \uD569\uC0B0 \uC810\uC218"),
+            React.createElement("div", { style: { fontSize: 11.5, color: T.sub, marginBottom: 10 } }, "\uB099\uCC30 5 \u00B7 \uC785\uCC30 1 \u00B7 \uC784\uC7A5 0.5 \u00B7 \uB2F9\uCCA8 0.2 \u00B7 \uCC38\uAC00 0.1"),
+            ranked.length === 0
+                ? React.createElement("div", { style: { fontSize: 12.5, color: T.sub } }, "\uC774 \uAE30\uAC04\uC5D4 \uD65C\uB3D9 \uAE30\uB85D\uC774 \uC5C6\uC5B4\uC694.")
+                : ranked.slice(0, 10).map((m, i) => React.createElement("div", { key: m.id,
+                        style: { display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderTop: i === 0 ? "none" : `1px solid ${T.line}` } },
+                    React.createElement("div", { style: { width: 24, textAlign: "center", fontWeight: 800, fontSize: 13, color: i < 3 ? "#A87A12" : T.sub } }, ["🥇", "🥈", "🥉"][i] || i + 1),
+                    React.createElement("div", { style: { flex: 1, minWidth: 0 } },
+                        React.createElement("div", { style: { fontWeight: 700, fontSize: 13.5 } }, levelOf(m).icon, " ", m.name),
+                        React.createElement("div", { style: { fontSize: 11.5, color: T.sub } },
+                            `낙찰 ${m.s.auctions} · 입찰 ${m.s.bids} · 임장 ${m.s.visits} · 당첨 ${m.s.wins} · 참가 ${m.s.parts}`)),
+                    React.createElement(Pill, { tone: "grad", style: { fontSize: 11.5 } }, fmtScore(m.score), "\uC810"))),
+            React.createElement("div", { style: { marginTop: 12, fontSize: 11.5, color: T.sub, lineHeight: 1.75 } },
+                "\u203B \uB099\uCC30\u00B7\uC785\uCC30\uC740 \uD65C\uB3D9\uAE30\uB85D \uC2DC\uD2B8\uC5D0 \uB0A0\uC9DC\uAC00 \uB0A8\uC740 \uAC74\uB9CC \uC9D1\uACC4\uB429\uB2C8\uB2E4. ",
+                "\uADF8 \uC804\uC5D0 \uC218\uB3D9\uC73C\uB85C \uC62C\uB9B0 \uC22B\uC790\uB294 \uBA64\uBC84 \uCE78\uC5D0\uB9CC \uB0A8\uC544 \uC788\uC5B4 \uAE30\uAC04 \uC9D1\uACC4\uC5D0\uB294 \uBE60\uC9D1\uB2C8\uB2E4."))));
 }
-/* ── 설정 (관리자가 크레딧·등급 조정) ── */
+
 function Settings({ settings, setSettings }) {
     const [draft, setDraft] = useState(settings);
     const save = () => { setSettings(draft); };
@@ -6531,7 +6668,7 @@ function App() {
                 effTab === "certs" && React.createElement(CertsAdmin, { certs: certs, cmts: cmts, members: members, onUpdate: onUpdateCert, onDelete: onDeleteCert, onStaffCmt: onStaffCmt, onDeleteCmt: onDeleteCmt }),
                 effTab === "austats" && React.createElement(StatsAdmin, { stats: austats, onSave: onSaveStats, onDelete: onDeleteStats, auto: autoStats, onAutoSave: onAutoSave, onAutoRun: onAutoRun, onAutoTrigger: onAutoTrigger, isAdmin: !isStaff }),
                 effTab === "ranking" && React.createElement(RankingAdmin, { members: members, events: eventLog, ledger: ledger, acts: acts, visitlog: visitlog }),
-                effTab === "awards" && React.createElement(Awards, { members: members, settings: settings }),
+                effTab === "awards" && React.createElement(Awards, { members: members, settings: settings, events: eventLog, ledger: ledger, acts: acts }),
                 effTab === "tools" && React.createElement(ToolsAdmin, { settings: settings, onSave: onSaveToolCfg }),
                 effTab === "errors" && React.createElement(ErrorLogTab, { errors: errors, onRefresh: () => refresh(adminKey) }),
                 effTab === "settings" && React.createElement(Settings, { settings: settings, setSettings: persistSettings })))),
