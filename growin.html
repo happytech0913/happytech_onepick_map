@@ -438,6 +438,11 @@ const missionHide = (m) => { try { localStorage.setItem("gwMissionHide:" + ((m &
      서버 응답 대기 필요 시 3초로 확장해 정확한 메시지 교체까지 커버 ── */
 const WELCOME_MS_SHORT = 1800;
 const WELCOME_MS_LONG = 3000;
+/* 공유 링크를 타고 왔는지 — 로그인 화면에서 한 줄 안내하려고 본다 */
+const sharedTarget = () => {
+    const h = String(location.hash || "").replace(/^#/, "");
+    return /^(tab|insight)\//.test(h) ? h : null;
+};
 let gwWelcomeOn = false;   /* 입장 인사가 떠 있는 동안 true — 미션 줄의 반짝임을 그때까지 미룬다 */
 function WelcomeOverlay({ text, duration, onDone }) {
     const ms = duration || WELCOME_MS_SHORT;
@@ -5039,6 +5044,36 @@ function PublicPage({ members, ledger, log, insights, lectures, settings, certs,
     const [ptab, setPtab] = useState("home");
     const [archiveTool, setArchiveTool] = useState(null); // 다른 탭에서 자료실 특정 도구로 바로 진입
     const goTool = (k) => { setArchiveTool(k); setPtab("archive"); };
+    /* 주소 꼬리표로 바로 가기 — #tab/insights · #insight/42
+       로그인 전에 눌러도 주소는 그대로 남아 있어서, 들어온 뒤 이 자리로 데려온다. */
+    const [focusInsight, setFocusInsight] = useState(null);
+    const readHash = () => {
+        const h = String(location.hash || "").replace(/^#/, "");
+        if (!h) return;
+        const [kind, val] = h.split("/");
+        if (kind === "tab" && val) { setArchiveTool(null); setFocusInsight(null); setPtab(val); }
+        else if (kind === "insight" && val) { setArchiveTool(null); setFocusInsight(String(val)); setPtab("insights"); }
+    };
+    useEffect(() => {
+        readHash();
+        window.addEventListener("hashchange", readHash);
+        return () => window.removeEventListener("hashchange", readHash);
+    }, []);
+    const goTab = (k) => {
+        setArchiveTool(null); setFocusInsight(null); setPtab(k);
+        try { history.replaceState(null, "", "#tab/" + k); } catch (e) { }
+    };
+    const linkTo = (suffix) => {
+        const base = location.origin + location.pathname;
+        return base + "#" + suffix;
+    };
+    const copyLink = (suffix, msg) => {
+        const url = linkTo(suffix);
+        const done = () => { try { say(msg || "링크를 복사했어요"); } catch (e) { } };
+        if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(url).then(done).catch(done);
+        else { const ta = document.createElement("textarea"); ta.value = url; document.body.appendChild(ta); ta.select();
+            try { document.execCommand("copy"); } catch (e) { } document.body.removeChild(ta); done(); }
+    };
     const [mapBudget, setMapBudget] = useState(null); // 예산 판독기 → 원픽 지도 최저가 필터 (만원)
     const goMap = (maxMan) => { setMapBudget(maxMan || null); setPtab("onepick"); };
     /* 원픽 지도 유지: 탭을 벗어나도 iframe을 언마운트하지 않는다.
@@ -5092,7 +5127,7 @@ function PublicPage({ members, ledger, log, insights, lectures, settings, certs,
         ["guide", "안내", "📢"],
     ];
     const TabBar = () => (React.createElement("div", { style: { display: "flex", gap: 4, background: "#fff", borderRadius: 14, padding: 4, border: `1px solid ${T.line}`,
-            boxShadow: "0 4px 16px rgba(28,35,51,.06)", marginBottom: 16, position: "sticky", top: 6, zIndex: 20, overflowX: "auto" } }, PTABS.map(([k, label, icon]) => (React.createElement("button", { key: k, id: "ptab-" + k, onClick: () => { setArchiveTool(null); setPtab(k); }, style: { flex: "1 0 auto", border: "none", cursor: "pointer", padding: "10px 10px", borderRadius: 12,
+            boxShadow: "0 4px 16px rgba(28,35,51,.06)", marginBottom: 16, position: "sticky", top: 6, zIndex: 20, overflowX: "auto" } }, PTABS.map(([k, label, icon]) => (React.createElement("button", { key: k, id: "ptab-" + k, onClick: () => goTab(k), style: { flex: "1 0 auto", border: "none", cursor: "pointer", padding: "10px 10px", borderRadius: 12,
             fontWeight: 800, fontSize: 12.5, letterSpacing: "-0.01em", fontFamily: "inherit", whiteSpace: "nowrap",
             background: ptab === k ? T.grad : "transparent", color: ptab === k ? "#fff" : T.sub, transition: "all .15s ease" } },
         icon,
@@ -5511,24 +5546,37 @@ function PublicPage({ members, ledger, log, insights, lectures, settings, certs,
         const [filter, setFilter] = useState("전체");
         const [q, setQ] = useState("");
         const searched = insights.filter((i) => matchesQuery(i, q));
-        const list = sortPinned(filter === "전체" ? searched : searched.filter((i) => i.cat === filter));
+        const all = sortPinned(filter === "전체" ? searched : searched.filter((i) => i.cat === filter));
         const cats = catFilters(catsOf(settings, "insightCats", INSIGHT_CATS), insights);
+        /* 링크를 타고 들어온 글 하나만 펼쳐 보여준다 */
+        const focused = focusInsight ? insights.find((i) => String(i.id) === String(focusInsight)) : null;
+        const clearFocus = () => { setFocusInsight(null); try { history.replaceState(null, "", "#tab/insights"); } catch (e) { } };
+        const list = focusInsight ? (focused ? [focused] : []) : all;
+        const shareBtn = (i) => React.createElement("button", { onClick: () => copyLink("insight/" + i.id, "글 링크를 복사했어요"), title: "\uB9C1\uD06C \uBCF5\uC0AC",
+            style: { cursor: "pointer", border: `1px solid ${T.line}`, background: "#fff", color: T.sub,
+                borderRadius: 999, padding: "3px 9px", fontSize: 11, fontWeight: 700, fontFamily: "inherit", flexShrink: 0 } }, "\uD83D\uDD17");
         return (React.createElement("div", null,
             React.createElement(SectionTitle, { title: "\uC778\uC0AC\uC774\uD2B8 \uC544\uCE74\uC774\uBE0C", right: React.createElement(Pill, { tone: "line" },
                     insights.length,
                     "\uAC74") }),
-            React.createElement(SearchBox, { value: q, onChange: setQ, count: list.length }),
-            React.createElement("div", { style: { display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12, overflowX: "auto" } }, cats.map((c) => (React.createElement("button", { key: c, onClick: () => setFilter(c), style: { cursor: "pointer", borderRadius: 999, padding: "6px 12px", fontWeight: 700, fontSize: 12, fontFamily: "inherit", whiteSpace: "nowrap",
+            focusInsight && React.createElement(Card, { pad: 12, style: { marginBottom: 12, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
+                    background: T.gradSoft, border: `1px solid ${T.mint}` } },
+                React.createElement("div", { style: { flex: 1, minWidth: 0, fontSize: 12.5, fontWeight: 700 } },
+                    focused ? "\uB9C1\uD06C\uB85C \uBC14\uB85C \uC628 \uAE00\uC785\uB2C8\uB2E4." : "\uADF8 \uAE00\uC744 \uCC3E\uC9C0 \uBABB\uD588\uC5B4\uC694. \uC9C0\uC6CC\uC84C\uAC70\uB098 \uC8FC\uC18C\uAC00 \uBC14\uB010 \uAC83 \uAC19\uC2B5\uB2C8\uB2E4."),
+                React.createElement(Btn, { small: true, tone: "ghost", onClick: clearFocus }, "\uC804\uCCB4 \uBAA9\uB85D \uBCF4\uAE30")),
+            !focusInsight && React.createElement(SearchBox, { value: q, onChange: setQ, count: list.length }),
+            !focusInsight && React.createElement("div", { style: { display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12, overflowX: "auto" } }, cats.map((c) => (React.createElement("button", { key: c, onClick: () => setFilter(c), style: { cursor: "pointer", borderRadius: 999, padding: "6px 12px", fontWeight: 700, fontSize: 12, fontFamily: "inherit", whiteSpace: "nowrap",
                     background: filter === c ? T.ink : "#fff", color: filter === c ? "#fff" : T.sub,
                     border: filter === c ? "none" : `1.5px solid ${T.line}` } }, c)))),
             React.createElement("div", { style: { display: "grid", gap: 10 } },
-                list.length === 0 && React.createElement(Card, { pad: 20, style: { textAlign: "center", color: T.sub, fontSize: 13 } }, q.trim() ? `「${q.trim()}」에 맞는 인사이트가 없어요. 다른 키워드로 검색해보세요.` : "이 카테고리엔 아직 인사이트가 없어요."),
+                list.length === 0 && React.createElement(Card, { pad: 20, style: { textAlign: "center", color: T.sub, fontSize: 13 } }, focusInsight ? "이 글은 더 이상 볼 수 없습니다." : q.trim() ? `「${q.trim()}」에 맞는 인사이트가 없어요. 다른 키워드로 검색해보세요.` : "이 카테고리엔 아직 인사이트가 없어요."),
                 list.map((i) => (React.createElement(Card, { key: i.id, pad: 16, style: isPinned(i) ? { border: `1.5px solid ${T.mint}`, background: "linear-gradient(#fff,#fff) padding-box, " + T.gradSoft } : undefined },
                     React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" } },
                         isPinned(i) && React.createElement(Pill, { tone: "soft", style: { fontSize: 11 } }, "\uD83D\uDCCC \uACE0\uC815"),
                         React.createElement(Pill, { tone: "soft", style: { fontSize: 11.5 } }, i.cat),
                         React.createElement("div", { style: { fontWeight: 800, fontSize: 14.5, letterSpacing: "-0.01em", flex: 1 } }, q.trim() ? highlightText(i.title, q.trim(), "it" + i.id) : i.title),
-                        React.createElement(Pill, { tone: "line", style: { fontSize: 11 } }, shortDate(i.date))),
+                        React.createElement(Pill, { tone: "line", style: { fontSize: 11 } }, shortDate(i.date)),
+                        shareBtn(i)),
                     React.createElement(InsightContent, { body: i.body, imgs: imgsOf(i), yt: i.yt, hl: q })))))));
     };
     /* ── 크레딧 안내 ── */
@@ -5723,6 +5771,11 @@ function Gate({ onLogin, onChangePw }) {
                 React.createElement("div", { style: { fontSize: 24, fontWeight: 800, letterSpacing: "-0.03em", marginTop: 2 } }, "\uADF8\uB85C\uC778 \uCEE4\uBBA4\uB2C8\uD2F0"),
                 React.createElement("div", { style: { fontSize: 13, opacity: 0.9, marginTop: 4 } }, "\uD06C\uB808\uB527 \u00B7 \uB7AD\uD0B9 \u00B7 \uC778\uC0AC\uC774\uD2B8 \uC544\uCE74\uC774\uBE0C")),
             React.createElement("div", { style: { background: "#fff", borderRadius: 20, padding: 24, boxShadow: "0 20px 50px rgba(28,35,51,.25)" } }, mode === "login" ? (React.createElement(React.Fragment, null,
+                sharedTarget() && React.createElement("div", { style: { marginBottom: 14, padding: "11px 13px", borderRadius: 12,
+                        background: "rgba(53,201,168,.12)", border: "1px solid rgba(53,201,168,.35)", fontSize: 12.5, lineHeight: 1.6 } },
+                    React.createElement("b", null, "\uACF5\uC720\uBC1B\uC740 \uB9C1\uD06C\uB85C \uC624\uC168\uC5B4\uC694."),
+                    React.createElement("br", null),
+                    "\uB85C\uADF8\uC778\uD558\uC2DC\uBA74 \uBC14\uB85C \uADF8 \uC790\uB9AC\uB85C \uBAA8\uC2DC\uACA0\uC2B5\uB2C8\uB2E4. \uADF8\uB85C\uC778 \uBA64\uBC84\uB9CC \uBCFC \uC218 \uC788\uB294 \uB0B4\uC6A9\uC785\uB2C8\uB2E4."),
                 React.createElement("div", { style: { fontWeight: 800, fontSize: 15, letterSpacing: "-0.01em", marginBottom: 4 } }, "\uBA64\uBC84 \uD655\uC778"),
                 React.createElement("div", { style: { fontSize: 12, color: T.sub, marginBottom: 16, lineHeight: 1.5 } },
                     React.createElement("b", { style: { color: T.ink } }, "\uC774\uB984"),
