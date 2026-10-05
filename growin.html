@@ -5011,7 +5011,7 @@ function ToolsAdmin({ settings, onSave }) {
    그때 선택한 도구와 예산 판독기 입력값이 사라져 목록으로 되돌아간다.
    (원픽 지도 iframe 리마운트와 같은 원인 · 마스터 §0 v3.20 오류 2번)
    부모에서 오는 값은 settings·onGoMap 둘뿐이므로 props로 받는다. */
-function ArchiveTab({ initialTool, settings, onGoMap }) {
+function ArchiveTab({ initialTool, settings, onGoMap, onTool }) {
     const toolCfg = effToolCfg(settings);
     const [tool, setTool] = useState(initialTool || null);
     const ARCHIVE_TOOLS = [
@@ -5021,7 +5021,7 @@ function ArchiveTab({ initialTool, settings, onGoMap }) {
     ];
     if (tool)
         return (React.createElement("div", null,
-            React.createElement("button", { onClick: () => { htTrack.enter("archive"); setTool(null); }, style: { cursor: "pointer", border: "none", background: "transparent", fontFamily: "inherit", fontWeight: 800,
+            React.createElement("button", { onClick: () => { htTrack.enter("archive"); setTool(null); onTool && onTool(null); }, style: { cursor: "pointer", border: "none", background: "transparent", fontFamily: "inherit", fontWeight: 800,
                     fontSize: 13, color: T.sub, padding: "2px 2px 12px", display: "flex", alignItems: "center", gap: 4 } }, "\u2190 \uC790\uB8CC\uC2E4 \uBAA9\uB85D"),
             tool === "budget" && React.createElement(BudgetReader, { cfg: toolCfg, onGoMap: onGoMap }),
             tool === "calc" && React.createElement(ProfitCalc, { cfg: toolCfg }),
@@ -5029,7 +5029,7 @@ function ArchiveTab({ initialTool, settings, onGoMap }) {
     return (React.createElement("div", null,
         React.createElement(SectionTitle, { eyebrow: "GROW IN ARCHIVE", title: "\uD83D\uDCDA \uC790\uB8CC\uC2E4", right: React.createElement(Pill, { tone: "line" }, "\uADF8\uB85C\uC778 \uBA64\uBC84 \uC804\uC6A9 \uB3C4\uAD6C") }),
         React.createElement("div", { style: { display: "grid", gap: 10 } }, ARCHIVE_TOOLS.map((t) => (React.createElement(Card, { key: t.k, pad: 0, style: { overflow: "hidden", cursor: "pointer" } },
-            React.createElement("div", { onClick: () => { htTrack.enter("archive/" + t.k); setTool(t.k); }, style: { display: "flex", alignItems: "center", gap: 14, padding: 16 } },
+            React.createElement("div", { onClick: () => { htTrack.enter("archive/" + t.k); setTool(t.k); onTool && onTool(t.k); }, style: { display: "flex", alignItems: "center", gap: 14, padding: 16 } },
                 React.createElement("div", { style: { width: 52, height: 52, borderRadius: 16, background: T.gradSoft, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26, flexShrink: 0 } }, t.icon),
                 React.createElement("div", { style: { flex: 1, minWidth: 0 } },
                     React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" } },
@@ -5043,7 +5043,8 @@ function ArchiveTab({ initialTool, settings, onGoMap }) {
 function PublicPage({ members, ledger, log, insights, lectures, settings, certs, cmts, austats, onAddCert, onAddCmt, viewer, myUntil, onLogin, onLogout, onChangePw }) {
     const [ptab, setPtab] = useState("home");
     const [archiveTool, setArchiveTool] = useState(null); // 다른 탭에서 자료실 특정 도구로 바로 진입
-    const goTool = (k) => { setArchiveTool(k); setPtab("archive"); };
+    const goTool = (k) => { setArchiveTool(k); setPtab("archive");
+        try { history.replaceState(null, "", k ? "#tool/" + k : "#tab/archive"); } catch (e) { } };
     /* 주소 꼬리표로 바로 가기 — #tab/insights · #insight/42
        로그인 전에 눌러도 주소는 그대로 남아 있어서, 들어온 뒤 이 자리로 데려온다. */
     const [focusInsight, setFocusInsight] = useState(null);
@@ -5053,6 +5054,7 @@ function PublicPage({ members, ledger, log, insights, lectures, settings, certs,
         const [kind, val] = h.split("/");
         if (kind === "tab" && val) { setArchiveTool(null); setFocusInsight(null); setPtab(val); }
         else if (kind === "insight" && val) { setArchiveTool(null); setFocusInsight(String(val)); setPtab("insights"); }
+        else if (kind === "tool" && val) { setFocusInsight(null); setArchiveTool(val); setPtab("archive"); }
     };
     useEffect(() => {
         readHash();
@@ -5701,7 +5703,8 @@ function PublicPage({ members, ledger, log, insights, lectures, settings, certs,
             onepickSeen && React.createElement("div", { style: { display: ptab === "onepick" ? "block" : "none" } }, OnePickTab()),
             ptab === "cert" && React.createElement(CertBoard, { certs: certs, cmts: cmts, members: members, me: meMember, onAddCert: onAddCert, onAddCmt: onAddCmt }),
             ptab === "stats" && React.createElement(AuctionStatsTab, { stats: austats }),
-            ptab === "archive" && React.createElement(ArchiveTab, { key: archiveTool || "root", initialTool: archiveTool, settings: settings, onGoMap: goMap }),
+            ptab === "archive" && React.createElement(ArchiveTab, { key: archiveTool || "root", initialTool: archiveTool, settings: settings, onGoMap: goMap,
+                onTool: (k) => { setArchiveTool(k); try { history.replaceState(null, "", k ? "#tool/" + k : "#tab/archive"); } catch (e) { } } }),
             ptab === "lectures" && React.createElement(LecturesTab, null),
             ptab === "insights" && React.createElement(InsightsTab, null),
             ptab === "guide" && React.createElement(GuideTab, null),
