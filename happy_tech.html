@@ -384,6 +384,24 @@ html.capture .applywrap{display:none}
   html:not(.capture) body{padding-bottom:70px}
 }
 
+/* CALENDAR */
+.calwrap{margin-top:30px;padding-top:26px;border-top:2px dashed var(--line)}
+.calwrap h5{font-size:24px;font-weight:900;margin-bottom:6px}
+.legend{display:flex;justify-content:center;gap:18px;font-size:16px;font-weight:700;color:var(--gray);margin-bottom:18px}
+.legend i{display:inline-block;width:14px;height:14px;border-radius:50%;vertical-align:-2px;margin-right:6px}
+.legend .on{background:var(--blue2)}.legend .off{background:var(--yellow);box-shadow:inset 0 0 0 2px #e0a800}
+.cals{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}
+.cal{min-width:0}
+.cal{background:#f6f8fd;border-radius:16px;padding:16px 12px 12px}
+.cal .m{font-size:22px;font-weight:900;margin-bottom:10px}
+.cal .g{display:grid;grid-template-columns:repeat(7,1fr);row-gap:4px;font-size:15px;font-weight:600}
+.cal .g .wd{color:#9aa3b5;font-size:13px;font-weight:700;padding-bottom:4px}
+.cal .g .wd:first-child{color:#e25555}.cal .g .wd:nth-child(7){color:#4a6fe0}
+.cal .g span{height:30px;display:flex;align-items:center;justify-content:center;border-radius:50%;margin:0 auto;width:30px;color:#3a4256}
+.cal .g span.on{background:var(--blue2);color:#fff;font-weight:900}
+.cal .g span.off{background:var(--yellow);color:var(--ink);font-weight:900;box-shadow:inset 0 0 0 2px #e0a800}
+.calnote{margin-top:12px;font-size:14px;color:#9aa3b5}
+
 /* 6 PROGRAM */
 .prog{background:var(--navy);color:#fff;padding-top:0}
 .prog .cap{background:linear-gradient(#1b2340,var(--navy));margin:0 -70px;padding:110px 70px 40px;clip-path:polygon(0 0,100% 0,100% 100%,0 100%)}
@@ -772,6 +790,12 @@ html.capture .applywrap{display:none}
       <dt>정원</dt><dd>6명 (선착순 마감)</dd>
       <dt>수강료</dt><dd>990,000원</dd>
     </dl>
+    <div class="calwrap">
+      <h5>8주 일정 한눈에 보기</h5>
+      <div class="legend"><span><i class="on"></i>온라인 강의</span><span><i class="off"></i>오프라인 (임장·법원)</span></div>
+      <div class="cals" id="cals"></div>
+      <p class="calnote">* 일정 확정 후 날짜가 업데이트됩니다</p>
+    </div>
   </div>
   <div class="applywrap"><a class="applybtn apply" href="#">정규 강의 신청하기 <span class="arr">→</span></a></div>
   <p class="applynote">결제는 별도 페이지에서 진행됩니다</p>
@@ -788,6 +812,26 @@ html.capture .applywrap{display:none}
 var APPLY_URL = "https://www.latpeed.com/products/26BOM";
 document.querySelectorAll('a.apply').forEach(function(a){a.href=APPLY_URL;if(APPLY_URL!=="#")a.target="_blank";});
 if(location.hash==="#capture")document.documentElement.classList.add('capture');
+</script>
+<script>
+/* ===== 달력 설정: 날짜 확정되면 여기만 고치면 됩니다 =====
+   label: 표시할 월 이름 / first: 1일의 요일(0=일 ~ 6=토) / days: 그 달의 일수
+   on: 온라인 강의 날짜 / off: 오프라인 날짜 */
+var CALS = [
+  {label:"0월", first:3, days:30, on:[7,14,21,28], off:[]},
+  {label:"0월", first:5, days:31, on:[12,19], off:[9,26]}
+];
+(function(){
+  var box=document.getElementById('cals'); if(!box) return;
+  var W=['일','월','화','수','목','금','토'];
+  CALS.forEach(function(c){
+    var h='<div class="cal"><div class="m">'+c.label+'</div><div class="g">';
+    W.forEach(function(w){h+='<div class="wd">'+w+'</div>';});
+    for(var i=0;i<c.first;i++) h+='<span></span>';
+    for(var d=1;d<=c.days;d++){var k=c.on.indexOf(d)>-1?'on':(c.off.indexOf(d)>-1?'off':'');h+='<span class="'+k+'">'+d+'</span>';}
+    box.insertAdjacentHTML('beforeend',h+'</div></div>');
+  });
+})();
 </script>
 </body>
 </html>
