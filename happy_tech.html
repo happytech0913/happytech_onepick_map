@@ -360,12 +360,12 @@ html.capture body{padding-bottom:0}
 
 .applywrap{position:relative;margin-top:34px}
 .applywrap .applybtn{margin:0;position:relative;animation:press 2.8s ease-in-out infinite}
-.applywrap:after{content:"";position:absolute;inset:0;border-radius:999px;border:2px solid rgba(255,210,63,.8);animation:ring 2.8s ease-out infinite;pointer-events:none}
+.applywrap:after{content:"";position:absolute;inset:0;border-radius:999px;border:2px solid rgba(255,255,255,.85);animation:ring 2.8s ease-out infinite;pointer-events:none}
 .applybtn .arr{display:inline-block;animation:nudge 2.8s ease-in-out infinite}
-@keyframes press{0%,70%,100%{transform:translateY(0);background:var(--yellow);box-shadow:0 16px 36px rgba(0,0,40,.35)}78%{transform:translateY(3px);background:#ffb300;box-shadow:0 8px 18px rgba(0,0,40,.3)}88%{transform:translateY(0);background:var(--yellow)}}
+@keyframes press{0%,70%,100%{transform:translateY(0);background:var(--yellow);box-shadow:0 16px 36px rgba(0,0,40,.35)}78%{transform:translateY(3px);background:#fff;box-shadow:0 8px 18px rgba(0,0,40,.3)}88%{transform:translateY(0);background:var(--yellow)}}
 .applywrap .applybtn{transition:background .15s,transform .15s}
 .applywrap .applybtn:hover{animation-play-state:paused;background:#ffc400}
-.applywrap .applybtn:active{animation:none;background:#f5a300;transform:translateY(3px);box-shadow:0 6px 14px rgba(0,0,40,.3)}
+.applywrap .applybtn:active{animation:none;background:#fff;transform:translateY(3px);box-shadow:0 6px 14px rgba(0,0,40,.3)}
 .stickybar a{transition:background .15s,transform .15s}
 .stickybar a:hover{background:#1530c8}
 .stickybar a:active{background:#0f2499;transform:translateY(2px)}
