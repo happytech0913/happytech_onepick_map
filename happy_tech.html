@@ -374,6 +374,16 @@ html.capture body{padding-bottom:0}
 @media (prefers-reduced-motion:reduce){.applywrap *,.applywrap:after{animation:none!important}}
 html.capture .applywrap{display:none}
 
+/* DESKTOP: 모바일처럼 한 화면에 보이도록 축소 */
+@media (min-width:900px){
+  html:not(.capture) #page{zoom:.62}
+  html:not(.capture) .stickybar .in{width:533px;padding:12px 20px}
+  html:not(.capture) .stickybar .t small{font-size:12px}
+  html:not(.capture) .stickybar .t b{font-size:16px}
+  html:not(.capture) .stickybar a{font-size:15px;padding:12px 22px;border-radius:10px}
+  html:not(.capture) body{padding-bottom:70px}
+}
+
 /* 6 PROGRAM */
 .prog{background:var(--navy);color:#fff;padding-top:0}
 .prog .cap{background:linear-gradient(#1b2340,var(--navy));margin:0 -70px;padding:110px 70px 40px;clip-path:polygon(0 0,100% 0,100% 100%,0 100%)}
