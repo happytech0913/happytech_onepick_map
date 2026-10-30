@@ -5040,6 +5040,22 @@ function ArchiveTab({ initialTool, settings, onGoMap, onTool }) {
         React.createElement("div", { style: { fontSize: 11.5, color: T.sub, marginTop: 14, textAlign: "center", lineHeight: 1.7 } }, "\uC720\uC6A9\uD55C \uB3C4\uAD6C\uAC00 \uACC4\uC18D \uCD94\uAC00\uB420 \uC608\uC815\uC774\uC5D0\uC694 \u00B7 \uB9CC\uB4E4\uACE0 \uC2F6\uC740 \uB3C4\uAD6C\uAC00 \uC788\uB2E4\uBA74 \uD1A1\uBC29\uC5D0\uC11C \uD574\uD53C\uD14C\uD06C\uC5D0\uAC8C!")));
 }
 
+/* ── 제휴업체 탭 (v49) ─────────────────────────────────────
+   partners.html 을 그로인 안에 그대로 띄운다. 탭을 눌렀을 때만 불러오므로 접속 속도와 무관하다.
+   PublicPage 바깥에 둔 이유 — 안에 두면 화면이 다시 그려질 때마다 iframe 이 새로 불러와진다.
+   ?m=이름 → 연결 요청 문구의 이름 칸이 채워진다. ?embed=1 → 페이지 머리(초록 띠)를 숨긴다. */
+const PARTNERS_URL = "partners.html";
+function PartnersFrame({ who }) {
+    const src = PARTNERS_URL + "?embed=1" + (who ? "&m=" + encodeURIComponent(who) : "");
+    return React.createElement("div", null,
+        React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 10 } },
+            React.createElement("div", { style: { fontSize: 13, color: T.sub, lineHeight: 1.6, flex: 1, wordBreak: "keep-all" } }, "\uD83E\uDD1D 낙찰 후 필요한 업체를 그로인 멤버 혜택으로 연결해 드려요"),
+            React.createElement("a", { href: PARTNERS_URL + (who ? "?m=" + encodeURIComponent(who) : ""), target: "_blank", rel: "noopener",
+                style: { fontSize: 12, fontWeight: 800, color: T.sub, textDecoration: "none", whiteSpace: "nowrap", border: `1.5px solid ${T.line}`, borderRadius: 999, padding: "5px 11px", background: "#fff" } }, "새 창으로 \u2197")),
+        React.createElement("iframe", { src: src, title: "그로인 제휴 파트너", loading: "lazy", allow: "clipboard-write",
+            style: { width: "100%", height: "calc(100vh - 150px)", minHeight: 560, border: `1px solid ${T.line}`, borderRadius: 16, background: "#FAFCFB", display: "block" } }));
+}
+
 function PublicPage({ members, ledger, log, insights, lectures, settings, certs, cmts, austats, onAddCert, onAddCmt, viewer, myUntil, onLogin, onLogout, onChangePw }) {
     const [ptab, setPtab] = useState("home");
     const [archiveTool, setArchiveTool] = useState(null); // 다른 탭에서 자료실 특정 도구로 바로 진입
@@ -5118,20 +5134,29 @@ function PublicPage({ members, ledger, log, insights, lectures, settings, certs,
     const myDaysLeft = htDaysLeft(myUntilEff);
     const PTABS = [
         ["home", "홈", "🏠"],
-        ["ranking", "크레딧", "🏅"],
-        ["growth", "그로인 랭킹", "📈"],
+        ["ranking", "랭킹", "🏆"],   // 크레딧 랭킹(ranking) + 그로인 랭킹(growth) 을 한 탭으로. 안에서 RankSwitch 로 나눈다
         ["onepick", "원픽 지도", "📍"],
         ["cert", "임장·입찰", "🚩"],
         ["stats", "경매 통계", "📊"],
         ["archive", "자료실", "📚"],
         ["lectures", "강의", "🎬"],
         ["insights", "인사이트", "💡"],
-        ["guide", "안내", "📢"],
+        ["partners", "제휴업체", "🤝"],
+        ["guide", "안내", "📢"],      // 안내는 늘 맨 오른쪽
     ];
+    /* 랭킹 탭 통합 (v50) — 주소·안쪽 이름은 ranking / growth 그대로 둔다.
+       예전 링크(#tab/growth, 안내판의 #tab/ranking, 홈의 TOP 10 보기)가 하나도 안 깨지게 하려고. */
+    const tabOn = (k) => ptab === k || (k === "ranking" && ptab === "growth");
+    const RankSwitch = () => (React.createElement("div", { style: { display: "flex", gap: 4, background: T.gradSoft, borderRadius: 12, padding: 4, marginBottom: 14 } },
+        [["ranking", "🏅 크레딧 랭킹"], ["growth", "📈 그로인 랭킹"]].map(([k, label]) => (React.createElement("button", { key: k, onClick: () => goTab(k),
+            style: { flex: 1, border: "none", cursor: "pointer", padding: "10px 8px", borderRadius: 9, fontFamily: "inherit",
+                fontWeight: 800, fontSize: 13, letterSpacing: "-0.01em", whiteSpace: "nowrap",
+                background: ptab === k ? "#fff" : "transparent", color: ptab === k ? T.ink : T.sub,
+                boxShadow: ptab === k ? "0 2px 8px rgba(28,35,51,.10)" : "none", transition: "all .15s ease" } }, label)))));
     const TabBar = () => (React.createElement("div", { style: { display: "flex", gap: 4, background: "#fff", borderRadius: 14, padding: 4, border: `1px solid ${T.line}`,
             boxShadow: "0 4px 16px rgba(28,35,51,.06)", marginBottom: 16, position: "sticky", top: 6, zIndex: 20, overflowX: "auto" } }, PTABS.map(([k, label, icon]) => (React.createElement("button", { key: k, id: "ptab-" + k, onClick: () => goTab(k), style: { flex: "1 0 auto", border: "none", cursor: "pointer", padding: "10px 10px", borderRadius: 12,
             fontWeight: 800, fontSize: 12.5, letterSpacing: "-0.01em", fontFamily: "inherit", whiteSpace: "nowrap",
-            background: ptab === k ? T.grad : "transparent", color: ptab === k ? "#fff" : T.sub, transition: "all .15s ease" } },
+            background: tabOn(k) ? T.grad : "transparent", color: tabOn(k) ? "#fff" : T.sub, transition: "all .15s ease" } },
         icon,
         " ",
         label)))));
@@ -5590,10 +5615,11 @@ function PublicPage({ members, ledger, log, insights, lectures, settings, certs,
                 React.createElement("div", { style: { fontSize: 11.5, fontWeight: 800, letterSpacing: "0.12em", opacity: 0.9 } }, "GROW IN CREDIT"),
                 React.createElement("div", { style: { fontSize: 20, fontWeight: 800, letterSpacing: "-0.02em", marginTop: 4 } }, "1 \uD06C\uB808\uB527 = 1\uC6D0"),
                 React.createElement("div", { style: { fontSize: 13, opacity: 0.9, marginTop: 4, lineHeight: 1.6 } },
-                    "\uBA64\uBC84\uC2ED \uACB0\uC81C \uC2DC \uD604\uAE08\uCC98\uB7FC \uC0AC\uC6A9\uD560 \uC218 \uC788\uC5B4\uC694.",
+                    "멤버십 연장 시 현금처럼 차감하거나, 해피클래스에서 쓸 수 있어요.",
                     React.createElement("br", null),
+                    "멤버십 차감은 ",
                     settings.minUse.toLocaleString(),
-                    " \uD06C\uB808\uB527 \uC774\uC0C1 \uBAA8\uC558\uC744 \uB54C\uBD80\uD130 \uC0AC\uC6A9 \uAC00\uB2A5\uD569\uB2C8\uB2E4.")),
+                    " 크레딧 이상 모았을 때부터 가능합니다.")),
             React.createElement("div", { style: { padding: 18 } },
                 React.createElement("div", { style: { display: "flex", gap: 8, flexWrap: "wrap" } }, LEVELS.map((lv) => (React.createElement("div", { key: lv.lv, style: { display: "flex", alignItems: "center", gap: 4, padding: "5px 12px", background: "#FAFCFB", borderRadius: 999, border: `1px solid ${T.line}`, fontSize: 12.5, fontWeight: 700 } },
                     lv.icon,
@@ -5657,10 +5683,12 @@ function PublicPage({ members, ledger, log, insights, lectures, settings, certs,
                     "\uAFB8\uC900\uD788 \uCC38\uC5EC\uD558\uBA74 \uADF8\uB85C\uC778 \uB7AD\uD0B9\uACFC \uAC1C\uADFC\uC655 \uC2DC\uC0C1\uC5D0\uB3C4 \uAC00\uAE4C\uC6CC\uC838\uC694!"))),
         React.createElement(Card, { pad: 16, style: { textAlign: "center", background: T.gradSoft, border: "none" } },
             React.createElement("div", { style: { fontSize: 13.5, fontWeight: 700, color: T.ink, lineHeight: 1.7 } },
-                "\uD06C\uB808\uB527\uC740 \uB2E4\uC74C \uBD84\uAE30 \uBA64\uBC84\uC2ED \uACB0\uC81C \uC2DC",
+                "크레딧은 멤버십 연장 시 ",
+                React.createElement("b", { style: { color: T.coral } }, "현금처럼 차감"),
+                "하거나,",
                 React.createElement("br", null),
-                React.createElement("b", { style: { color: T.coral } }, "\uD604\uAE08\uCC98\uB7FC \uCC28\uAC10"),
-                "\uB429\uB2C8\uB2E4."),
+                React.createElement("b", { style: { color: T.coral } }, "해피클래스"),
+                "에서 강의를 여는 데 쓸 수 있어요."),
             React.createElement("div", { style: { fontSize: 12, color: T.sub, marginTop: 6 } }, "\uBB38\uC758\uB294 \uB2E8\uD1A1\uBC29\uC5D0\uC11C \uD574\uD53C\uD14C\uD06C\uC5D0\uAC8C!"))));
     return (React.createElement("div", { style: { background: T.bg, minHeight: "100vh" } },
         React.createElement("div", { style: { background: T.grad, color: "#fff", padding: "24px 20px 38px", position: "relative", overflow: "hidden" } },
@@ -5698,6 +5726,7 @@ function PublicPage({ members, ledger, log, insights, lectures, settings, certs,
             React.createElement(TabBar, null),
             ptab === "home" && React.createElement(MissionRow, { me: meMember }),
             ptab === "home" && React.createElement(HomeTab, null),
+            (ptab === "ranking" || ptab === "growth") && React.createElement(RankSwitch, null),
             ptab === "ranking" && React.createElement(RankingTab, null),
             ptab === "growth" && React.createElement(GrowthTab, null),
             onepickSeen && React.createElement("div", { style: { display: ptab === "onepick" ? "block" : "none" } }, OnePickTab()),
@@ -5708,6 +5737,7 @@ function PublicPage({ members, ledger, log, insights, lectures, settings, certs,
             ptab === "lectures" && React.createElement(LecturesTab, null),
             ptab === "insights" && React.createElement(InsightsTab, null),
             ptab === "guide" && React.createElement(GuideTab, null),
+            ptab === "partners" && React.createElement(PartnersFrame, { who: meMember.realName || "" }),
             React.createElement("div", { style: { textAlign: "center", color: T.sub, fontSize: 11.5, marginTop: 24, lineHeight: 1.7 } },
                 "\uD574\uD53C\uD14C\uD06C \u00B7 \uADF8\uB85C\uC778 \uBA64\uBC84\uC2ED",
                 React.createElement("br", null),
